@@ -1,0 +1,26 @@
+observation_manifest:
+  schema_version: 3
+  profile: "amp"
+  # Total dimension: 47
+  terms:
+    - name: phase
+      enabled: true
+      count: 2
+    - name: command
+      enabled: true
+      components: [vx, vy, dyaw]
+    - name: joint_pos
+      enabled: true
+      count: 12
+    - name: joint_vel
+      enabled: true
+      count: 12
+    - name: last_action
+      enabled: true
+      count: 12
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+    - name: base_rpy
+      enabled: true
+      count: 3

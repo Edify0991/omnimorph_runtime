@@ -1,0 +1,335 @@
+# RL Configuration File
+
+humanoid_rl_root_dir: "/home/nvidia/Documents/humanoid_jc/src/humanoid_rl_controller/rl_master"
+legged_gym_root_dir: "/path/to/legged_gym_root_dir"
+
+# walk_mode DDS control words:
+# 0=WALK, 1=STAND, 2=FIX_STAND
+# 10=START_POLICY, 11=STOP_POLICY, 12=ZEROING, 13=ESTOP
+# 20=START_WALK, 21=START_STAND, 22=START_FIX_STAND
+
+sim2real:
+  policy_name: "2026-01-11_01-27-10"
+  policy_family: "amp"  # amp / beyondmimic / custom
+  obs_stack_N: 15
+  # cycle_time: 1.05
+  cycle_time: 1.0
+  
+  # PD controller gains
+
+  # test pd
+  kps:  [200, 120, 150, 300, 20, 20, 200, 120, 150, 300, 20, 20]   
+  kds:  [5, 3, 5, 10, 2, 2, 5, 3, 5, 10, 2, 2]
+
+  clip_observations: 100.0
+  clip_actions: 100.0
+  action_scale: 0.5
+  
+  device_id: 0
+  obs_dim: 47
+  action_dim: 12
+  motor_N: 12
+  RL_control_f: 100
+  # policy action output order. If omitted, default is robot canonical order.
+  action_joint_order:
+    - right_hip_roll_joint
+    - right_hip_yaw_joint
+    - right_hip_pitch_joint
+    - right_knee_joint
+    - right_ankle_pitch_joint
+    - right_ankle_roll_joint
+    - left_hip_roll_joint
+    - left_hip_yaw_joint
+    - left_hip_pitch_joint
+    - left_knee_joint
+    - left_ankle_pitch_joint
+    - left_ankle_roll_joint
+  obs_joint_order:
+    - right_hip_roll_joint
+    - right_hip_yaw_joint
+    - right_hip_pitch_joint
+    - right_knee_joint
+    - right_ankle_pitch_joint
+    - right_ankle_roll_joint
+    - left_hip_roll_joint
+    - left_hip_yaw_joint
+    - left_hip_pitch_joint
+    - left_knee_joint
+    - left_ankle_pitch_joint
+    - left_ankle_roll_joint
+  # Example (IsaacLab left-first style), replace above list if needed:
+  # action_joint_order:
+  #   - left_hip_roll_joint
+  #   - left_hip_yaw_joint
+  #   - left_hip_pitch_joint
+  #   - left_knee_joint
+  #   - left_ankle_pitch_joint
+  #   - left_ankle_roll_joint
+  #   - right_hip_roll_joint
+  #   - right_hip_yaw_joint
+  #   - right_hip_pitch_joint
+  #   - right_knee_joint
+  #   - right_ankle_pitch_joint
+  #   - right_ankle_roll_joint
+  # obs_joint_order can use the same left-first list as action_joint_order.
+  observation_manifest_file: "observation_manifest_amp.yaml"
+  # beyondmimic example:
+  # policy_family: "beyondmimic"
+  # observation_manifest_file: "observation_manifest_beyondmimic.yaml"
+  # obs_dim: 71
+  enable_reference_motion: false
+  reference_motion_dim: 24
+  reference_motion_sampling: "phase"   # phase / step
+  reference_motion_file: "reference_motion/walk_ref.txt"
+  external_observations:
+    - name: vision_latent
+      dim: 64
+      required: false
+    - name: lidar_latent
+      dim: 32
+      required: false
+  onnx_intra_threads: 1
+  onnx_inter_threads: 1
+  policy_io:
+    obs_input_name: "obs"
+    action_output_name: "actions"
+    enable_time_step_input: false
+    time_step_input_name: "time_step"
+    time_step_start: 0
+    strict_model_io: false
+    reset_policy_on_mode_switch: true
+    extra_output_names: []
+    # Example for beyondmimic-style exported policy:
+    # obs_input_name: "obs"
+    # action_output_name: "action"
+    # enable_time_step_input: true
+    # time_step_input_name: "time_step"
+    # extra_output_names: ["joint_pos", "joint_vel", "body_pos_w", "body_quat_w"]
+  # Optional multi-model ensemble:
+  # sub_models:
+  #   - name: residual_head
+  #     enabled: true
+  #     weight: 0.35
+  #     policy_file: "policies/residual_head.onnx"
+  #     policy_io:
+  #       obs_input_name: "obs"
+  #       action_output_name: "actions"
+  #       enable_time_step_input: false
+  enable_cmd_watchdog: true
+  cmd_timeout_s: 0.12
+  loop_overrun_warn_us: 2000
+  auto_start_policy: true
+  zeroing_duration_s: 2.0
+  # zero_pose: [0.0, 0.0, -0.24, 0.48, -0.24, 0.0, 0.0, 0.0, -0.24, 0.48, -0.24, 0.0]
+  
+  tau_limit: [130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0]
+  
+  save_data_flag: true
+  control_mode: "sim2real"
+  action_filter: 0.5
+  
+  robot:
+    default_joint_angles:
+      right_hip_roll_joint: 0.0
+      right_hip_yaw_joint: 0.0
+      right_hip_pitch_joint: -0.24
+      right_knee_joint: 0.48
+      right_ankle_pitch_joint: -0.24
+      right_ankle_roll_joint: 0.0
+      left_hip_roll_joint: 0.0
+      left_hip_yaw_joint: 0.0
+      left_hip_pitch_joint: -0.24
+      left_knee_joint: 0.48
+      left_ankle_pitch_joint: -0.24
+      left_ankle_roll_joint: 0.0
+    
+    joint_limit_range:
+      hip_roll_joint: [-0.2, 0.2]
+      hip_yaw_joint: [-1.05, 1.05]
+      hip_pitch_joint: [-0.45, 0.38]
+      knee_joint: [0.0, 1.48]
+      ankle_pitch_joint: [-0.64, 0.4]
+      ankle_roll_joint: [-0.26, 0.26]
+      hip_linear_motor: [0, 200]
+      knee_linear_motor: [0, 200]
+      ankle_left_linear_motor: [0, 100]
+      ankle_right_linear_motor: [0, 100]
+    
+    motor_torque_limit:
+      hip_roll_joint: 330
+      hip_yaw_joint: 150
+      hip_pitch_joint: 330
+      knee_joint: 8000
+      ankle_left_motor: 90
+      ankle_right_motor: 90
+  
+  scales:
+    lin_vel: 2.0
+    ang_vel: 1.0
+    dof_pos: 1.0
+    dof_vel: 0.05
+    quat: 1.0
+    height_measurements: 5.0
+
+stand_sim2real:
+  # policy_name: "2026-01-05_18-10-12v1"
+  policy_name: "2025-12-18_10-01-13v1"
+  policy_family: "amp"
+  obs_stack_N: 15
+  cycle_time: 0.95
+
+  # kps: [350, 300, 300, 250, 80, 80, 350, 300, 300, 250, 80, 80]  
+  # kds: [20, 20, 10, 15, 4, 4, 20, 20, 10, 15, 4, 4]
+  # kps: [350, 300, 200, 250, 80, 80, 350, 300, 200, 250, 80, 80]  
+  # kds: [20, 20, 10, 15, 4, 4, 20, 20, 10, 15, 4, 4]
+
+  # # jingchu01-2025-12-11_16-20-19-30000
+  # kps: [150, 100, 150, 200, 60, 60, 150, 100, 150, 200, 60, 60]  
+  # kds: [5, 3, 5, 10, 4, 4, 5, 3, 5, 10, 4, 4]
+
+  # jingchu01-2026-01-04_11-41-56-20000 jingchu01-2026-01-04_11-45-33-20000 jingchu01-2026-01-04_11-49-09-20000 jingchu01-2026-01-04_12-00-59-20000
+  # kps: [150, 60, 150, 200, 2, 2, 150, 60, 150, 200, 2, 2]
+  # kds: [5, 3, 5, 10, 2, 2, 5, 3, 5, 10, 2, 2]
+  kps: [250,200,150,150,60,60,250, 200, 150,150,60,60]
+  kds: [20, 20, 10, 15, 4, 4, 20, 20, 10, 15, 4, 4]
+  # # 2026-01-04_12-09-03-20000 2026-01-04_12-39-41 2026-01-04_12-40-21
+  # kps: [200, 60, 200, 300, 60, 60, 200, 60, 200, 300, 60, 60]
+  # kds: [5, 3, 5, 10, 4, 4, 5, 3, 5, 10, 4, 4]
+  # # jingchu01-2026-01-04_12-16-53-20000
+  # kps: [200, 60, 200, 300, 40, 40, 200, 60, 200, 300, 40, 40]
+  # kds: [5, 3, 5, 10, 3, 3, 5, 3, 5, 10, 3, 3]
+  # # 2026-01-04_12-20-37-20000 2026-01-04_12-36-12 2026-01-04_12-37-12-20000
+  # kps: [200, 60, 200, 300, 20, 20, 200, 60, 200, 300, 20, 20]
+  # kds: [5, 3, 5, 10, 2, 2, 5, 3, 5, 10, 2, 2]
+
+  # # jingchu01-2026-01-06_17-57-56-10000
+  # kps: [200, 60, 200, 300, 20, 20, 200, 60, 200, 300, 20, 20]
+  # kds: [5, 3, 5, 10, 2, 2, 5, 3, 5, 10, 2, 2]
+  # # jingchu01-2026-01-06_18-02-09-10000 jingchu01-2026-01-06_18-03-33-10000
+  # kps: [200, 60, 200, 200, 20, 20, 200, 60, 200, 200, 20, 20]
+  # kds: [5, 3, 5, 10, 2, 2, 5, 3, 5, 10, 2, 2]
+  # # jingchu01-2026-01-06_18-06-27-10000
+  # kps: [150, 60, 150, 200, 20, 20, 150, 60, 150, 200, 20, 20]
+  # kds: [5, 3, 5, 10, 2, 2, 5, 3, 5, 10, 2, 2]
+  # # jingchu01-2026-01-06_18-13-45-10000 jingchu01-2026-01-06_18-15-19-9000
+  # kps: [200, 60, 150, 200, 20, 20, 200, 60, 150, 200, 20, 20]
+  # kds: [5, 3, 5, 10, 2, 2, 5, 3, 5, 10, 2, 2]
+
+  clip_observations: 100.0
+  clip_actions: 100.0
+  action_scale: 0.5
+  
+  device_id: 0
+  obs_dim: 47
+  action_dim: 12
+  motor_N: 12
+  RL_control_f: 100
+  action_joint_order:
+    - right_hip_roll_joint
+    - right_hip_yaw_joint
+    - right_hip_pitch_joint
+    - right_knee_joint
+    - right_ankle_pitch_joint
+    - right_ankle_roll_joint
+    - left_hip_roll_joint
+    - left_hip_yaw_joint
+    - left_hip_pitch_joint
+    - left_knee_joint
+    - left_ankle_pitch_joint
+    - left_ankle_roll_joint
+  obs_joint_order:
+    - right_hip_roll_joint
+    - right_hip_yaw_joint
+    - right_hip_pitch_joint
+    - right_knee_joint
+    - right_ankle_pitch_joint
+    - right_ankle_roll_joint
+    - left_hip_roll_joint
+    - left_hip_yaw_joint
+    - left_hip_pitch_joint
+    - left_knee_joint
+    - left_ankle_pitch_joint
+    - left_ankle_roll_joint
+  observation_manifest_file: "observation_manifest_amp.yaml"
+  enable_reference_motion: false
+  reference_motion_dim: 24
+  reference_motion_sampling: "phase"
+  reference_motion_file: "reference_motion/stand_ref.txt"
+  external_observations:
+    - name: vision_latent
+      dim: 64
+      required: false
+    - name: lidar_latent
+      dim: 32
+      required: false
+  onnx_intra_threads: 1
+  onnx_inter_threads: 1
+  policy_io:
+    obs_input_name: "obs"
+    action_output_name: "actions"
+    enable_time_step_input: false
+    time_step_input_name: "time_step"
+    time_step_start: 0
+    strict_model_io: false
+    reset_policy_on_mode_switch: true
+    extra_output_names: []
+  # sub_models:
+  #   - name: stand_residual
+  #     enabled: false
+  #     weight: 0.2
+  #     policy_file: "policies/stand_residual.onnx"
+  enable_cmd_watchdog: true
+  cmd_timeout_s: 0.12
+  loop_overrun_warn_us: 2000
+  auto_start_policy: true
+  zeroing_duration_s: 2.0
+  # zero_pose: [0.0, 0.0, -0.24, 0.48, -0.24, 0.0, 0.0, 0.0, -0.24, 0.48, -0.24, 0.0]
+  
+  tau_limit: [130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0]
+  
+  save_data_flag: true
+  control_mode: "sim2real"
+  action_filter: 0.5
+  
+  robot:
+    default_joint_angles:
+      left_hip_roll_joint: 0.0
+      left_hip_yaw_joint: 0.0
+      left_hip_pitch_joint: -0.24
+      left_knee_joint: 0.48
+      left_ankle_pitch_joint: -0.24
+      left_ankle_roll_joint: 0.0
+      right_hip_roll_joint: 0.0
+      right_hip_yaw_joint: 0.0
+      right_hip_pitch_joint: -0.24
+      right_knee_joint: 0.48
+      right_ankle_pitch_joint: -0.24
+      right_ankle_roll_joint: 0.0
+    
+    joint_limit_range:
+      hip_roll_joint: [-0.2, 0.2]
+      hip_yaw_joint: [-1.05, 1.05]
+      hip_pitch_joint: [-0.45, 0.38]
+      knee_joint: [0.0, 1.48]
+      ankle_pitch_joint: [-0.64, 0.4]
+      ankle_roll_joint: [-0.26, 0.26]
+      hip_linear_motor: [0, 200]
+      knee_linear_motor: [0, 200]
+      ankle_left_linear_motor: [0, 100]
+      ankle_right_linear_motor: [0, 100]
+    
+    motor_torque_limit:
+      hip_roll_joint: 330
+      hip_yaw_joint: 150
+      hip_pitch_joint: 330
+      knee_joint: 8000
+      ankle_left_motor: 90
+      ankle_right_motor: 90
+  
+  scales:
+    lin_vel: 2.0
+    ang_vel: 1.0
+    dof_pos: 1.0
+    dof_vel: 0.05
+    quat: 1.0
+    height_measurements: 5.0

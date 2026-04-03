@@ -1,0 +1,44 @@
+# 编译生成文件
+*.o
+*.a
+*.so
+*.dll
+*.exe
+
+# 构建目录
+build/
+bin/
+lib/
+install/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# 日志文件
+*.log
+log/
+
+# 临时文件
+*.tmp
+*.temp
+
+# IDE 文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 数据文件
+src/humanoid_rl_controller/rl_master/data/
+src/motor_test/test_data/
+
+thirdparty/
+
+src/humanoid_rl_controller/rl_master/policies

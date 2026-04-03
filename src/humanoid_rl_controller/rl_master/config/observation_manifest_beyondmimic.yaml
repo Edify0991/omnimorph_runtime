@@ -1,0 +1,35 @@
+observation_manifest:
+  schema_version: 3
+  profile: "beyondmimic"
+  # Total dimension: 71 (47 + 24 reference_motion)
+  terms:
+    - name: phase
+      enabled: true
+      count: 2
+    - name: command
+      enabled: true
+      components: [vx, vy, dyaw]
+    - name: joint_pos
+      enabled: true
+      count: 12
+    - name: joint_vel
+      enabled: true
+      count: 12
+    - name: last_action
+      enabled: true
+      count: 12
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+    - name: base_rpy
+      enabled: true
+      count: 3
+    - name: reference_motion
+      enabled: true
+      source: reference_motion
+      count: 24
+    # External sensor interface example:
+    # - name: external_sensor
+    #   enabled: true
+    #   source: vision_latent
+    #   count: 64
