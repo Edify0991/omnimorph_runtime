@@ -1,76 +1,44 @@
-# Sim2Real Deploy Framework Upgrade (Shared-Memory Transport Preserved)
+﻿# Sim2Real Deploy Framework Upgrade Summary
 
-This upgrade keeps low-level motor IO (`sendMotorCmd` / `getMotorState`) on shared memory, and migrates upper-layer deploy communication to DDS (ROS2 DDS transport).
+## 升级结论
 
-For full runtime details and topic contracts, see:
-`docs/dds_sim2real_deploy_guide.md`.
+当前框架已完成“上层 DDS、底层电机 SHM”混合架构：
 
-## What Changed
+- 保留共享内存：仅 `RL_solver` 的电机闭环
+  - `sendMotorCmd()`
+  - `getMotorState()`
+- 迁移到 DDS：其余部署通信
+  - 策略命令、机器人状态、遥控命令、模式控制、IMU 上行
 
-1. DDS communication layer
-   - Controller side: `DdsRobotIO` (`sim2real_rl_controller` -> `RL_controller`).
-   - Solver side: `SolverDdsBridge` (`RL_solver` publishes state, subscribes policy command).
-   - Shared memory is retained only for motor target/feedback path.
+完整运行说明请看：`docs/dds_sim2real_deploy_guide.md`。
 
-2. Lifecycle state machine (`deploy_state_machine.*`)
-   - States: `HOLD`, `ZEROING`, `RUNNING`, `ESTOP`.
-   - Supports start/stop/zero/estop commands from DDS `walk_mode` control words.
+## 本次已完成改造
 
-3. Multi-model policy runtime (`RL_controller`)
-   - One primary policy + optional `sub_models` from YAML.
-   - Weighted action fusion at runtime.
+1. 传输层重构
+- `RL_controller` 使用 `DdsRobotIO`
+- `RL_solver` 使用 `SolverDdsBridge`
+- 统一 topic 协议由 `dds_protocol.*` 管理
 
-4. Observation feature context (`ObservationBuilder`)
-   - Existing proprioceptive terms unchanged.
-   - New terms: `reference_motion`, `external_sensor`, generic `feature`.
-   - Enables BeyondMimic/AMP/multimodal style observation assembly via YAML.
+2. 状态机标准化
+- 引入 `deploy_state_machine.*`
+- 支持 `START_POLICY / STOP_POLICY / ZEROING / ESTOP`
+- 支持 `START_WALK / START_STAND / START_FIX_STAND`
 
-5. Reference motion provider (`reference_motion_provider.*`)
-   - Loads text/CSV-like frames.
-   - Sampling modes: `phase` or `step`.
+3. 多模型与可配置观测
+- 主模型 + `sub_models` 融合
+- `ObservationBuilder` 支持 `reference_motion` 与 `external_sensor`
+- 兼容 AMP / BeyondMimic 类型部署
 
-6. External observation provider (`external_observation_provider.*`)
-   - Standardized interface for vision/lidar/etc.
-   - Default behavior is zero-filled fallback if upstream sensor feature is absent.
+4. IMU 链路清理
+- `imu_communication_yesense` 改为纯 DDS 发布 `/imu/yesense`
+- 删除 IMU 共享内存写入与相关构建依赖
 
-## DDS Topics
+5. 冗余代码删除
+- 删除 `shared_memory_robot_io.*`
+- 删除 `RL_controller_bak.cpp`
 
-- `/humanoid/rl/command` (`std_msgs/msg/Float32MultiArray`)
-  - `RL_controller` -> `RL_solver`
-  - layout: `[q, dq, tau] * 12 + open_rl + seq + stamp`
-- `/humanoid/rl/state` (`std_msgs/msg/Float32MultiArray`)
-  - `RL_solver` -> `RL_controller`
-  - layout: `[q, dq, tau] * 12 + base_ang_vel(3) + base_quat(4) + base_rpy(3)`
-- `/humanoid/rl/teleop` (`geometry_msgs/msg/Twist`)
-  - joystick/navigation -> controller
-- `/humanoid/rl/walk_mode` (`std_msgs/msg/Int32`)
-  - joystick/navigation -> controller lifecycle/mode command
+## 关键兼容性说明
 
-## walk_mode Control Words
-
-- `0`: `WALK`
-- `1`: `STAND`
-- `2`: `FIX_STAND`
-- `10`: `START_POLICY`
-- `11`: `STOP_POLICY`
-- `12`: `ZEROING`
-- `13`: `ESTOP`
-- `20`: `START_WALK`
-- `21`: `START_STAND`
-- `22`: `START_FIX_STAND`
-
-## New Config Highlights (`rl_cfg.yaml`)
-
-- `policy_family`
-- `enable_reference_motion`, `reference_motion_dim`, `reference_motion_file`, `reference_motion_sampling`
-- `external_observations`
-- `sub_models`
-- `auto_start_policy`, `zeroing_duration_s`, `zero_pose`
-
-## Suggested Profiles
-
-- AMP: `observation_manifest_amp.yaml`
-- BeyondMimic: `observation_manifest_beyondmimic.yaml`
-
-The shared-memory command/state protocol between `RL_controller` and `RL_solver` is unchanged (`open_rl + seq + timestamp` compatible).
-The protocol layout (`open_rl + seq + timestamp`) is preserved but carried over DDS topics instead of shared-memory segments.
+- `open_rl + seq + timestamp` 语义保持不变。
+- 仅运输通道从 SHM 改为 DDS（上层链路）。
+- 电机驱动底层接口不受影响（继续 SHM）。

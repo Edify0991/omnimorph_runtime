@@ -23,12 +23,13 @@ This keeps behavior consistent and reduces maintenance cost.
 
 ## Script Layout
 
-- `common.sh`: shared helpers (ROS env, workspace, executable resolving, shm cleanup, serial reset)
+- `common.sh`: shared helpers (ROS env, workspace, executable resolving, serial reset)
 - `run_ros_executable.sh`: generic ROS2 executable launcher
 - `run_motor_test_case.sh`: generic `motor_test` package executable launcher
 - `controller.sh`: run `rl_master/RL_controller`
 - `solver.sh`: run `rl_master/RL_solver`
-- `imu.sh`: run IMU node with optional shared-memory cleanup/startup
+- `imu.sh`: run IMU node and publish `/imu/yesense`
+- `dds_selfcheck.sh`: DDS deploy self-check (topic/type/connectivity/rate + optional control-word publish)
 - `motor_test.sh`: run jc-driver `motor_test`
 - `driver.sh`: interactive `motor_test` bringup automation (`AppStart POS`, `AppM18Enable EN_DRV`)
 - `joyLaunch.py`: joystick process orchestration and DDS command writer
@@ -63,10 +64,11 @@ colcon build --packages-select SharedMemory imu_communication_yesense rl_master 
 ```bash
 cd script
 sudo ./driver.sh
-sudo ./imu.sh --start-shm-node
+sudo ./imu.sh
 sudo ./solver.sh
 sudo ./controller.sh
 sudo python3 joyLaunch.py
+sudo ./dds_selfcheck.sh
 ```
 
 5. Optional test executables:
@@ -91,8 +93,8 @@ sudo ./motor_test_suite.sh all
 ## `imu.sh` Options
 
 ```bash
-sudo ./imu.sh --cleanup-shm --serial-device /dev/ttyACM0
-sudo ./imu.sh --no-start-shm-node
+sudo ./imu.sh --serial-device /dev/ttyACM0
+sudo ./imu.sh --no-serial-reset
 sudo ./imu.sh -- --ros-args -p some_param:=1
 ```
 
@@ -136,6 +138,26 @@ DDS topics used by `joyLaunch.py`:
 - `/humanoid/rl/teleop` (`geometry_msgs/msg/Twist`)
 - `/humanoid/rl/walk_mode` (`std_msgs/msg/Int32`)
 
+## `dds_selfcheck.sh` Quick Usage
+
+Read-only checks (recommended default):
+
+```bash
+sudo ./dds_selfcheck.sh
+```
+
+With explicit publish smoke test:
+
+```bash
+sudo ./dds_selfcheck.sh --publish-smoke
+```
+
+With explicit state-machine control-word sequence:
+
+```bash
+sudo ./dds_selfcheck.sh --publish-sequence "11,12,10,20"
+```
+
 ## Troubleshooting
 
 1. ROS environment not found:
@@ -157,10 +179,10 @@ groups
 # ensure dialout is present
 ```
 
-4. Shared memory stale state:
+4. IMU serial init abnormal:
 
 ```bash
-sudo ./imu.sh --cleanup-shm
+sudo ./imu.sh --no-serial-reset
 ```
 
 5. `sudo` in `joyLaunch.py` fails silently:

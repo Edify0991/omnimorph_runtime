@@ -106,26 +106,6 @@ resolve_ros_executable() {
   return 1
 }
 
-cleanup_user_shm() {
-  if ! command -v ipcs >/dev/null 2>&1; then
-    log_warn "ipcs not found, skip shared memory cleanup"
-    return 0
-  fi
-
-  local current_user="${USER:-$(id -un)}"
-  local ids
-  ids="$(ipcs -m | awk -v user="${current_user}" '$3 == user {print $2}')"
-  if [[ -z "${ids}" ]]; then
-    return 0
-  fi
-
-  local id
-  while read -r id; do
-    [[ -z "${id}" ]] && continue
-    ipcrm -m "${id}" >/dev/null 2>&1 || true
-  done <<< "${ids}"
-}
-
 reset_serial_port() {
   local device="$1"
   local baudrate="${2:-921600}"

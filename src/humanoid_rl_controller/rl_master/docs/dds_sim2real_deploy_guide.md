@@ -1,122 +1,191 @@
-# DDS Sim2Real Deploy Guide (Motor SHM + Upper DDS)
+﻿# DDS Sim2Real Deploy Guide (Motor SHM + Upper DDS)
 
-## 1. Scope of This Refactor
+## 1. 目标与边界
 
-This refactor applies the following rule:
+本次框架升级遵循一条硬约束：
 
-- Keep shared memory only in motor closed-loop code paths:
+- 仅保留电机闭环共享内存路径：
   - `RobotSolver::getMotorState()`
   - `RobotSolver::sendMotorCmd()`
-- Move all other deploy communication to DDS (ROS2 DDS transport).
+- 其余部署通信全部迁移到 DDS（ROS2 中间件传输）。
 
-## 2. Runtime Architecture
+这意味着：策略、遥控、状态回传、IMU 上层流全部走 DDS；电机底层驱动闭环仍保持你现有 SHM 方案。
 
-### 2.1 Policy Side (`RL_controller`)
+## 2. 最终运行架构
 
-- Main process: `sim2real_rl_controller.cpp`
-- Robot I/O backend: `DdsRobotIO`
-- Reads:
-  - robot state (`/humanoid/rl/state`)
-  - teleop command (`/humanoid/rl/teleop`)
-  - walk/lifecycle mode (`/humanoid/rl/walk_mode`)
-- Writes:
-  - policy command (`/humanoid/rl/command`)
+### 2.1 控制器侧（`RL_controller`）
 
-### 2.2 Solver Side (`RL_solver`)
+入口：`sim2real_rl_controller.cpp`
 
-- Motor feedback/command:
-  - remains shared memory (`target_handle`, `feedback_handle`)
-- DDS bridge: `SolverDdsBridge`
-  - subscribes policy command (`/humanoid/rl/command`)
-  - subscribes IMU (`/imu/yesense`)
-  - publishes robot state (`/humanoid/rl/state`)
+- I/O 后端：`DdsRobotIO`
+- 订阅：
+  - `/humanoid/rl/state`（机器人状态）
+  - `/humanoid/rl/teleop`（速度命令）
+  - `/humanoid/rl/walk_mode`（模式/状态机控制字）
+- 发布：
+  - `/humanoid/rl/command`（策略输出）
 
-### 2.3 Joystick Side (`joyLaunch.py`)
+### 2.2 求解器侧（`RL_solver`）
 
-- Publishes DDS teleop/walk mode topics directly
-- No shared-memory command writer in joystick process
+- 电机环：共享内存（不变）
+  - 目标下发：`target_handle`
+  - 反馈读取：`feedback_handle`
+- DDS 桥：`SolverDdsBridge`
+  - 订阅 `/humanoid/rl/command`
+  - 订阅 `/imu/yesense`
+  - 发布 `/humanoid/rl/state`
 
-## 3. DDS Topic Contract
+### 2.3 IMU 侧（`imu_communication_yesense`）
+
+- 仅发布 `sensor_msgs/msg/Imu` 到 `/imu/yesense`
+- 已移除 IMU 共享内存写入逻辑
+
+### 2.4 人机输入侧（`joyLaunch.py`）
+
+- 发布 `/humanoid/rl/teleop`（`Twist`）
+- 发布 `/humanoid/rl/walk_mode`（`Int32`）
+- 不再写共享内存命令段
+
+## 3. DDS Topic 协议约定
 
 ### 3.1 `/humanoid/rl/command`
 
-- Type: `std_msgs/msg/Float32MultiArray`
-- Direction: `RL_controller` -> `RL_solver`
-- Layout:
+- 类型：`std_msgs/msg/Float32MultiArray`
+- 方向：`RL_controller -> RL_solver`
+- 数据布局：
   - `[q, dq, tau] * 12`
   - `open_rl`
   - `seq`
   - `stamp_sec`
 
+说明：保留了旧协议里的 `open_rl + seq + timestamp` 语义，便于继续沿用 watchdog 与兼容逻辑。
+
 ### 3.2 `/humanoid/rl/state`
 
-- Type: `std_msgs/msg/Float32MultiArray`
-- Direction: `RL_solver` -> `RL_controller`
-- Layout:
+- 类型：`std_msgs/msg/Float32MultiArray`
+- 方向：`RL_solver -> RL_controller`
+- 数据布局：
   - `[q, dq, tau] * 12`
   - `base_ang_vel(3)`
-  - `base_quat(4)` (`x,y,z,w`)
+  - `base_quat(4)`（`x,y,z,w`）
   - `base_rpy(3)`
 
 ### 3.3 `/humanoid/rl/teleop`
 
-- Type: `geometry_msgs/msg/Twist`
-- Direction: joystick/navigation -> controller
-- Mapping:
+- 类型：`geometry_msgs/msg/Twist`
+- 方向：joystick/navigation -> controller
+- 字段映射：
   - `linear.x -> vx`
   - `linear.y -> vy`
   - `angular.z -> dyaw`
 
 ### 3.4 `/humanoid/rl/walk_mode`
 
-- Type: `std_msgs/msg/Int32`
-- Direction: joystick/navigation -> controller
-- Values:
-  - `0/1/2`: WALK/STAND/FIX_STAND
-  - `10/11/12/13`: START_POLICY/STOP_POLICY/ZEROING/ESTOP
-  - `20/21/22`: START_WALK/START_STAND/START_FIX_STAND
+- 类型：`std_msgs/msg/Int32`
+- 方向：joystick/navigation -> controller
 
-## 4. Code Modules
+控制字：
 
-- DDS protocol encode/decode:
+- `0/1/2`: `WALK / STAND / FIX_STAND`
+- `10/11/12/13`: `START_POLICY / STOP_POLICY / ZEROING / ESTOP`
+- `20/21/22`: `START_WALK / START_STAND / START_FIX_STAND`
+
+## 4. 代码模块划分（规范化与模块化）
+
+- 传输协议：
   - `include/rl_master/dds_protocol.h`
   - `dds_protocol.cpp`
-- Controller DDS I/O:
+- 控制器 I/O：
+  - `include/rl_master/robot_io.h`
   - `include/rl_master/dds_robot_io.h`
   - `dds_robot_io.cpp`
-- Solver DDS bridge:
+- 求解器桥接：
   - `include/rl_master/solver_dds_bridge.h`
   - `solver_dds_bridge.cpp`
-- Policy runtime/state machine:
-  - `RL_controller.cpp`
-  - `deploy_state_machine.*`
+- 状态机：
+  - `include/rl_master/deploy_state_machine.h`
+  - `deploy_state_machine.cpp`
+- 观测构建与扩展：
+  - `observation_builder.*`
+  - `reference_motion_provider.*`
+  - `external_observation_provider.*`
 
-## 5. Removed/Reduced Redundancy
+已删除的冗余旧路径：
 
-- `RobotState` no longer carries shared-memory command/state transport logic.
-- `Cmd` is reduced to a lightweight command struct (no shared-memory writer).
-- `RL_solver` removes RL command/state shared-memory segments and uses DDS bridge.
+- `shared_memory_robot_io.*`
+- `RL_controller_bak.cpp`
+- IMU 包中的共享内存写入与相关构建依赖
 
-## 6. Build Dependencies
+## 5. 多模型与观测可配置能力
 
-`rl_master` now explicitly depends on:
+支持项（通过 `rl_cfg.yaml` + observation manifest）：
+
+- AMP 风格观测
+- BeyondMimic 风格观测（含 `reference_motion`）
+- 视觉/雷达等外部观测占位接口（`external_observations`）
+- 主模型 + 多个 `sub_models` 的融合推理
+- 部署状态机（启动、停止、回零、急停）
+
+建议清单：
+
+- AMP：`config/observation_manifest_amp.yaml`
+- BeyondMimic：`config/observation_manifest_beyondmimic.yaml`
+
+## 6. 编译依赖
+
+### 6.1 `rl_master`
 
 - `rclcpp`
 - `std_msgs`
 - `sensor_msgs`
 - `geometry_msgs`
-- `SharedMemory` (still needed by motor closed-loop in `RL_solver`)
+- `SharedMemory`（仅 RL_solver 电机闭环需要）
 
-## 7. Bringup Sequence
+### 6.2 `imu_communication_yesense`
 
-1. Start motor driver stack (unchanged).
-2. Start IMU node publishing `/imu/yesense`.
-3. Start `RL_solver` (motor loop + DDS bridge).
-4. Start `RL_controller` (DDS RobotIO + policy inference).
-5. Start `joyLaunch.py` (DDS teleop/mode publisher).
+- `rclcpp`
+- `sensor_msgs`
+- 其余 ROS 依赖保持不变
+- 不再链接 `SharedMemory`
 
-## 8. Migration Notes
+## 7. 启动顺序（推荐）
 
-- The old `open_rl + seq + timestamp` semantics are preserved.
-- Transport changed from shared-memory segments to DDS topics for upper-layer links.
-- Motor control determinism remains in shared-memory loop.
+1. 启动底层电机驱动栈（不在本仓库，保持原方案）。
+2. 启动 IMU 节点：发布 `/imu/yesense`。
+3. 启动 `RL_solver`（SHM 电机环 + DDS bridge）。
+4. 启动 `RL_controller`（DDS RobotIO + 策略推理）。
+5. 启动 `joyLaunch.py`（DDS 遥控与控制字）。
+
+## 8. 迁移对照
+
+- 原先 `RL_controller <-> RL_solver` 的 SHM 命令/状态段：已替换为 DDS topic。
+- 原先 IMU 额外 SHM 通道：已删除，统一 DDS。
+- 电机底层闭环 SHM：保留，不改动你的驱动接口。
+
+## 9. 常见问题定位
+
+- `RL_controller` 一直报等待状态流：
+  - 检查 `RL_solver` 是否已启动并发布 `/humanoid/rl/state`。
+- 姿态不更新：
+  - 检查 `/imu/yesense` 是否有 `sensor_msgs/msg/Imu` 数据。
+- 模式切换无效：
+  - 检查 `/humanoid/rl/walk_mode` 是否发送了约定控制字。
+- 策略无输出：
+  - 检查 `walk_mode` 是否处于 `START_POLICY` 之后的运行状态。
+
+## 10. 一键自检脚本
+
+仓库内置脚本：`script/dds_selfcheck.sh`
+
+- 默认只读检查：topic/type/端点连通/基础频率
+- 可选发布冒烟：teleop 零值 + `STOP_POLICY(11)`
+- 可选按序发布状态机控制字
+
+示例：
+
+```bash
+cd script
+sudo ./dds_selfcheck.sh
+sudo ./dds_selfcheck.sh --publish-smoke
+sudo ./dds_selfcheck.sh --publish-sequence "11,12,10,20"
+```

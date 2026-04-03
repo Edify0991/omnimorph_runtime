@@ -1,30 +1,33 @@
-# RobotIO Refactor (DDS Runtime)
+﻿# RobotIO Refactor (DDS Runtime)
 
-## New Layering
+## 目标
 
-- Control/Policy: `RL_controller`
-- Unified robot interface: `RobotIO`
-- Active backend: `DdsRobotIO`
-- Transport:
-  - DDS topics for policy/state/teleop/mode
-  - Shared memory only for motor target/feedback in `RL_solver`
+把控制器 I/O 与传输方式解耦：
 
-## Updated Runtime Chain
+- `RL_controller` 只依赖 `RobotIO` 抽象
+- 当前实现为 `DdsRobotIO`
+- 未来可按需扩展其他后端（不影响控制器主逻辑）
 
-1. `robot_io.read_state(state)` from DDS `/humanoid/rl/state`
-2. `robot_io.read_control_command(teleop_cmd)` from DDS `/humanoid/rl/teleop`
-3. `walk_mode = robot_io.read_walk_mode(...)` from DDS `/humanoid/rl/walk_mode`
-4. `cmd = controller.step(state, teleop_cmd, walk_mode, phase_t)`
-5. `robot_io.write_command(cmd)` to DDS `/humanoid/rl/command`
+## 运行链路
 
-On stop/fault:
+1. `read_state()` <- `/humanoid/rl/state`
+2. `read_control_command()` <- `/humanoid/rl/teleop`
+3. `read_walk_mode()` <- `/humanoid/rl/walk_mode`
+4. `controller.step(...)` 产出动作
+5. `write_command()` -> `/humanoid/rl/command`
+
+异常/停机路径：
 
 - `controller.estop()`
 - `robot_io.estop()`
 
-## Compatibility
+## 协议兼容性
 
-- Command payload layout keeps `open_rl + seq + timestamp`.
-- Solver watchdog logic is preserved.
-- `walk_mode` lifecycle control words are preserved:
-  `10/11/12/13/20/21/22`.
+- 命令布局语义保留：`open_rl + seq + timestamp`
+- `RL_solver` 的 watchdog 逻辑可直接复用
+- 状态机控制字保持一致：`10/11/12/13/20/21/22`
+
+## 清理结果
+
+- 旧的 `shared_memory_robot_io.*` 已删除
+- 电机闭环 SHM 逻辑仅保留在 `RL_solver` 中

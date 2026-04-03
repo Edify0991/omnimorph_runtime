@@ -13,7 +13,7 @@ constexpr int kWalkModeCode = 0;
 constexpr int kStandModeCode = 1;
 constexpr int kFixStandModeCode = 2;
 
-// Extended control words (written to walk_mode shared memory).
+// Extended control words (written to walk_mode control channel).
 constexpr int kCtrlWordStartPolicy = 10;
 constexpr int kCtrlWordStopPolicy = 11;
 constexpr int kCtrlWordZeroing = 12;
