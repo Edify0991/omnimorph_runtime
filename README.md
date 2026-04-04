@@ -33,6 +33,8 @@ Controller policy selection is now mode-profile driven:
 
 - Main guide:
   - `src/humanoid_rl_controller/rl_master/docs/dds_sim2real_deploy_guide.md`
+- MuJoCo sim2sim guide:
+  - `src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_mujoco_deploy_guide.md`
 - BeyondMimic/AMP adaptation:
   - `src/humanoid_rl_controller/rl_master/docs/beyondmimic_sim2real_adaptation.md`
 - Script runtime notes:

@@ -46,6 +46,16 @@
 - 发布 `/humanoid/rl/walk_mode`（`Int32`）
 - 不再写共享内存命令段
 
+### 2.5 Sim2Sim 侧（`mujoco_sim2sim`，新增）
+
+- 包路径：`src/humanoid_sim2sim/mujoco_sim2sim`
+- 节点：`mujoco_sim_bridge`
+  - 订阅 `/humanoid/rl/command`
+  - 在 MuJoCo 中执行关节控制
+  - 发布 `/humanoid/rl/state`
+
+这样 `RL_controller` 不需要修改，只是把对端从 `RL_solver` 换成 MuJoCo 仿真桥。
+
 ## 3. DDS Topic 协议约定
 
 ### 3.1 `/humanoid/rl/command`

@@ -37,6 +37,12 @@ From workspace root:
 colcon build --packages-select SharedMemory imu_communication_yesense rl_master
 ```
 
+For sim2sim (MuJoCo) add:
+
+```bash
+colcon build --symlink-install --packages-up-to rl_master mujoco_sim2sim
+```
+
 If first-time host setup:
 
 ```bash
@@ -77,6 +83,11 @@ When `save_data_flag: true`, both solver and controller output:
 - `<session_base>_controller_records.jsonl`
 
 `<session_base>` is generated from config `data_path`.
+
+Sim2sim note:
+
+- `RL_controller` logging schema remains the same in MuJoCo runs.
+- This allows one-to-one analysis comparison between sim2real and sim2sim sessions.
 
 ### 4.1 Metadata File
 

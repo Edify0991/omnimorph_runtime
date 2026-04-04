@@ -1,0 +1,53 @@
+mujoco_sim_bridge:
+  ros__parameters:
+    # Must be provided at launch time:
+    # ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py model_path:=/abs/path/to/robot.xml
+    model_path: ""
+
+    # Base body used for fallback quaternion/angular-velocity extraction.
+    base_body_name: "base_link"
+    # Optional free-joint name for base state extraction.
+    base_free_joint_name: ""
+
+    # RL joint order should stay consistent with rl_master canonical order.
+    joint_names:
+      - "right_hip_roll_joint"
+      - "right_hip_yaw_joint"
+      - "right_hip_pitch_joint"
+      - "right_knee_joint"
+      - "right_ankle_pitch_joint"
+      - "right_ankle_roll_joint"
+      - "left_hip_roll_joint"
+      - "left_hip_yaw_joint"
+      - "left_hip_pitch_joint"
+      - "left_knee_joint"
+      - "left_ankle_pitch_joint"
+      - "left_ankle_roll_joint"
+
+    # If your actuator names differ from joint names, set them explicitly.
+    actuator_names:
+      - "right_hip_roll_joint"
+      - "right_hip_yaw_joint"
+      - "right_hip_pitch_joint"
+      - "right_knee_joint"
+      - "right_ankle_pitch_joint"
+      - "right_ankle_roll_joint"
+      - "left_hip_roll_joint"
+      - "left_hip_yaw_joint"
+      - "left_hip_pitch_joint"
+      - "left_knee_joint"
+      - "left_ankle_pitch_joint"
+      - "left_ankle_roll_joint"
+
+    # Control loop and sim integration.
+    control_hz: 100.0
+    sim_dt: 0.001
+    command_timeout_sec: 0.1
+    open_rl_enable_threshold: 1.0
+    pause_when_no_command: false
+
+    # Joint-space stabilization for simulation side.
+    use_command_torque_ff: false
+    kp: [80.0]
+    kd: [2.0]
+    torque_limit: [120.0]

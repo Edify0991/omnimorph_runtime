@@ -146,4 +146,9 @@ install(TARGETS
 install(DIRECTORY include/
   DESTINATION include)
 
+install(DIRECTORY config docs
+  DESTINATION share/${PROJECT_NAME})
+
+ament_export_include_directories(include)
+
 ament_package()
