@@ -112,7 +112,8 @@ sudo python3 joyLaunch.py \
   --receiver-port 8888 \
   --receiver-client-port 9999 \
   --navi-status-url http://192.168.168.125:10000 \
-  --max-vx 0.5 --max-vy 0.02 --max-dyaw 0.3
+  --max-vx 0.5 --max-vy 0.02 --max-dyaw 0.3 \
+  --primary-mode-id 0 --secondary-mode-id 1
 ```
 
 Key combinations (default):
@@ -122,10 +123,10 @@ Key combinations (default):
 - `L1 + A`: launch `controller.sh`
 - `L1 + R1`: stop all processes started by `joyLaunch.py`
 - `LT + Y`: launch `driver.sh`
-- `L1 + DPAD_DOWN`: walk mode `WALK`
-- `L1 + DPAD_UP`: lifecycle command `START_POLICY`
-- `L1 + B`: walk mode `STAND`
-- `L1 + Y`: walk mode `FIX_STAND`
+- `L1 + DPAD_DOWN`: set mode `primary_mode_id`
+- `L1 + B`: set mode `secondary_mode_id`
+- `L1 + DPAD_UP`: send `1000 + primary_mode_id` (switch + start policy)
+- `L1 + Y`: lifecycle command `STOP_POLICY` (hold current pose / CSP)
 - `L1 + LS`: lifecycle command `STOP_POLICY`
 - `L1 + RS`: lifecycle command `ZEROING`
 - `LT + B`: lifecycle command `ESTOP`
@@ -143,7 +144,6 @@ Mode control is now generic in controller:
 - `0..999`: switch active `mode_id`
 - `1000 + mode_id`: switch mode and start policy
 - `2000 + mode_id`: switch mode only
-- legacy `20/21/22` start codes are still supported
 
 ## `dds_selfcheck.sh` Quick Usage
 
@@ -162,7 +162,7 @@ sudo ./dds_selfcheck.sh --publish-smoke
 With explicit state-machine control-word sequence:
 
 ```bash
-sudo ./dds_selfcheck.sh --publish-sequence "11,12,10,20"
+sudo ./dds_selfcheck.sh --publish-sequence "11,12,1000"
 ```
 
 ## Troubleshooting

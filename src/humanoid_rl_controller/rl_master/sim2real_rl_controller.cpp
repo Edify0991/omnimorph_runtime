@@ -55,7 +55,7 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
 
     rl_master::RobotStateData io_state;
     rl_master::TeleopCommand teleop_cmd;
-    int mode_command = WALK;
+    int mode_command = rl_master::kModeCodeMin;
     const auto warmup_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (!robot_io->read_state(io_state) && std::chrono::steady_clock::now() < warmup_deadline)
     {

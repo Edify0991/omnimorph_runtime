@@ -9,11 +9,6 @@
 namespace rl_master
 {
 
-// Legacy mode codes (kept for compatibility).
-constexpr int kWalkModeCode = 0;
-constexpr int kStandModeCode = 1;
-constexpr int kFixStandModeCode = 2;
-
 // Generic mode code range:
 // - publish [0, 999] to switch active mode only.
 constexpr int kModeCodeMin = 0;
@@ -24,9 +19,6 @@ constexpr int kCtrlWordStartPolicy = 10;
 constexpr int kCtrlWordStopPolicy = 11;
 constexpr int kCtrlWordZeroing = 12;
 constexpr int kCtrlWordEstop = 13;
-constexpr int kCtrlWordStartWalk = 20;
-constexpr int kCtrlWordStartStand = 21;
-constexpr int kCtrlWordStartFixStand = 22;
 
 // Generic extended mode control:
 // - [1000, 1999]: set mode=(code-1000) and request start.
@@ -46,7 +38,7 @@ enum class DeployLifecycleState
 
 struct DecodedControlWord
 {
-    int locomotion_mode = kWalkModeCode;
+    int locomotion_mode = kModeCodeMin;
     bool request_start = false;
     bool request_stop = false;
     bool request_zero = false;
@@ -56,7 +48,7 @@ struct DecodedControlWord
 struct DeployStateOutput
 {
     DeployLifecycleState state = DeployLifecycleState::kInitializing;
-    int locomotion_mode = kWalkModeCode;
+    int locomotion_mode = kModeCodeMin;
     bool enable_policy = false;
     bool enable_command_stream = false;
     std::vector<float> target_q;
@@ -87,7 +79,7 @@ private:
     bool auto_start_policy_ = true;
     double zeroing_duration_s_ = 2.0;
 
-    int active_locomotion_mode_ = kWalkModeCode;
+    int active_locomotion_mode_ = kModeCodeMin;
     DeployLifecycleState state_ = DeployLifecycleState::kInitializing;
 
     double zeroing_start_time_s_ = 0.0;

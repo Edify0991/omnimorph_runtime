@@ -137,25 +137,6 @@ DecodedControlWord DeployStateMachine::decodeControlWord(int control_word, int f
         return decoded;
     }
 
-    if (control_word == kCtrlWordStartWalk)
-    {
-        decoded.locomotion_mode = kWalkModeCode;
-        decoded.request_start = true;
-        return decoded;
-    }
-    if (control_word == kCtrlWordStartStand)
-    {
-        decoded.locomotion_mode = kStandModeCode;
-        decoded.request_start = true;
-        return decoded;
-    }
-    if (control_word == kCtrlWordStartFixStand)
-    {
-        decoded.locomotion_mode = kFixStandModeCode;
-        decoded.request_start = true;
-        return decoded;
-    }
-
     if (control_word >= kCtrlWordStartModeBase &&
         control_word < (kCtrlWordStartModeBase + kCtrlWordModeRange))
     {
@@ -184,10 +165,7 @@ bool DeployStateMachine::isValidControlWord(int control_word)
     if (control_word == kCtrlWordStartPolicy ||
         control_word == kCtrlWordStopPolicy ||
         control_word == kCtrlWordZeroing ||
-        control_word == kCtrlWordEstop ||
-        control_word == kCtrlWordStartWalk ||
-        control_word == kCtrlWordStartStand ||
-        control_word == kCtrlWordStartFixStand)
+        control_word == kCtrlWordEstop)
     {
         return true;
     }

@@ -4,22 +4,7 @@
 
 std::unique_ptr<RobotState> RobotState::create()
 {
-    auto robot = std::unique_ptr<RobotState>(new RobotState());
-    std::cout << "cfg_path: " << RL_CFG_PATH << std::endl;
-    if (!robot->sim2realCfg.loadFromYAML(RL_CFG_PATH, "sim2real"))
-    {
-        std::cerr << "Failed to load Sim2Real config!" << std::endl;
-        return nullptr;
-    }
-    std::cout << "Sim2Real config loaded successfully!" << std::endl;
-
-    if (!robot->standSim2RealCfg.loadFromYAML(RL_CFG_PATH, "stand_sim2real"))
-    {
-        std::cerr << "Failed to load Stand Sim2Real config!" << std::endl;
-        return nullptr;
-    }
-    std::cout << "Stand Sim2Real config loaded successfully!" << std::endl;
-    return robot;
+    return std::unique_ptr<RobotState>(new RobotState());
 }
 
 const std::array<std::string, rl_master::kLegJointCount> &RobotState::joint_name_order()
@@ -89,7 +74,5 @@ void RobotState::initialize_buffers()
     default_angle_stand.assign(rl_master::kLegJointCount, 0.0f);
     default_angle.assign(rl_master::kLegJointCount, 0.0f);
 
-    load_default_angles(sim2realCfg.robotCfg.default_joint_angles, &default_angle_walk);
-    load_default_angles(standSim2RealCfg.robotCfg.default_joint_angles, &default_angle_stand);
     default_angle = default_angle_walk;
 }

@@ -27,14 +27,6 @@
 #include "robot_types.h"
 #include "robot_state.h"
 
-// Legacy predefined mode ids kept for compatibility with existing scripts.
-enum RobotWalkMode
-{
-    WALK = 0,
-    STAND = 1,
-    FIX_STAND = 2
-};
-
 class RL_controller
 {
 public:
@@ -81,14 +73,14 @@ private:
 
     struct ModeProfileSpec
     {
-        int mode_id = rl_master::kWalkModeCode;
+        int mode_id = rl_master::kModeCodeMin;
         std::string config_section;
         std::string tag;
     };
 
     struct ModeProfile
     {
-        int mode_id = rl_master::kWalkModeCode;
+        int mode_id = rl_master::kModeCodeMin;
         std::string config_section;
         std::string tag;
         Sim2realCfg cfg;
@@ -145,9 +137,9 @@ private:
     Ort::Env onnx_env_;
     std::vector<ModeProfile> mode_profiles_;
     std::unordered_map<int, size_t> mode_to_profile_index_;
-    int default_mode_id_ = rl_master::kWalkModeCode;
+    int default_mode_id_ = rl_master::kModeCodeMin;
     size_t active_profile_index_ = 0;
-    int active_mode_id_ = rl_master::kWalkModeCode;
+    int active_mode_id_ = rl_master::kModeCodeMin;
     int last_active_mode_id_ = std::numeric_limits<int>::min();
 
     ExternalObservationProvider external_observation_provider_;

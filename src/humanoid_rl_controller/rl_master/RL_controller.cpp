@@ -794,10 +794,10 @@ std::vector<float> RL_controller::buildDefaultAnglesFromCfg(const Sim2realCfg::R
 
 std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsFromYaml() const
 {
+    // Generic fallback used only when deploy_mode_profiles is missing.
+    // Runtime behavior should be data-driven from deploy_mode_profiles.
     std::vector<ModeProfileSpec> specs = {
-        {rl_master::kWalkModeCode, "sim2real", "walk"},
-        {rl_master::kStandModeCode, "stand_sim2real", "stand"},
-        {rl_master::kFixStandModeCode, "stand_sim2real", "fix_stand"},
+        {rl_master::kModeCodeMin, "sim2real", "mode_0"},
     };
 
     YAML::Node root;
@@ -815,6 +815,7 @@ std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsF
     const YAML::Node profile_nodes = root["deploy_mode_profiles"];
     if (!profile_nodes || !profile_nodes.IsSequence() || profile_nodes.size() == 0)
     {
+        std::cerr << "[RL_controller] deploy_mode_profiles not found, fallback to single default profile." << std::endl;
         return specs;
     }
 
@@ -908,29 +909,16 @@ void RL_controller::initModeProfiles()
     }
 
     default_mode_id_ = mode_profiles_.front().mode_id;
-    if (mode_to_profile_index_.find(rl_master::kWalkModeCode) != mode_to_profile_index_.end())
-    {
-        default_mode_id_ = rl_master::kWalkModeCode;
-    }
     active_mode_id_ = default_mode_id_;
     active_profile_index_ = profileIndexForMode(default_mode_id_, true);
 
-    // Keep backward compatibility fields for existing components.
+    // Keep compatibility fields as aliases of the currently active profile.
+    // Mode dispatch itself is fully driven by deploy_mode_profiles.
     robot->sim2realCfg = mode_profiles_[active_profile_index_].cfg;
     robot->default_angle_walk = mode_profiles_[active_profile_index_].default_angle;
     robot->default_angle = mode_profiles_[active_profile_index_].default_angle;
-
-    const auto stand_it = mode_to_profile_index_.find(rl_master::kStandModeCode);
-    if (stand_it != mode_to_profile_index_.end())
-    {
-        robot->standSim2RealCfg = mode_profiles_[stand_it->second].cfg;
-        robot->default_angle_stand = mode_profiles_[stand_it->second].default_angle;
-    }
-    else
-    {
-        robot->standSim2RealCfg = mode_profiles_[active_profile_index_].cfg;
-        robot->default_angle_stand = mode_profiles_[active_profile_index_].default_angle;
-    }
+    robot->standSim2RealCfg = mode_profiles_[active_profile_index_].cfg;
+    robot->default_angle_stand = mode_profiles_[active_profile_index_].default_angle;
 
     std::cout << "[RL_controller] mode profiles loaded: " << mode_profiles_.size() << std::endl;
     for (const auto &profile : mode_profiles_)

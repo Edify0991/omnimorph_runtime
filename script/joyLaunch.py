@@ -48,17 +48,11 @@ except ImportError as exc:
     RECEIVER_IMPORT_ERROR = exc
 
 
-class RobotWalkMode(Enum):
-    WALK = 0
-    STAND = 1
-    FIX_STAND = 2
+class DeployControlWord(Enum):
     START_POLICY = 10
     STOP_POLICY = 11
     ZEROING = 12
     ESTOP = 13
-    START_WALK = 20
-    START_STAND = 21
-    START_FIX_STAND = 22
 
 
 class RobotArmMode(Enum):
@@ -95,6 +89,8 @@ class RuntimeConfig:
     arm_node_cmd: str
     lock_file: Path
     joystick_keywords: Tuple[str, ...]
+    primary_mode_id: int
+    secondary_mode_id: int
 
 
 def log(msg: str) -> None:
@@ -131,7 +127,7 @@ class DdsCommandWriter:
             self._spin_once()
 
     def write_walk_mode(self, mode) -> None:
-        if isinstance(mode, RobotWalkMode):
+        if isinstance(mode, DeployControlWord):
             mode_value = int(mode.value)
             mode_label = mode.name
         else:
@@ -400,13 +396,14 @@ class JoyLaunchApp:
             (["btn_l1", "btn_a"], lambda: self.process_mgr.launch_script(sdir / "controller.sh", use_sudo=True)),
             (["btn_l1", "btn_r1"], self.process_mgr.stop_all),
             (["lt", "btn_y"], lambda: self.process_mgr.launch_script(sdir / "driver.sh", use_sudo=True)),
-            (["btn_l1", "dpad_y:-1"], lambda: self.shared.write_walk_mode(RobotWalkMode.WALK)),
-            (["btn_l1", "dpad_y:1"], lambda: self.shared.write_walk_mode(RobotWalkMode.START_POLICY)),
-            (["btn_l1", "btn_b"], lambda: self.shared.write_walk_mode(RobotWalkMode.STAND)),
-            (["btn_l1", "btn_y"], lambda: self.shared.write_walk_mode(RobotWalkMode.FIX_STAND)),
-            (["btn_l1", "btn_ls"], lambda: self.shared.write_walk_mode(RobotWalkMode.STOP_POLICY)),
-            (["btn_l1", "btn_rs"], lambda: self.shared.write_walk_mode(RobotWalkMode.ZEROING)),
-            (["lt", "btn_b"], lambda: self.shared.write_walk_mode(RobotWalkMode.ESTOP)),
+            (["btn_l1", "dpad_y:-1"], lambda: self.shared.write_walk_mode(self.cfg.primary_mode_id)),
+            (["btn_l1", "btn_b"], lambda: self.shared.write_walk_mode(self.cfg.secondary_mode_id)),
+            (["btn_l1", "dpad_y:1"], lambda: self.shared.write_walk_mode(1000 + self.cfg.primary_mode_id)),
+            # "Fix stand" semantics: stop policy and let solver hold current pose in CSP.
+            (["btn_l1", "btn_y"], lambda: self.shared.write_walk_mode(DeployControlWord.STOP_POLICY)),
+            (["btn_l1", "btn_ls"], lambda: self.shared.write_walk_mode(DeployControlWord.STOP_POLICY)),
+            (["btn_l1", "btn_rs"], lambda: self.shared.write_walk_mode(DeployControlWord.ZEROING)),
+            (["lt", "btn_b"], lambda: self.shared.write_walk_mode(DeployControlWord.ESTOP)),
             (["btn_l1", "dpad_x:1"], lambda: self._set_control_mode(RobotControlMode.JOYSTICK)),
             (["btn_l1", "dpad_x:-1"], lambda: self._set_control_mode(RobotControlMode.NAVIGATOR)),
         ]
@@ -437,7 +434,7 @@ class JoyLaunchApp:
         self.control_mode = mode
         log(f"[MODE] Control mode -> {mode.name}")
         if mode == RobotControlMode.NAVIGATOR:
-            self.shared.write_walk_mode(RobotWalkMode.WALK)
+            self.shared.write_walk_mode(self.cfg.primary_mode_id)
 
     def _receiver_cmd_callback(self, cmd: CmdDataStruct) -> None:
         if self.control_mode != RobotControlMode.NAVIGATOR:
@@ -454,9 +451,9 @@ class JoyLaunchApp:
             assert self.receiver is not None
             navi_state = self.receiver.test_get_navi_status(self.cfg.navi_status_url)
             if navi_state == 3:
-                log("[NAV] target reached, switch to STAND")
+                log("[NAV] target reached, STOP_POLICY -> hold pose")
                 self.shared.write_cmd(0.0, 0.0, 0.0)
-                self.shared.write_walk_mode(RobotWalkMode.STAND)
+                self.shared.write_walk_mode(DeployControlWord.STOP_POLICY)
         except Exception as exc:
             log(f"[NAV][WARN] status check failed: {exc}")
 
@@ -603,6 +600,8 @@ def parse_args() -> RuntimeConfig:
     parser.add_argument("--arm-node-cmd", default="")
     parser.add_argument("--lock-file", type=Path, default=Path("/tmp/joyLaunch.lock"))
     parser.add_argument("--joystick-keywords", default="X-Box,Xbox")
+    parser.add_argument("--primary-mode-id", type=int, default=0)
+    parser.add_argument("--secondary-mode-id", type=int, default=1)
 
     args = parser.parse_args()
 
@@ -634,6 +633,8 @@ def parse_args() -> RuntimeConfig:
         arm_node_cmd=args.arm_node_cmd,
         lock_file=args.lock_file,
         joystick_keywords=keywords,
+        primary_mode_id=args.primary_mode_id,
+        secondary_mode_id=args.secondary_mode_id,
     )
 
 

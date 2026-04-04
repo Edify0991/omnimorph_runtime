@@ -22,8 +22,8 @@
 2. 状态机标准化
 - 引入 `deploy_state_machine.*`
 - 支持 `START_POLICY / STOP_POLICY / ZEROING / ESTOP`
-- 支持 `START_WALK / START_STAND / START_FIX_STAND`（兼容）
 - 新增泛化模式控制：`mode_id`、`1000+mode_id`、`2000+mode_id`
+- `fix_stand` 从“模式硬编码”调整为“生命周期 hold（STOP_POLICY）”语义
 
 3. 多模型与可配置观测
 - 主模型 + `sub_models` 融合

@@ -94,13 +94,17 @@
 - 类型：`std_msgs/msg/Int32`
 - 方向：joystick/navigation -> controller
 
-控制字（泛化后）：
+控制字（泛化）：
 
 - `[0..999]`: 直接设置 `mode_id`
 - `1000 + mode_id`: 设置 `mode_id` 并 `START_POLICY`
 - `2000 + mode_id`: 仅设置 `mode_id`（不触发生命周期变更）
 - `10/11/12/13`: `START_POLICY / STOP_POLICY / ZEROING / ESTOP`
-- `20/21/22`: `START_WALK / START_STAND / START_FIX_STAND`（兼容保留）
+
+说明：
+
+- `fix_stand` 不再作为“策略模式”硬编码。
+- 若需要固定姿态保持（CSP 持位），应使用 `STOP_POLICY(11)` 进入 hold。
 
 ## 4. 代码模块划分（规范化与模块化）
 
@@ -229,7 +233,7 @@ deploy_mode_profiles:
 cd script
 sudo ./dds_selfcheck.sh
 sudo ./dds_selfcheck.sh --publish-smoke
-sudo ./dds_selfcheck.sh --publish-sequence "11,12,10,20"
+sudo ./dds_selfcheck.sh --publish-sequence "11,12,1000"
 ```
 
 ## 11. 结构化数据记录与分析
