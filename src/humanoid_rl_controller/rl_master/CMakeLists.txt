@@ -41,10 +41,12 @@ add_executable(RL_controller
   dds_robot_io.cpp
   deploy_state_machine.cpp
   external_observation_provider.cpp
+  logging/structured_logger.cpp
   RL_controller.cpp
   onnx_policy_runner.cpp
   observation_builder.cpp
   reference_motion_provider.cpp
+  runtime/realtime_utils.cpp
   robot_state.cpp
   sim2real_rl_controller.cpp
   math_tool.cpp
@@ -105,7 +107,12 @@ target_link_directories(KinConv PRIVATE
 # ---------- RL_solver ----------
 add_executable(RL_solver
   dds_protocol.cpp
+  filters/moving_average_filter.cpp
+  logging/structured_logger.cpp
   rl_solver.cpp
+  runtime/realtime_utils.cpp
+  solver/motor_shm_io.cpp
+  solver/robot_solver.cpp
   solver_dds_bridge.cpp
   Knee_Kinematics.cpp
   Ankle_Kinematics.cpp

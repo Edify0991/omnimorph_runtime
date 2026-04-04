@@ -138,6 +138,13 @@ DDS topics used by `joyLaunch.py`:
 - `/humanoid/rl/teleop` (`geometry_msgs/msg/Twist`)
 - `/humanoid/rl/walk_mode` (`std_msgs/msg/Int32`)
 
+Mode control is now generic in controller:
+
+- `0..999`: switch active `mode_id`
+- `1000 + mode_id`: switch mode and start policy
+- `2000 + mode_id`: switch mode only
+- legacy `20/21/22` start codes are still supported
+
 ## `dds_selfcheck.sh` Quick Usage
 
 Read-only checks (recommended default):
@@ -189,4 +196,10 @@ sudo ./imu.sh --no-serial-reset
 
 - `joyLaunch.py` uses non-interactive sudo (`sudo -n`) by design.
 - Run with root or pre-authorize sudo in current shell (`sudo -v`).
+
+## Structured Data Logs
+
+Structured runtime logs (`*_metadata.json` + `*_records.jsonl`) and analysis flow are documented in:
+
+- `src/humanoid_rl_controller/rl_master/docs/runbooks/runtime_checklist.md`
 

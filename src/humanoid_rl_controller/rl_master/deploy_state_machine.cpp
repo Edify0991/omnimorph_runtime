@@ -11,11 +11,11 @@ void DeployStateMachine::configure(const Sim2realCfg &cfg)
     zeroing_duration_s_ = std::max(0.05, cfg.zeroing_duration_s);
 }
 
-void DeployStateMachine::initialize(const std::vector<float> &current_q, const std::vector<float> &zero_pose)
+void DeployStateMachine::initialize(const std::vector<float> &current_q, const std::vector<float> &zero_pose, int initial_mode)
 {
     zeroing_start_pose_ = current_q;
     zeroing_target_pose_ = fitDim(zero_pose, current_q.size());
-    active_locomotion_mode_ = kWalkModeCode;
+    active_locomotion_mode_ = initial_mode;
     state_ = auto_start_policy_ ? DeployLifecycleState::kRunning : DeployLifecycleState::kHold;
     initialized_ = true;
 }
@@ -34,7 +34,7 @@ DeployStateOutput DeployStateMachine::update(int control_word, double now_s, con
 {
     if (!initialized_)
     {
-        initialize(current_q, current_q);
+        initialize(current_q, current_q, active_locomotion_mode_);
     }
 
     const DecodedControlWord command = decodeControlWord(control_word, active_locomotion_mode_);
@@ -110,7 +110,7 @@ DecodedControlWord DeployStateMachine::decodeControlWord(int control_word, int f
     DecodedControlWord decoded;
     decoded.locomotion_mode = fallback_locomotion_mode;
 
-    if (control_word == kWalkModeCode || control_word == kStandModeCode || control_word == kFixStandModeCode)
+    if (control_word >= kModeCodeMin && control_word <= kModeCodeMax)
     {
         decoded.locomotion_mode = control_word;
         return decoded;
@@ -156,7 +156,51 @@ DecodedControlWord DeployStateMachine::decodeControlWord(int control_word, int f
         return decoded;
     }
 
+    if (control_word >= kCtrlWordStartModeBase &&
+        control_word < (kCtrlWordStartModeBase + kCtrlWordModeRange))
+    {
+        decoded.locomotion_mode = control_word - kCtrlWordStartModeBase;
+        decoded.request_start = true;
+        return decoded;
+    }
+
+    if (control_word >= kCtrlWordSetModeBase &&
+        control_word < (kCtrlWordSetModeBase + kCtrlWordModeRange))
+    {
+        decoded.locomotion_mode = control_word - kCtrlWordSetModeBase;
+        return decoded;
+    }
+
     return decoded;
+}
+
+bool DeployStateMachine::isValidControlWord(int control_word)
+{
+    if (control_word >= kModeCodeMin && control_word <= kModeCodeMax)
+    {
+        return true;
+    }
+
+    if (control_word == kCtrlWordStartPolicy ||
+        control_word == kCtrlWordStopPolicy ||
+        control_word == kCtrlWordZeroing ||
+        control_word == kCtrlWordEstop ||
+        control_word == kCtrlWordStartWalk ||
+        control_word == kCtrlWordStartStand ||
+        control_word == kCtrlWordStartFixStand)
+    {
+        return true;
+    }
+
+    if ((control_word >= kCtrlWordStartModeBase &&
+         control_word < (kCtrlWordStartModeBase + kCtrlWordModeRange)) ||
+        (control_word >= kCtrlWordSetModeBase &&
+         control_word < (kCtrlWordSetModeBase + kCtrlWordModeRange)))
+    {
+        return true;
+    }
+
+    return false;
 }
 
 const char *DeployStateMachine::stateName(DeployLifecycleState state)

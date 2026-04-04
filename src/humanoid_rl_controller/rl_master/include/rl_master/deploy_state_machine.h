@@ -9,9 +9,15 @@
 namespace rl_master
 {
 
+// Legacy mode codes (kept for compatibility).
 constexpr int kWalkModeCode = 0;
 constexpr int kStandModeCode = 1;
 constexpr int kFixStandModeCode = 2;
+
+// Generic mode code range:
+// - publish [0, 999] to switch active mode only.
+constexpr int kModeCodeMin = 0;
+constexpr int kModeCodeMax = 999;
 
 // Extended control words (written to walk_mode control channel).
 constexpr int kCtrlWordStartPolicy = 10;
@@ -21,6 +27,13 @@ constexpr int kCtrlWordEstop = 13;
 constexpr int kCtrlWordStartWalk = 20;
 constexpr int kCtrlWordStartStand = 21;
 constexpr int kCtrlWordStartFixStand = 22;
+
+// Generic extended mode control:
+// - [1000, 1999]: set mode=(code-1000) and request start.
+// - [2000, 2999]: set mode=(code-2000), do not change lifecycle.
+constexpr int kCtrlWordStartModeBase = 1000;
+constexpr int kCtrlWordSetModeBase = 2000;
+constexpr int kCtrlWordModeRange = 1000;
 
 enum class DeployLifecycleState
 {
@@ -55,7 +68,7 @@ public:
     DeployStateMachine() = default;
 
     void configure(const Sim2realCfg &cfg);
-    void initialize(const std::vector<float> &current_q, const std::vector<float> &zero_pose);
+    void initialize(const std::vector<float> &current_q, const std::vector<float> &zero_pose, int initial_mode);
     void setZeroPose(const std::vector<float> &zero_pose);
     DeployStateOutput update(int control_word, double now_s, const std::vector<float> &current_q);
 
@@ -63,6 +76,7 @@ public:
     int activeLocomotionMode() const { return active_locomotion_mode_; }
 
     static DecodedControlWord decodeControlWord(int control_word, int fallback_locomotion_mode);
+    static bool isValidControlWord(int control_word);
     static const char *stateName(DeployLifecycleState state);
 
 private:

@@ -130,13 +130,20 @@ class DdsCommandWriter:
             self._cmd_pub.publish(msg)
             self._spin_once()
 
-    def write_walk_mode(self, mode: RobotWalkMode) -> None:
+    def write_walk_mode(self, mode) -> None:
+        if isinstance(mode, RobotWalkMode):
+            mode_value = int(mode.value)
+            mode_label = mode.name
+        else:
+            mode_value = int(mode)
+            mode_label = str(mode_value)
+
         msg = Int32()
-        msg.data = int(mode.value)
+        msg.data = mode_value
         with self._lock:
             self._walk_mode_pub.publish(msg)
             self._spin_once()
-        log(f"[MODE] Walk mode -> {mode.name}")
+        log(f"[MODE] Mode command -> {mode_label}")
 
     def write_arm_mode(self, mode: RobotArmMode) -> None:
         _ = mode

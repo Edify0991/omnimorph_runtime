@@ -6,46 +6,19 @@
 #include <memory>
 #include <iostream>
 #include <chrono>
-#include <sched.h>
 #include <stdexcept>
 #include <thread>
-#include <sys/mman.h>
 #include <time.h>
 #include "rl_master/RL_controller.h"
 #include "rl_master/dds_robot_io.h"
 #include "rl_master/robot_io.h"
 #include "rl_master/rl_cfg.h"
 #include "rl_master/rl_protocol.h"
+#include "rl_master/runtime/realtime_utils.h"
 
 static std::atomic<bool> g_run_flag(true);
 static RL_controller *g_rl_controller = nullptr;
 static RobotIO *g_robot_io = nullptr;
-
-void set_realtime_priority(int cpu_id = 2, int priority = 90)
-{
-    if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0)
-    {
-        std::cerr << "mlockall failed: " << strerror(errno) << std::endl;
-    }
-
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpu_id, &cpuset);
-    if (sched_setaffinity(0, sizeof(cpuset), &cpuset) != 0)
-    {
-        std::cerr << "sched_setaffinity failed: " << strerror(errno) << std::endl;
-    }
-
-    struct sched_param param;
-    param.sched_priority = priority;
-    if (sched_setscheduler(0, SCHED_FIFO, &param) != 0)
-    {
-        std::cerr << "sched_setscheduler failed: " << strerror(errno) << std::endl;
-    }
-
-    std::cout << "[RT] FIFO priority=" << priority
-              << " cpu=" << cpu_id << std::endl;
-}
 
 void handleSignal(int signal)
 {
@@ -82,14 +55,14 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
 
     rl_master::RobotStateData io_state;
     rl_master::TeleopCommand teleop_cmd;
-    int walk_mode = WALK;
+    int mode_command = WALK;
     const auto warmup_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (!robot_io->read_state(io_state) && std::chrono::steady_clock::now() < warmup_deadline)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     (void)robot_io->read_control_command(teleop_cmd);
-    walk_mode = robot_io->read_walk_mode(walk_mode);
+    mode_command = robot_io->read_mode_command(mode_command);
 
     const int control_hz = std::max(1, controller->runtimeCfg().RL_control_f);
     const long period_ns = std::max<long>(1, 1'000'000'000L / control_hz);
@@ -124,10 +97,10 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
                 continue;
             }
             (void)robot_io->read_control_command(teleop_cmd);
-            walk_mode = robot_io->read_walk_mode(walk_mode);
+            mode_command = robot_io->read_mode_command(mode_command);
 
             const double phase_t = std::chrono::duration_cast<std::chrono::duration<double>>(loop_begin - phase_start).count();
-            const rl_master::RobotCommandData command = controller->step(io_state, teleop_cmd, walk_mode, phase_t);
+            const rl_master::RobotCommandData command = controller->step(io_state, teleop_cmd, mode_command, phase_t);
 
             if (!robot_io->write_command(command))
             {
@@ -169,7 +142,7 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
 
 int main()
 {
-    set_realtime_priority(3, 90);
+    rl_master::runtime::setRealtimePriority(3, 90);
     signal(SIGINT, handleSignal);
 
     auto rl_controller = RL_controller::create();

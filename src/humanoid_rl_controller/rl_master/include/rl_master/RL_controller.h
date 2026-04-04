@@ -2,19 +2,23 @@
 #define RL_CONTROLLER_H
 
 #include <onnxruntime_cxx_api.h>
+
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <deque>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 #include "cmd.h"
 #include "deploy_state_machine.h"
 #include "external_observation_provider.h"
+#include "logging/structured_logger.h"
 #include "math_tool.h"
 #include "onnx_policy_runner.h"
 #include "observation_builder.h"
@@ -23,6 +27,7 @@
 #include "robot_types.h"
 #include "robot_state.h"
 
+// Legacy predefined mode ids kept for compatibility with existing scripts.
 enum RobotWalkMode
 {
     WALK = 0,
@@ -41,7 +46,7 @@ public:
     rl_master::RobotCommandData step(
         const rl_master::RobotStateData &state,
         const rl_master::TeleopCommand &command,
-        int walk_mode,
+        int mode_command,
         double phase_t);
     void estop();
     std::vector<float> get_robot_observation(double phase_t);
@@ -53,7 +58,7 @@ public:
 
     std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
     std::unique_ptr<RobotState> robot;
-    const Sim2realCfg &runtimeCfg() const { return robot->sim2realCfg; }
+    const Sim2realCfg &runtimeCfg() const;
 
 private:
     struct PolicyRunnerNode
@@ -74,6 +79,28 @@ private:
         std::unordered_map<std::string, std::vector<float>> extra_outputs;
     };
 
+    struct ModeProfileSpec
+    {
+        int mode_id = rl_master::kWalkModeCode;
+        std::string config_section;
+        std::string tag;
+    };
+
+    struct ModeProfile
+    {
+        int mode_id = rl_master::kWalkModeCode;
+        std::string config_section;
+        std::string tag;
+        Sim2realCfg cfg;
+        std::vector<float> default_angle;
+        std::vector<int> action_index_map;
+        std::vector<int> obs_index_map;
+        ObservationManifest observation_manifest;
+        std::unique_ptr<ObservationBuilder> observation_builder;
+        PolicyRuntimeGroup policy_group;
+        ReferenceMotionProvider reference_motion;
+    };
+
     static const std::array<std::string, rl_master::kLegJointCount> &canonicalJointOrder();
     std::vector<int> buildActionIndexMap(const Sim2realCfg &cfg, const std::string &cfg_name) const;
     std::vector<int> buildObsIndexMap(const Sim2realCfg &cfg, const std::string &cfg_name) const;
@@ -92,14 +119,24 @@ private:
     PolicyRunOutput runPolicyGroup(PolicyRuntimeGroup *group, const std::vector<float> &stacked_obs);
     void initReferenceMotionProvider(const Sim2realCfg &cfg, ReferenceMotionProvider *provider, const std::string &tag);
     ObservationFeatureContext buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t);
+    void initDataLogger();
+    void logStepRecord(double phase_t, int requested_mode_command, const rl_master::DeployStateOutput &deploy_output);
 
-    void init_onnx_session();
+    void initModeProfiles();
+    std::vector<ModeProfileSpec> loadModeProfileSpecsFromYaml() const;
+    std::vector<float> buildDefaultAnglesFromCfg(const Sim2realCfg::RobotCfg &robot_cfg) const;
+    size_t profileIndexForMode(int mode_id, bool sanitize_invalid_mode) const;
+    ModeProfile &activeModeProfile();
+    const ModeProfile &activeModeProfile() const;
+    const ModeProfile &runtimeModeProfile() const;
 
     Ort::Env onnx_env_;
-    PolicyRuntimeGroup walk_policy_group_;
-    PolicyRuntimeGroup stand_policy_group_;
-    ReferenceMotionProvider walk_reference_motion_;
-    ReferenceMotionProvider stand_reference_motion_;
+    std::vector<ModeProfile> mode_profiles_;
+    std::unordered_map<int, size_t> mode_to_profile_index_;
+    int default_mode_id_ = rl_master::kWalkModeCode;
+    int active_mode_id_ = rl_master::kWalkModeCode;
+    int last_active_mode_id_ = std::numeric_limits<int>::min();
+
     ExternalObservationProvider external_observation_provider_;
     rl_master::DeployStateMachine deploy_state_machine_;
     rl_master::DeployLifecycleState last_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
@@ -114,29 +151,10 @@ private:
     std::vector<float> obs;
     std::deque<std::vector<float>> obs_deque;
     std::vector<float> stacked_obs_buffer_;
-    std::vector<int> walk_action_index_map_;
-    std::vector<int> stand_action_index_map_;
-    std::vector<int> walk_obs_index_map_;
-    std::vector<int> stand_obs_index_map_;
-    ObservationManifest walk_observation_manifest_;
-    ObservationManifest stand_observation_manifest_;
-    std::unique_ptr<ObservationBuilder> walk_observation_builder_;
-    std::unique_ptr<ObservationBuilder> stand_observation_builder_;
 
-    int filter_window = 5;
-    std::deque<float> left_knee_target_filter;
-    std::deque<float> right_knee_target_filter;
-    float left_knee_target_now = 0.0f;
-    float right_knee_target_now = 0.0f;
-
-    float filter_range = 0.01f;
-    bool use_filter_range = true;
-    float vel_threshold = 0.01f;
     Cmd cmd;
-    int walk_mode = WALK;
-    int policy_index = 0;
-    int last_policy_index_ = -1;
-    std::vector<float> stand_flag;
+    std::unique_ptr<rl_master::logging::StructuredLogger> data_logger_;
+    uint64_t data_log_frame_index_ = 0;
 };
 
 #endif // RL_CONTROLLER_H

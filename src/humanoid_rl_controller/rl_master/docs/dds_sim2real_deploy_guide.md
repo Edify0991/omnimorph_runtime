@@ -84,11 +84,13 @@
 - 类型：`std_msgs/msg/Int32`
 - 方向：joystick/navigation -> controller
 
-控制字：
+控制字（泛化后）：
 
-- `0/1/2`: `WALK / STAND / FIX_STAND`
+- `[0..999]`: 直接设置 `mode_id`
+- `1000 + mode_id`: 设置 `mode_id` 并 `START_POLICY`
+- `2000 + mode_id`: 仅设置 `mode_id`（不触发生命周期变更）
 - `10/11/12/13`: `START_POLICY / STOP_POLICY / ZEROING / ESTOP`
-- `20/21/22`: `START_WALK / START_STAND / START_FIX_STAND`
+- `20/21/22`: `START_WALK / START_STAND / START_FIX_STAND`（兼容保留）
 
 ## 4. 代码模块划分（规范化与模块化）
 
@@ -102,6 +104,12 @@
 - 求解器桥接：
   - `include/rl_master/solver_dds_bridge.h`
   - `solver_dds_bridge.cpp`
+- 求解器电机与主循环（模块化后）：
+  - `include/rl_master/solver/motor_shm_io.h`
+  - `solver/motor_shm_io.cpp`
+  - `include/rl_master/solver/robot_solver.h`
+  - `solver/robot_solver.cpp`
+  - `rl_solver.cpp`（仅保留进程入口、实时优先级与信号处理）
 - 状态机：
   - `include/rl_master/deploy_state_machine.h`
   - `deploy_state_machine.cpp`
@@ -109,6 +117,10 @@
   - `observation_builder.*`
   - `reference_motion_provider.*`
   - `external_observation_provider.*`
+- 运行时与工程化组件：
+  - `include/rl_master/runtime/realtime_utils.h` + `runtime/realtime_utils.cpp`
+  - `include/rl_master/filters/moving_average_filter.h` + `filters/moving_average_filter.cpp`
+  - `include/rl_master/logging/structured_logger.h` + `logging/structured_logger.cpp`
 
 已删除的冗余旧路径：
 
@@ -124,12 +136,28 @@
 - BeyondMimic 风格观测（含 `reference_motion`）
 - 视觉/雷达等外部观测占位接口（`external_observations`）
 - 主模型 + 多个 `sub_models` 的融合推理
+- `deploy_mode_profiles` 驱动的 `mode_id -> policy config section` 动态映射
 - 部署状态机（启动、停止、回零、急停）
 
 建议清单：
 
 - AMP：`config/observation_manifest_amp.yaml`
 - BeyondMimic：`config/observation_manifest_beyondmimic.yaml`
+
+`rl_cfg.yaml` 中可通过 `deploy_mode_profiles` 扩展模式映射，例如：
+
+```yaml
+deploy_mode_profiles:
+  - mode_id: 0
+    config_section: sim2real
+    tag: walk
+  - mode_id: 1
+    config_section: stand_sim2real
+    tag: stand
+  - mode_id: 3
+    config_section: stair_sim2real
+    tag: stair
+```
 
 ## 6. 编译依赖
 
@@ -189,3 +217,24 @@ sudo ./dds_selfcheck.sh
 sudo ./dds_selfcheck.sh --publish-smoke
 sudo ./dds_selfcheck.sh --publish-sequence "11,12,10,20"
 ```
+
+## 11. 结构化数据记录与分析
+
+运行时开启 `save_data_flag: true` 后，`RL_solver` 与 `RL_controller` 会输出：
+
+- `*_solver_metadata.json`
+- `*_solver_records.jsonl`
+- `*_controller_metadata.json`
+- `*_controller_records.jsonl`
+
+元数据包含模型路径、观测维度、控制频率、关节顺序、PD 参数、子模型列表等，用于跨模型/跨参数对齐分析。
+
+分析工具：
+
+- `tools/analysis/analyze_structured_logs.py`
+
+完整运行清单、命名规范和分析流程见：
+
+- `docs/runbooks/runtime_checklist.md`
+- 观测构建流程图与维度偏移示意：
+  - `docs/observation_pipeline_diagram.md`

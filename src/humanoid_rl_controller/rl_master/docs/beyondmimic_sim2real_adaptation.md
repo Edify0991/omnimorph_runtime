@@ -12,9 +12,10 @@ This project keeps ROS2 build/packaging, migrates upper runtime transport to DDS
 - Per-policy observation builder separation
   - Walk and Stand can now use different observation manifests and dimensions.
 - Policy-switch reset behavior
-  - On walk/stand switch, stacked observation buffer and policy internal step can reset safely.
+  - On mode-profile switch, stacked observation buffer and policy internal step can reset safely.
 - Runtime lifecycle state machine
   - `START_POLICY / STOP_POLICY / ZEROING / ESTOP` via `walk_mode` control words.
+  - Generic mode switching via `mode_id`, `1000+mode_id`, `2000+mode_id`.
 - Multi-model runtime hook
   - Primary policy with optional weighted `sub_models` ensemble.
 - Observation feature context
@@ -49,7 +50,7 @@ policy_io:
 
 ## Runtime Notes
 
-- DDS topics are used for policy command/state, teleop command, and walk mode.
+- DDS topics are used for policy command/state, teleop command, and mode/state command.
 - Shared memory is retained only in `RL_solver` motor loop (`sendMotorCmd` / `getMotorState`).
 - Controller loop period now follows `RL_control_f` in config instead of fixed 50 Hz.
 - Suggested BeyondMimic manifest: `config/observation_manifest_beyondmimic.yaml`.

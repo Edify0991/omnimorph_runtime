@@ -15,7 +15,7 @@ Options:
   --hz-seconds N          Seconds for topic hz probing (default: 3)
   --publish-smoke         Publish a safe smoke sequence to control topics:
                           teleop zero + walk_mode STOP_POLICY(11)
-  --publish-sequence CSV  Publish explicit walk_mode sequence, e.g. "11,12,10,20"
+  --publish-sequence CSV  Publish explicit walk_mode sequence, e.g. "11,12,10,20" or "1003"
   -h, --help              Show this help
 EOF
 }

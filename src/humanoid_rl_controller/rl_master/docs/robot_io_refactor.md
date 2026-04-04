@@ -12,7 +12,7 @@
 
 1. `read_state()` <- `/humanoid/rl/state`
 2. `read_control_command()` <- `/humanoid/rl/teleop`
-3. `read_walk_mode()` <- `/humanoid/rl/walk_mode`
+3. `read_mode_command()` <- `/humanoid/rl/walk_mode`
 4. `controller.step(...)` 产出动作
 5. `write_command()` -> `/humanoid/rl/command`
 
@@ -25,7 +25,8 @@
 
 - 命令布局语义保留：`open_rl + seq + timestamp`
 - `RL_solver` 的 watchdog 逻辑可直接复用
-- 状态机控制字保持一致：`10/11/12/13/20/21/22`
+- 状态机控制字已泛化：支持 `mode_id`、`1000+mode_id`、`2000+mode_id`
+- 旧控制字仍兼容：`10/11/12/13/20/21/22`
 
 ## 清理结果
 

@@ -3,10 +3,25 @@
 humanoid_rl_root_dir: "/home/nvidia/Documents/humanoid_jc/src/humanoid_rl_controller/rl_master"
 legged_gym_root_dir: "/path/to/legged_gym_root_dir"
 
-# walk_mode DDS control words:
-# 0=WALK, 1=STAND, 2=FIX_STAND
-# 10=START_POLICY, 11=STOP_POLICY, 12=ZEROING, 13=ESTOP
-# 20=START_WALK, 21=START_STAND, 22=START_FIX_STAND
+# walk_mode DDS control words (generic):
+# mode_id direct switch: [0..999]
+# start specific mode: 1000 + mode_id
+# set specific mode only: 2000 + mode_id
+# lifecycle controls: 10=START_POLICY, 11=STOP_POLICY, 12=ZEROING, 13=ESTOP
+# legacy compatibility: 20=START_WALK, 21=START_STAND, 22=START_FIX_STAND
+
+# Generic mode -> policy profile map. Add new mode_id entries for new scenes/models
+# without changing controller source code.
+deploy_mode_profiles:
+  - mode_id: 0
+    config_section: sim2real
+    tag: walk
+  - mode_id: 1
+    config_section: stand_sim2real
+    tag: stand
+  - mode_id: 2
+    config_section: stand_sim2real
+    tag: fix_stand
 
 sim2real:
   policy_name: "2026-01-11_01-27-10"

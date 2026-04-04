@@ -22,12 +22,14 @@
 2. 状态机标准化
 - 引入 `deploy_state_machine.*`
 - 支持 `START_POLICY / STOP_POLICY / ZEROING / ESTOP`
-- 支持 `START_WALK / START_STAND / START_FIX_STAND`
+- 支持 `START_WALK / START_STAND / START_FIX_STAND`（兼容）
+- 新增泛化模式控制：`mode_id`、`1000+mode_id`、`2000+mode_id`
 
 3. 多模型与可配置观测
 - 主模型 + `sub_models` 融合
 - `ObservationBuilder` 支持 `reference_motion` 与 `external_sensor`
 - 兼容 AMP / BeyondMimic 类型部署
+- `RL_controller` 已从 walk/stand 显式双分支重构为 `mode profile` 动态映射
 
 4. IMU 链路清理
 - `imu_communication_yesense` 改为纯 DDS 发布 `/imu/yesense`
@@ -36,6 +38,20 @@
 5. 冗余代码删除
 - 删除 `shared_memory_robot_io.*`
 - 删除 `RL_controller_bak.cpp`
+
+6. 工程化规范增强
+- 新增模块目录：
+  - `include/rl_master/runtime` + `runtime`
+  - `include/rl_master/filters` + `filters`
+  - `include/rl_master/logging` + `logging`
+  - `include/rl_master/solver` + `solver`
+- `RL_solver` 主程序重构为“薄入口 + 业务模块”：
+  - `rl_solver.cpp` 只负责入口初始化/信号处理
+  - `solver/robot_solver.cpp` 承载控制主循环
+  - `solver/motor_shm_io.cpp` 承载电机共享内存读写
+- 新增结构化日志（JSONL + metadata JSON）替代自由文本日志。
+- 新增分析工具：`tools/analysis/analyze_structured_logs.py`。
+- 新增完整运行清单：`docs/runbooks/runtime_checklist.md`。
 
 ## 关键兼容性说明
 

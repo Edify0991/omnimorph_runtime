@@ -12,7 +12,7 @@ public:
 
     virtual bool read_state(rl_master::RobotStateData &state) = 0;
     virtual bool read_control_command(rl_master::TeleopCommand &command) = 0;
-    virtual int read_walk_mode(int fallback_mode) = 0;
+    virtual int read_mode_command(int fallback_mode) = 0;
 
     virtual bool write_command(const rl_master::RobotCommandData &command) = 0;
 

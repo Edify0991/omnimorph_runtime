@@ -7,14 +7,25 @@ https://blog.csdn.net/m0_57254760/article/details/138304321
 
 #include <algorithm>
 #include <cstddef>
-#include <fstream>
+#include <map>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
 
 #include "rl_master/rl_protocol.h"
 
-std::ofstream rl_debug_file;
+namespace
+{
+std::vector<double> toDoubleVector(const std::vector<float> &values)
+{
+    std::vector<double> out(values.size(), 0.0);
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        out[i] = static_cast<double>(values[i]);
+    }
+    return out;
+}
+} // namespace
 
 RL_controller::RL_controller()
     : onnx_env_(ORT_LOGGING_LEVEL_WARNING, "RL_controller")
@@ -28,10 +39,9 @@ RL_controller::RL_controller()
 
 RL_controller::~RL_controller()
 {
-    if (rl_debug_file.is_open())
+    if (data_logger_)
     {
-        rl_debug_file.flush();
-        rl_debug_file.close();
+        data_logger_->close();
     }
 }
 
@@ -160,56 +170,36 @@ std::vector<int> RL_controller::buildObsIndexMap(const Sim2realCfg &cfg, const s
 
 const std::vector<int> &RL_controller::currentActionIndexMap() const
 {
-    if (policy_index == 0)
-    {
-        return stand_action_index_map_;
-    }
-    return walk_action_index_map_;
+    return activeModeProfile().action_index_map;
 }
 
 const std::vector<int> &RL_controller::currentObsIndexMap() const
 {
-    if (policy_index == 0)
-    {
-        return stand_obs_index_map_;
-    }
-    return walk_obs_index_map_;
+    return activeModeProfile().obs_index_map;
 }
 
 const Sim2realCfg &RL_controller::activePolicyCfg() const
 {
-    if (policy_index == 0)
-    {
-        return robot->standSim2RealCfg;
-    }
-    return robot->sim2realCfg;
+    return activeModeProfile().cfg;
 }
 
 const ObservationBuilder &RL_controller::activeObservationBuilder() const
 {
-    if (policy_index == 0)
+    if (!activeModeProfile().observation_builder)
     {
-        return *stand_observation_builder_;
+        throw std::runtime_error("Active observation builder is null");
     }
-    return *walk_observation_builder_;
+    return *activeModeProfile().observation_builder;
 }
 
 RL_controller::PolicyRuntimeGroup &RL_controller::activePolicyGroup()
 {
-    if (policy_index == 0)
-    {
-        return stand_policy_group_;
-    }
-    return walk_policy_group_;
+    return activeModeProfile().policy_group;
 }
 
 const ReferenceMotionProvider &RL_controller::activeReferenceMotionProvider() const
 {
-    if (policy_index == 0)
-    {
-        return stand_reference_motion_;
-    }
-    return walk_reference_motion_;
+    return activeModeProfile().reference_motion;
 }
 
 std::vector<float> RL_controller::activeZeroPose() const
@@ -224,28 +214,20 @@ std::vector<float> RL_controller::activeZeroPose() const
 
 void RL_controller::refreshPolicyMode(int requested_mode, bool sanitize_invalid_mode)
 {
-    walk_mode = requested_mode;
-
-    if (sanitize_invalid_mode && walk_mode != WALK && walk_mode != STAND && walk_mode != FIX_STAND)
+    if (mode_profiles_.empty())
     {
-        walk_mode = WALK;
+        throw std::runtime_error("No mode profile is loaded");
     }
 
-    if (walk_mode == STAND || walk_mode == FIX_STAND)
-    {
-        policy_index = 0;
-        robot->default_angle = robot->default_angle_stand;
-    }
-    else
-    {
-        policy_index = 1;
-        robot->default_angle = robot->default_angle_walk;
-    }
+    const size_t profile_index = profileIndexForMode(requested_mode, sanitize_invalid_mode);
+    active_profile_index_ = profile_index;
+    active_mode_id_ = mode_profiles_[profile_index].mode_id;
+    robot->default_angle = mode_profiles_[profile_index].default_angle;
 }
 
 void RL_controller::handlePolicySwitch()
 {
-    if (last_policy_index_ == policy_index)
+    if (last_active_mode_id_ == active_mode_id_)
     {
         return;
     }
@@ -284,10 +266,239 @@ void RL_controller::handlePolicySwitch()
     deploy_state_machine_.configure(cfg);
     deploy_state_machine_.setZeroPose(activeZeroPose());
 
-    last_policy_index_ = policy_index;
+    last_active_mode_id_ = active_mode_id_;
     std::cout << "[RL_controller] switch policy to "
-              << (policy_index == 0 ? "stand" : "walk")
-              << ", mode=" << walk_mode << std::endl;
+              << activeModeProfile().tag
+              << ", mode_id=" << active_mode_id_ << std::endl;
+}
+
+const Sim2realCfg &RL_controller::runtimeCfg() const
+{
+    return runtimeModeProfile().cfg;
+}
+
+RL_controller::ModeProfile &RL_controller::activeModeProfile()
+{
+    if (mode_profiles_.empty() || active_profile_index_ >= mode_profiles_.size())
+    {
+        throw std::runtime_error("Active mode profile index is invalid");
+    }
+    return mode_profiles_[active_profile_index_];
+}
+
+const RL_controller::ModeProfile &RL_controller::activeModeProfile() const
+{
+    if (mode_profiles_.empty() || active_profile_index_ >= mode_profiles_.size())
+    {
+        throw std::runtime_error("Active mode profile index is invalid");
+    }
+    return mode_profiles_[active_profile_index_];
+}
+
+const RL_controller::ModeProfile &RL_controller::runtimeModeProfile() const
+{
+    if (mode_profiles_.empty())
+    {
+        throw std::runtime_error("Runtime mode profile is unavailable");
+    }
+    const auto it = mode_to_profile_index_.find(default_mode_id_);
+    if (it != mode_to_profile_index_.end())
+    {
+        return mode_profiles_[it->second];
+    }
+    return mode_profiles_.front();
+}
+
+size_t RL_controller::profileIndexForMode(int mode_id, bool sanitize_invalid_mode) const
+{
+    const auto it = mode_to_profile_index_.find(mode_id);
+    if (it != mode_to_profile_index_.end())
+    {
+        return it->second;
+    }
+
+    if (!sanitize_invalid_mode)
+    {
+        throw std::runtime_error("Unknown mode id: " + std::to_string(mode_id));
+    }
+
+    const auto fallback_it = mode_to_profile_index_.find(default_mode_id_);
+    if (fallback_it != mode_to_profile_index_.end())
+    {
+        return fallback_it->second;
+    }
+    return 0;
+}
+
+std::vector<float> RL_controller::buildDefaultAnglesFromCfg(const Sim2realCfg::RobotCfg &robot_cfg) const
+{
+    std::vector<float> out(rl_master::kLegJointCount, 0.0f);
+    std::unordered_map<std::string, float> default_angle_map;
+    default_angle_map.reserve(robot_cfg.default_joint_angles.size());
+    for (const auto &entry : robot_cfg.default_joint_angles)
+    {
+        default_angle_map[entry.first] = entry.second;
+    }
+
+    const auto &order = canonicalJointOrder();
+    for (size_t i = 0; i < order.size(); ++i)
+    {
+        const auto it = default_angle_map.find(order[i]);
+        if (it != default_angle_map.end())
+        {
+            out[i] = it->second;
+        }
+    }
+    return out;
+}
+
+std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsFromYaml() const
+{
+    std::vector<ModeProfileSpec> specs = {
+        {rl_master::kWalkModeCode, "sim2real", "walk"},
+        {rl_master::kStandModeCode, "stand_sim2real", "stand"},
+        {rl_master::kFixStandModeCode, "stand_sim2real", "fix_stand"},
+    };
+
+    YAML::Node root;
+    try
+    {
+        root = YAML::LoadFile(RL_CFG_PATH);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "[RL_controller] failed to parse RL cfg for mode profile map: " << e.what()
+                  << ". Use default mode profile mapping." << std::endl;
+        return specs;
+    }
+
+    const YAML::Node profile_nodes = root["deploy_mode_profiles"];
+    if (!profile_nodes || !profile_nodes.IsSequence() || profile_nodes.size() == 0)
+    {
+        return specs;
+    }
+
+    std::vector<ModeProfileSpec> parsed;
+    for (size_t i = 0; i < profile_nodes.size(); ++i)
+    {
+        const YAML::Node node = profile_nodes[i];
+        if (!node["mode_id"] || !node["config_section"])
+        {
+            throw std::runtime_error(
+                "deploy_mode_profiles[" + std::to_string(i) + "] requires mode_id and config_section");
+        }
+
+        ModeProfileSpec spec;
+        spec.mode_id = node["mode_id"].as<int>();
+        spec.config_section = node["config_section"].as<std::string>();
+        spec.tag = yamlReadOr<std::string>(node, "tag", spec.config_section);
+        parsed.push_back(spec);
+    }
+
+    return parsed;
+}
+
+void RL_controller::initModeProfiles()
+{
+    mode_profiles_.clear();
+    mode_to_profile_index_.clear();
+
+    const std::vector<ModeProfileSpec> specs = loadModeProfileSpecsFromYaml();
+    if (specs.empty())
+    {
+        throw std::runtime_error("No deploy mode profile spec is configured");
+    }
+
+    std::unordered_map<std::string, Sim2realCfg> cfg_cache;
+    for (const auto &spec : specs)
+    {
+        if (mode_to_profile_index_.find(spec.mode_id) != mode_to_profile_index_.end())
+        {
+            throw std::runtime_error("Duplicate mode_id in deploy_mode_profiles: " + std::to_string(spec.mode_id));
+        }
+        if (spec.mode_id < rl_master::kModeCodeMin || spec.mode_id > rl_master::kModeCodeMax)
+        {
+            throw std::runtime_error(
+                "mode_id out of supported range [" +
+                std::to_string(rl_master::kModeCodeMin) +
+                ", " +
+                std::to_string(rl_master::kModeCodeMax) +
+                "]: " +
+                std::to_string(spec.mode_id));
+        }
+
+        Sim2realCfg cfg;
+        const auto cache_it = cfg_cache.find(spec.config_section);
+        if (cache_it != cfg_cache.end())
+        {
+            cfg = cache_it->second;
+        }
+        else
+        {
+            if (!cfg.loadFromYAML(RL_CFG_PATH, spec.config_section))
+            {
+                throw std::runtime_error("Failed to load config section: " + spec.config_section);
+            }
+            cfg_cache[spec.config_section] = cfg;
+        }
+
+        ModeProfile profile;
+        profile.mode_id = spec.mode_id;
+        profile.config_section = spec.config_section;
+        profile.tag = spec.tag;
+        profile.cfg = cfg;
+        profile.default_angle = buildDefaultAnglesFromCfg(profile.cfg.robotCfg);
+        profile.action_index_map = buildActionIndexMap(profile.cfg, profile.config_section);
+        profile.obs_index_map = buildObsIndexMap(profile.cfg, profile.config_section);
+        profile.observation_manifest = ObservationManifest::loadFromYAML(profile.cfg.observation_manifest_path);
+        profile.observation_builder = std::make_unique<ObservationBuilder>(profile.observation_manifest);
+        if (profile.observation_builder->expectedDim() != static_cast<size_t>(profile.cfg.obs_dim))
+        {
+            throw std::runtime_error(
+                profile.tag + " observation manifest dim (" +
+                std::to_string(profile.observation_builder->expectedDim()) +
+                ") does not match cfg obs_dim (" + std::to_string(profile.cfg.obs_dim) + ")");
+        }
+        initPolicyGroup(profile.cfg, profile.tag, &profile.policy_group);
+        initReferenceMotionProvider(profile.cfg, &profile.reference_motion, profile.tag);
+
+        mode_to_profile_index_[profile.mode_id] = mode_profiles_.size();
+        mode_profiles_.push_back(std::move(profile));
+    }
+
+    default_mode_id_ = mode_profiles_.front().mode_id;
+    if (mode_to_profile_index_.find(rl_master::kWalkModeCode) != mode_to_profile_index_.end())
+    {
+        default_mode_id_ = rl_master::kWalkModeCode;
+    }
+    active_mode_id_ = default_mode_id_;
+    active_profile_index_ = profileIndexForMode(default_mode_id_, true);
+
+    // Keep backward compatibility fields for existing components.
+    robot->sim2realCfg = mode_profiles_[active_profile_index_].cfg;
+    robot->default_angle_walk = mode_profiles_[active_profile_index_].default_angle;
+    robot->default_angle = mode_profiles_[active_profile_index_].default_angle;
+
+    const auto stand_it = mode_to_profile_index_.find(rl_master::kStandModeCode);
+    if (stand_it != mode_to_profile_index_.end())
+    {
+        robot->standSim2RealCfg = mode_profiles_[stand_it->second].cfg;
+        robot->default_angle_stand = mode_profiles_[stand_it->second].default_angle;
+    }
+    else
+    {
+        robot->standSim2RealCfg = mode_profiles_[active_profile_index_].cfg;
+        robot->default_angle_stand = mode_profiles_[active_profile_index_].default_angle;
+    }
+
+    std::cout << "[RL_controller] mode profiles loaded: " << mode_profiles_.size() << std::endl;
+    for (const auto &profile : mode_profiles_)
+    {
+        std::cout << "  - mode_id=" << profile.mode_id
+                  << ", tag=" << profile.tag
+                  << ", section=" << profile.config_section
+                  << ", policy=" << profile.cfg.policy_name << std::endl;
+    }
 }
 
 void RL_controller::updateStateFromIO(const rl_master::RobotStateData &state)
@@ -477,13 +688,110 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     return feature_context;
 }
 
-void RL_controller::init_onnx_session()
+void RL_controller::initDataLogger()
 {
-    initPolicyGroup(robot->sim2realCfg, "walk", &walk_policy_group_);
-    initPolicyGroup(robot->standSim2RealCfg, "stand", &stand_policy_group_);
+    const auto &runtime_cfg = runtimeModeProfile().cfg;
+    if (!runtime_cfg.save_data_flag)
+    {
+        return;
+    }
 
-    initReferenceMotionProvider(robot->sim2realCfg, &walk_reference_motion_, "walk");
-    initReferenceMotionProvider(robot->standSim2RealCfg, &stand_reference_motion_, "stand");
+    data_logger_ = std::make_unique<rl_master::logging::StructuredLogger>();
+    rl_master::logging::LoggerMetadata metadata;
+    metadata.string_fields["module"] = "RL_controller";
+    metadata.numeric_fields["profile_count"] = static_cast<double>(mode_profiles_.size());
+
+    auto collectSubModelNames = [](const Sim2realCfg &cfg) {
+        std::vector<std::string> names;
+        for (const auto &sub : cfg.sub_models)
+        {
+            names.push_back(sub.name);
+        }
+        return names;
+    };
+    auto collectSubModelPaths = [](const Sim2realCfg &cfg) {
+        std::vector<std::string> paths;
+        for (const auto &sub : cfg.sub_models)
+        {
+            paths.push_back(sub.policy_path);
+        }
+        return paths;
+    };
+
+    for (size_t i = 0; i < mode_profiles_.size(); ++i)
+    {
+        const auto &profile = mode_profiles_[i];
+        const std::string prefix = "profile_" + std::to_string(i) + "_";
+
+        metadata.numeric_fields[prefix + "mode_id"] = static_cast<double>(profile.mode_id);
+        metadata.numeric_fields[prefix + "obs_dim"] = static_cast<double>(profile.cfg.obs_dim);
+        metadata.numeric_fields[prefix + "action_dim"] = static_cast<double>(profile.cfg.action_dim);
+        metadata.numeric_fields[prefix + "obs_stack"] = static_cast<double>(profile.cfg.obs_stack_N);
+        metadata.numeric_fields[prefix + "control_hz"] = static_cast<double>(profile.cfg.RL_control_f);
+
+        metadata.string_fields[prefix + "tag"] = profile.tag;
+        metadata.string_fields[prefix + "config_section"] = profile.config_section;
+        metadata.string_fields[prefix + "policy_name"] = profile.cfg.policy_name;
+        metadata.string_fields[prefix + "policy_family"] = profile.cfg.policy_family;
+        metadata.string_fields[prefix + "policy_path"] = profile.cfg.policy_path;
+        metadata.string_fields[prefix + "observation_manifest"] = profile.cfg.observation_manifest_path;
+
+        metadata.vector_fields[prefix + "kps"] = toDoubleVector(profile.cfg.kps);
+        metadata.vector_fields[prefix + "kds"] = toDoubleVector(profile.cfg.kds);
+        metadata.vector_fields[prefix + "tau_limit"] = toDoubleVector(profile.cfg.tau_limit);
+
+        metadata.string_list_fields[prefix + "action_joint_order"] = profile.cfg.action_joint_order;
+        metadata.string_list_fields[prefix + "obs_joint_order"] = profile.cfg.obs_joint_order;
+        metadata.string_list_fields[prefix + "sub_model_names"] = collectSubModelNames(profile.cfg);
+        metadata.string_list_fields[prefix + "sub_model_paths"] = collectSubModelPaths(profile.cfg);
+    }
+
+    if (!data_logger_->open(runtime_cfg.data_path, "controller", metadata))
+    {
+        std::cerr << "[RL_controller] failed to open structured data logger." << std::endl;
+        data_logger_.reset();
+        return;
+    }
+
+    data_logger_->writeEvent(
+        rl_master::monotonicTimeSec(),
+        "controller_initialized",
+        {{"session_base_path", runtime_cfg.data_path}});
+    std::cout << "RL Controller structured log: " << data_logger_->recordsPath() << std::endl;
+}
+
+void RL_controller::logStepRecord(
+    double phase_t,
+    int requested_mode_command,
+    const rl_master::DeployStateOutput &deploy_output)
+{
+    if (!data_logger_ || !data_logger_->isOpen())
+    {
+        return;
+    }
+
+    std::map<std::string, double> scalars;
+    scalars["frame_index"] = static_cast<double>(data_log_frame_index_++);
+    scalars["phase_t"] = phase_t;
+    scalars["requested_mode_command"] = static_cast<double>(requested_mode_command);
+    scalars["active_mode_id"] = static_cast<double>(deploy_output.locomotion_mode);
+    scalars["deploy_state"] = static_cast<double>(static_cast<int>(deploy_output.state));
+    scalars["active_profile_index"] = static_cast<double>(active_profile_index_);
+    scalars["open_rl"] = static_cast<double>(robot->open_rl);
+    scalars["cmd_vx"] = static_cast<double>(cmd.vx);
+    scalars["cmd_vy"] = static_cast<double>(cmd.vy);
+    scalars["cmd_dyaw"] = static_cast<double>(cmd.dyaw);
+
+    std::map<std::string, std::vector<float>> vectors;
+    vectors["joint_q"] = robot->joint_q;
+    vectors["joint_dq"] = robot->joint_dq;
+    vectors["joint_tau"] = robot->joint_tau;
+    vectors["joint_target_q"] = robot->joint_target_q;
+    vectors["joint_target_tau"] = robot->joint_target_tau;
+    vectors["observation"] = obs;
+    vectors["policy_action"] = action;
+
+    data_logger_->writeRecord(rl_master::monotonicTimeSec(), "controller_step", scalars, vectors);
 }
 
 void RL_controller::RL_controller_Init()
@@ -492,61 +800,22 @@ void RL_controller::RL_controller_Init()
     cmd.vx = 0.0f;
     cmd.vy = 0.0f;
     cmd.dyaw = 0.0f;
-    stand_flag = std::vector<float>(1, 0.0f);
 
-    walk_action_index_map_ = buildActionIndexMap(robot->sim2realCfg, "sim2real");
-    stand_action_index_map_ = buildActionIndexMap(robot->standSim2RealCfg, "stand_sim2real");
-    walk_obs_index_map_ = buildObsIndexMap(robot->sim2realCfg, "sim2real");
-    stand_obs_index_map_ = buildObsIndexMap(robot->standSim2RealCfg, "stand_sim2real");
+    initModeProfiles();
 
-    walk_observation_manifest_ = ObservationManifest::loadFromYAML(robot->sim2realCfg.observation_manifest_path);
-    walk_observation_builder_ = std::make_unique<ObservationBuilder>(walk_observation_manifest_);
-    if (walk_observation_builder_->expectedDim() != static_cast<size_t>(robot->sim2realCfg.obs_dim))
-    {
-        throw std::runtime_error(
-            "walk observation manifest dim (" + std::to_string(walk_observation_builder_->expectedDim()) +
-            ") does not match cfg obs_dim (" + std::to_string(robot->sim2realCfg.obs_dim) + ")");
-    }
-    std::cout << "Walk observation manifest: " << robot->sim2realCfg.observation_manifest_path << std::endl;
-    for (const auto &line : walk_observation_builder_->layoutDescription())
-    {
-        std::cout << "  - " << line << std::endl;
-    }
-
-    stand_observation_manifest_ = ObservationManifest::loadFromYAML(robot->standSim2RealCfg.observation_manifest_path);
-    stand_observation_builder_ = std::make_unique<ObservationBuilder>(stand_observation_manifest_);
-    if (stand_observation_builder_->expectedDim() != static_cast<size_t>(robot->standSim2RealCfg.obs_dim))
-    {
-        throw std::runtime_error(
-            "stand observation manifest dim (" + std::to_string(stand_observation_builder_->expectedDim()) +
-            ") does not match cfg obs_dim (" + std::to_string(robot->standSim2RealCfg.obs_dim) + ")");
-    }
-    std::cout << "Stand observation manifest: " << robot->standSim2RealCfg.observation_manifest_path << std::endl;
-    for (const auto &line : stand_observation_builder_->layoutDescription())
-    {
-        std::cout << "  - " << line << std::endl;
-    }
-    std::cout << "Action/Observation order remap initialized for walk and stand policy." << std::endl;
-
-    init_onnx_session();
-
-    refreshPolicyMode(WALK, true);
+    refreshPolicyMode(default_mode_id_, true);
     handlePolicySwitch();
     deploy_state_machine_initialized_ = false;
     last_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
 
     start_time = std::chrono::high_resolution_clock::now();
-    if (robot->sim2realCfg.save_data_flag)
-    {
-        rl_debug_file.open(robot->sim2realCfg.data_path + "_rl_controller_data.txt");
-        std::cout << "RL Controller debug file: " << robot->sim2realCfg.data_path + "_rl_controller_data.txt" << std::endl;
-    }
+    initDataLogger();
 }
 
 rl_master::RobotCommandData RL_controller::step(
     const rl_master::RobotStateData &state,
     const rl_master::TeleopCommand &command,
-    int requested_walk_mode,
+    int mode_command,
     double phase_t)
 {
     updateStateFromIO(state);
@@ -554,16 +823,16 @@ rl_master::RobotCommandData RL_controller::step(
 
     if (!deploy_state_machine_initialized_)
     {
-        refreshPolicyMode(WALK, true);
+        refreshPolicyMode(default_mode_id_, true);
         handlePolicySwitch();
         deploy_state_machine_.configure(activePolicyCfg());
-        deploy_state_machine_.initialize(robot->joint_q, activeZeroPose());
+        deploy_state_machine_.initialize(robot->joint_q, activeZeroPose(), active_mode_id_);
         deploy_state_machine_initialized_ = true;
         last_deploy_state_ = deploy_state_machine_.state();
     }
 
     const double now_s = rl_master::monotonicTimeSec();
-    const auto deploy_output = deploy_state_machine_.update(requested_walk_mode, now_s, robot->joint_q);
+    const auto deploy_output = deploy_state_machine_.update(mode_command, now_s, robot->joint_q);
 
     refreshPolicyMode(deploy_output.locomotion_mode, true);
     handlePolicySwitch();
@@ -573,6 +842,13 @@ rl_master::RobotCommandData RL_controller::step(
         std::cout << "[RL_controller] lifecycle -> "
                   << rl_master::DeployStateMachine::stateName(deploy_output.state)
                   << std::endl;
+        if (data_logger_ && data_logger_->isOpen())
+        {
+            data_logger_->writeEvent(
+                rl_master::monotonicTimeSec(),
+                "lifecycle_transition",
+                {{"state", rl_master::DeployStateMachine::stateName(deploy_output.state)}});
+        }
         last_deploy_state_ = deploy_output.state;
     }
 
@@ -616,6 +892,7 @@ rl_master::RobotCommandData RL_controller::step(
     }
 
     ++deploy_step_counter_;
+    logStepRecord(phase_t, mode_command, deploy_output);
     return out_cmd;
 }
 
@@ -627,11 +904,6 @@ void RL_controller::estop()
 std::vector<float> RL_controller::get_robot_observation(double phase_t)
 {
     const auto &active_cfg = activePolicyCfg();
-
-    if (active_cfg.save_data_flag && rl_debug_file.is_open())
-    {
-        rl_debug_file << "w: " << robot->base_ang_vel[0] << ", " << robot->base_ang_vel[1] << ", " << robot->base_ang_vel[2] << std::endl;
-    }
 
     const ObservationFeatureContext feature_context = buildObservationFeatureContext(active_cfg, phase_t);
     obs = activeObservationBuilder().build(*robot, cmd, action, phase_t, active_cfg, currentObsIndexMap(), feature_context);
@@ -808,11 +1080,6 @@ std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &p
         }
 
         target_q[robot_idx] = robot->default_angle[robot_idx] + action_value * active_cfg.action_scale;
-    }
-
-    if (rl_debug_file.is_open() && policy_action.size() > 9)
-    {
-        rl_debug_file << "action: " << policy_action[3] << ", " << policy_action[9] << std::endl;
     }
 
     joint_target_q = target_q;

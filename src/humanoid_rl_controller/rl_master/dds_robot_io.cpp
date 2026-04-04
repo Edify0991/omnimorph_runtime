@@ -10,7 +10,7 @@ DdsRobotIO::~DdsRobotIO()
     command_pub_.reset();
     state_sub_.reset();
     teleop_sub_.reset();
-    walk_mode_sub_.reset();
+    mode_command_sub_.reset();
     node_.reset();
 
     if (owns_rclcpp_context_ && rclcpp::ok())
@@ -62,17 +62,17 @@ void DdsRobotIO::connect()
             has_teleop_ = true;
         });
 
-    walk_mode_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
+    mode_command_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
         rl_master::dds::kTopicWalkMode,
         rclcpp::QoS(rclcpp::KeepLast(20)).reliable(),
         [this](const std_msgs::msg::Int32::SharedPtr msg) {
-            if (!valid_walk_mode(msg->data))
+            if (!valid_mode_command(msg->data))
             {
                 return;
             }
-            std::lock_guard<std::mutex> lock(walk_mode_mutex_);
-            latest_walk_mode_ = msg->data;
-            has_walk_mode_ = true;
+            std::lock_guard<std::mutex> lock(mode_command_mutex_);
+            latest_mode_command_ = msg->data;
+            has_mode_command_ = true;
         });
 
     connected_ = true;
@@ -112,7 +112,7 @@ bool DdsRobotIO::read_control_command(rl_master::TeleopCommand &command)
     return true;
 }
 
-int DdsRobotIO::read_walk_mode(int fallback_mode)
+int DdsRobotIO::read_mode_command(int fallback_mode)
 {
     if (!connected_)
     {
@@ -120,12 +120,12 @@ int DdsRobotIO::read_walk_mode(int fallback_mode)
     }
     spin_some();
 
-    std::lock_guard<std::mutex> lock(walk_mode_mutex_);
-    if (!has_walk_mode_ || !valid_walk_mode(latest_walk_mode_))
+    std::lock_guard<std::mutex> lock(mode_command_mutex_);
+    if (!has_mode_command_ || !valid_mode_command(latest_mode_command_))
     {
         return fallback_mode;
     }
-    return latest_walk_mode_;
+    return latest_mode_command_;
 }
 
 bool DdsRobotIO::write_command(const rl_master::RobotCommandData &command)
@@ -169,16 +169,7 @@ void DdsRobotIO::spin_some()
     rclcpp::spin_some(node_);
 }
 
-bool DdsRobotIO::valid_walk_mode(int mode)
+bool DdsRobotIO::valid_mode_command(int mode)
 {
-    return mode == rl_master::kWalkModeCode ||
-           mode == rl_master::kStandModeCode ||
-           mode == rl_master::kFixStandModeCode ||
-           mode == rl_master::kCtrlWordStartPolicy ||
-           mode == rl_master::kCtrlWordStopPolicy ||
-           mode == rl_master::kCtrlWordZeroing ||
-           mode == rl_master::kCtrlWordEstop ||
-           mode == rl_master::kCtrlWordStartWalk ||
-           mode == rl_master::kCtrlWordStartStand ||
-           mode == rl_master::kCtrlWordStartFixStand;
+    return rl_master::DeployStateMachine::isValidControlWord(mode);
 }
