@@ -146,6 +146,7 @@ private:
     std::vector<ModeProfile> mode_profiles_;
     std::unordered_map<int, size_t> mode_to_profile_index_;
     int default_mode_id_ = rl_master::kWalkModeCode;
+    size_t active_profile_index_ = 0;
     int active_mode_id_ = rl_master::kWalkModeCode;
     int last_active_mode_id_ = std::numeric_limits<int>::min();
 
