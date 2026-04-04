@@ -250,31 +250,8 @@ void RobotSolver::getRLCmd()
         return;
     }
 
-    std::vector<float> target_q(kInstalledMotorCount, 0.0f);
-    std::vector<float> target_dq(kInstalledMotorCount, 0.0f);
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
-    {
-        joint_cmd_[i].q = dds_cmd.joint_target_q[i];
-        joint_cmd_[i].dq = dds_cmd.joint_target_dq[i];
-        joint_cmd_[i].tau = dds_cmd.joint_target_tau[i];
-
-        target_q[i] = joint_cmd_[i].q;
-        target_dq[i] = joint_cmd_[i].dq;
-        joint_cmd_[i].mode = (i == 0 || i == 1 || i == 2 || i == 6 || i == 7 || i == 8) ? RUN_MODE_R1 : RUN_MODE_CST;
-    }
-
-    const std::vector<float> joint_tau = computePdControl(target_q, target_dq);
-    constexpr float kPdScale = 1.0f;
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
-    {
-        if (joint_cmd_[i].mode == RUN_MODE_CST)
-        {
-            joint_cmd_[i].tau = joint_tau[i] * kPdScale;
-        }
-    }
-
     last_open_rl_ = open_rl_;
-    open_rl_ = static_cast<int>(dds_cmd.open_rl);
+    open_rl_ = static_cast<int>(std::lround(dds_cmd.open_rl));
 
     const double now_s = rl_master::monotonicTimeSec();
     latest_cmd_fresh_ = true;
@@ -296,6 +273,51 @@ void RobotSolver::getRLCmd()
         if (latest_cmd_fresh_)
         {
             last_cmd_seq_ = cmd_seq;
+        }
+    }
+
+    if (!latest_cmd_fresh_)
+    {
+        return;
+    }
+
+    const bool policy_mode = rl_master::isOpenRlPolicyEnabled(dds_cmd.open_rl);
+    const bool command_stream_mode = rl_master::isOpenRlCommandStream(dds_cmd.open_rl);
+
+    if (policy_mode)
+    {
+        std::vector<float> target_q(kInstalledMotorCount, 0.0f);
+        std::vector<float> target_dq(kInstalledMotorCount, 0.0f);
+        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        {
+            joint_cmd_[i].q = dds_cmd.joint_target_q[i];
+            joint_cmd_[i].dq = dds_cmd.joint_target_dq[i];
+            joint_cmd_[i].tau = dds_cmd.joint_target_tau[i];
+
+            target_q[i] = joint_cmd_[i].q;
+            target_dq[i] = joint_cmd_[i].dq;
+            joint_cmd_[i].mode = (i == 0 || i == 1 || i == 2 || i == 6 || i == 7 || i == 8) ? RUN_MODE_R1 : RUN_MODE_CST;
+        }
+
+        const std::vector<float> joint_tau = computePdControl(target_q, target_dq);
+        constexpr float kPdScale = 1.0f;
+        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        {
+            if (joint_cmd_[i].mode == RUN_MODE_CST)
+            {
+                joint_cmd_[i].tau = joint_tau[i] * kPdScale;
+            }
+        }
+    }
+    else if (command_stream_mode)
+    {
+        // Non-policy command stream: keep all joints in CSP and track commanded positions.
+        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        {
+            joint_cmd_[i].q = dds_cmd.joint_target_q[i];
+            joint_cmd_[i].dq = 0.0f;
+            joint_cmd_[i].tau = 0.0f;
+            joint_cmd_[i].mode = RUN_MODE_CSP;
         }
     }
 
@@ -503,18 +525,25 @@ void RobotSolver::run()
             dds_bridge_.spinOnce();
 
             getRLCmd();
-            if (open_rl_ == static_cast<int>(rl_master::kOpenRlEnabled) && !latest_cmd_fresh_)
+            const bool policy_mode_active = rl_master::isOpenRlPolicyEnabled(static_cast<float>(open_rl_));
+            const bool command_stream_active = rl_master::isOpenRlCommandStream(static_cast<float>(open_rl_));
+            const bool any_active_mode = policy_mode_active || command_stream_active;
+            if (any_active_mode && !latest_cmd_fresh_)
             {
                 open_rl_ = static_cast<int>(rl_master::kOpenRlDisabled);
             }
 
-            if (open_rl_ == static_cast<int>(rl_master::kOpenRlEnabled) &&
-                last_open_rl_ == static_cast<int>(rl_master::kOpenRlDisabled))
+            const bool last_policy_mode_active = rl_master::isOpenRlPolicyEnabled(static_cast<float>(last_open_rl_));
+            const bool current_policy_mode_active = rl_master::isOpenRlPolicyEnabled(static_cast<float>(open_rl_));
+            const bool current_command_stream_active = rl_master::isOpenRlCommandStream(static_cast<float>(open_rl_));
+            const bool current_any_active_mode = current_policy_mode_active || current_command_stream_active;
+
+            if (current_policy_mode_active && !last_policy_mode_active)
             {
                 start_time_ = std::chrono::high_resolution_clock::now();
             }
 
-            if (open_rl_ == static_cast<int>(rl_master::kOpenRlEnabled))
+            if (current_any_active_mode)
             {
                 getMotorState();
                 sendRLState();

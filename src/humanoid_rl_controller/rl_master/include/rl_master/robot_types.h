@@ -32,7 +32,7 @@ struct RobotCommandData
     std::array<float, kLegJointCount> joint_target_q{};
     std::array<float, kLegJointCount> joint_target_dq{};
     std::array<float, kLegJointCount> joint_target_tau{};
-    float open_rl = kOpenRlEnabled;
+    float open_rl = kOpenRlDisabled;
 };
 
 } // namespace rl_master

@@ -69,6 +69,11 @@
   - `stamp_sec`
 
 说明：保留了旧协议里的 `open_rl + seq + timestamp` 语义，便于继续沿用 watchdog 与兼容逻辑。
+当前建议语义：
+
+- `open_rl=0`: hold（不推理，solver 回退 CSP 持位）
+- `open_rl=10`: policy torque mode（推理控制，solver 使用 CST/R1 组合）
+- `open_rl=20`: command stream mode（非推理命令流，solver 使用 CSP 位置跟踪，如 zeroing）
 
 ### 3.2 `/humanoid/rl/state`
 

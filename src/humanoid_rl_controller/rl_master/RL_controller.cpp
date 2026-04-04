@@ -1579,7 +1579,7 @@ rl_master::RobotCommandData RL_controller::step(
         const std::vector<float> policy_action = run_policy();
         robot->joint_target_q = get_joint_target_q(policy_action);
         robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
-        robot->open_rl = rl_master::kOpenRlEnabled;
+        robot->open_rl = rl_master::kOpenRlPolicyEnabled;
     }
     else if (deploy_output.enable_command_stream)
     {
@@ -1590,7 +1590,8 @@ rl_master::RobotCommandData RL_controller::step(
             robot->joint_target_q[i] = deploy_output.target_q[i];
         }
         robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
-        robot->open_rl = rl_master::kOpenRlEnabled;
+        // Non-policy command stream (for lifecycle actions like zeroing).
+        robot->open_rl = rl_master::kOpenRlCommandStream;
         latest_policy_extra_outputs_.clear();
     }
     else

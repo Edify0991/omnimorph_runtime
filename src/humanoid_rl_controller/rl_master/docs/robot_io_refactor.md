@@ -24,6 +24,10 @@
 ## 协议兼容性
 
 - 命令布局语义保留：`open_rl + seq + timestamp`
+- `open_rl` 用作安全联锁 + 执行模式编码：
+  - `0`: hold / CSP
+  - `10`: policy torque
+  - `20`: non-policy command stream (CSP tracking)
 - `RL_solver` 的 watchdog 逻辑可直接复用
 - 状态机控制字已泛化：支持 `mode_id`、`1000+mode_id`、`2000+mode_id`
 - 生命周期控制字：`10/11/12/13`

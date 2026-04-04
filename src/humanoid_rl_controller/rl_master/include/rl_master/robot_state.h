@@ -41,7 +41,7 @@ public:
     Sim2realCfg sim2realCfg;
     StandSim2RealCfg standSim2RealCfg;
 
-    float open_rl = rl_master::kOpenRlEnabled;
+    float open_rl = rl_master::kOpenRlDisabled;
 
 private:
     void load_default_angles(const std::vector<std::pair<std::string, float>> &source, std::vector<float> *target) const;
