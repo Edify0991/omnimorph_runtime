@@ -124,7 +124,11 @@ private:
     void initReferenceMotionProvider(const Sim2realCfg &cfg, ReferenceMotionProvider *provider, const std::string &tag);
     ObservationFeatureContext buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t);
     void initDataLogger();
-    void logStepRecord(double phase_t, int requested_mode_command, const rl_master::DeployStateOutput &deploy_output);
+    void logStepRecord(
+        double phase_t,
+        double phase_t_global,
+        int requested_mode_command,
+        const rl_master::DeployStateOutput &deploy_output);
 
     void initModeProfiles();
     std::vector<ModeProfileSpec> loadModeProfileSpecsFromYaml() const;
@@ -147,6 +151,9 @@ private:
     rl_master::DeployLifecycleState last_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
     bool deploy_state_machine_initialized_ = false;
     size_t deploy_step_counter_ = 0;
+    double phase_origin_t_ = 0.0;
+    bool phase_origin_initialized_ = false;
+    bool phase_reset_pending_ = true;
 
     std::vector<float> action;
     std::vector<float> joint_target_q;

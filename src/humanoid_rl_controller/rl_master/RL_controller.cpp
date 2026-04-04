@@ -681,6 +681,7 @@ void RL_controller::handlePolicySwitch()
     joint_target_torque.assign(rl_master::kLegJointCount, 0.0f);
     latest_policy_extra_outputs_.clear();
     deploy_step_counter_ = 0;
+    phase_reset_pending_ = true;
     auto &profile = activeModeProfile();
     profile.reference_alignment_initialized = false;
     profile.reference_anchor_init_pos_w.clear();
@@ -1471,6 +1472,7 @@ void RL_controller::initDataLogger()
 
 void RL_controller::logStepRecord(
     double phase_t,
+    double phase_t_global,
     int requested_mode_command,
     const rl_master::DeployStateOutput &deploy_output)
 {
@@ -1482,6 +1484,8 @@ void RL_controller::logStepRecord(
     std::map<std::string, double> scalars;
     scalars["frame_index"] = static_cast<double>(data_log_frame_index_++);
     scalars["phase_t"] = phase_t;
+    scalars["phase_t_global"] = phase_t_global;
+    scalars["phase_origin_t"] = phase_origin_t_;
     scalars["requested_mode_command"] = static_cast<double>(requested_mode_command);
     scalars["active_mode_id"] = static_cast<double>(deploy_output.locomotion_mode);
     scalars["deploy_state"] = static_cast<double>(static_cast<int>(deploy_output.state));
@@ -1526,6 +1530,10 @@ void RL_controller::RL_controller_Init()
     handlePolicySwitch();
     deploy_state_machine_initialized_ = false;
     last_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
+    deploy_step_counter_ = 0;
+    phase_origin_t_ = 0.0;
+    phase_origin_initialized_ = false;
+    phase_reset_pending_ = true;
 
     start_time = std::chrono::high_resolution_clock::now();
     initDataLogger();
@@ -1552,11 +1560,27 @@ rl_master::RobotCommandData RL_controller::step(
 
     const double now_s = rl_master::monotonicTimeSec();
     const auto deploy_output = deploy_state_machine_.update(mode_command, now_s, robot->joint_q);
+    const auto previous_state = last_deploy_state_;
 
     refreshPolicyMode(deploy_output.locomotion_mode, true);
     handlePolicySwitch();
 
-    if (deploy_output.state != last_deploy_state_)
+    const bool entered_running =
+        (deploy_output.state == rl_master::DeployLifecycleState::kRunning) &&
+        (previous_state != rl_master::DeployLifecycleState::kRunning);
+    if (!phase_origin_initialized_ || phase_reset_pending_ || entered_running)
+    {
+        phase_origin_t_ = phase_t;
+        phase_origin_initialized_ = true;
+        phase_reset_pending_ = false;
+        if (entered_running)
+        {
+            deploy_step_counter_ = 0;
+        }
+    }
+    const double local_phase_t = std::max(0.0, phase_t - phase_origin_t_);
+
+    if (deploy_output.state != previous_state)
     {
         std::cout << "[RL_controller] lifecycle -> "
                   << rl_master::DeployStateMachine::stateName(deploy_output.state)
@@ -1573,13 +1597,14 @@ rl_master::RobotCommandData RL_controller::step(
 
     if (deploy_output.enable_policy)
     {
-        std::vector<float> current_obs = get_robot_observation(phase_t);
+        std::vector<float> current_obs = get_robot_observation(local_phase_t);
         update_obs_deque(current_obs);
 
         const std::vector<float> policy_action = run_policy();
         robot->joint_target_q = get_joint_target_q(policy_action);
         robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
         robot->open_rl = rl_master::kOpenRlPolicyEnabled;
+        ++deploy_step_counter_;
     }
     else if (deploy_output.enable_command_stream)
     {
@@ -1611,8 +1636,7 @@ rl_master::RobotCommandData RL_controller::step(
         out_cmd.joint_target_tau[i] = 0.0f;
     }
 
-    ++deploy_step_counter_;
-    logStepRecord(phase_t, mode_command, deploy_output);
+    logStepRecord(local_phase_t, phase_t, mode_command, deploy_output);
     return out_cmd;
 }
 
