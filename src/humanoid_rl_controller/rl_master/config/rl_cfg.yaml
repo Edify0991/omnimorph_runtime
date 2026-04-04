@@ -4,10 +4,11 @@ humanoid_rl_root_dir: "/home/nvidia/Documents/humanoid_jc/src/humanoid_rl_contro
 legged_gym_root_dir: "/path/to/legged_gym_root_dir"
 
 # walk_mode DDS control words (generic):
-# mode_id direct switch: [0..999]
 # start specific mode: 1000 + mode_id
 # set specific mode only: 2000 + mode_id
-# lifecycle controls: 10=START_POLICY, 11=STOP_POLICY, 12=ZEROING, 13=ESTOP
+# lifecycle controls (canonical): 10=START_POLICY, 11=STOP_POLICY, 12=ZEROING, 13=ESTOP
+# lifecycle controls (legacy, still accepted): 3001/3002/3003/3004
+# note: direct mode switch by plain mode_id is disabled to avoid ambiguity
 
 # Generic mode -> policy profile map. Add new mode_id entries for new scenes/models
 # without changing controller source code.

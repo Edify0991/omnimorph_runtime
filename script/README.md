@@ -141,9 +141,14 @@ DDS topics used by `joyLaunch.py`:
 
 Mode control is now generic in controller:
 
-- `0..999`: switch active `mode_id`
 - `1000 + mode_id`: switch mode and start policy
 - `2000 + mode_id`: switch mode only
+- `10/11/12/13`: `START_POLICY / STOP_POLICY / ZEROING / ESTOP`
+- `3001/3002/3003/3004`: legacy lifecycle words (still accepted for compatibility)
+
+Compatibility note:
+- Direct mode switch using plain `mode_id` is intentionally disabled to avoid ambiguity with lifecycle words.
+- For any `mode_id` switch, use `2000 + mode_id` (switch only) or `1000 + mode_id` (switch + start).
 
 ## `dds_selfcheck.sh` Quick Usage
 

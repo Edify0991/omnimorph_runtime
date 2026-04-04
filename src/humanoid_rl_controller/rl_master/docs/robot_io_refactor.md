@@ -29,8 +29,9 @@
   - `10`: policy torque
   - `20`: non-policy command stream (CSP tracking)
 - `RL_solver` 的 watchdog 逻辑可直接复用
-- 状态机控制字已泛化：支持 `mode_id`、`1000+mode_id`、`2000+mode_id`
-- 生命周期控制字：`10/11/12/13`
+- 状态机控制字已泛化：支持 `1000+mode_id`、`2000+mode_id`
+- 生命周期控制字（推荐）：`10/11/12/13`
+- 生命周期控制字（兼容）：`3001/3002/3003/3004`
 
 ## 清理结果
 

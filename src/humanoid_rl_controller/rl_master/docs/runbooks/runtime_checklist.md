@@ -167,5 +167,6 @@ python3 src/humanoid_rl_controller/rl_master/data_process.py \
 - Upper-level transport remains DDS-based.
 - Controller mode switching is profile-driven:
   - Configure `deploy_mode_profiles` in `config/rl_cfg.yaml`.
-  - Runtime control word channel supports `mode_id`, `1000+mode_id`, `2000+mode_id`.
+  - Runtime control word channel supports `1000+mode_id`, `2000+mode_id` (mode switch),
+    and lifecycle words `10/11/12/13` (legacy `3001/3002/3003/3004`).
 - To compare different models/parameters reliably, use metadata files as the source of truth for run context.

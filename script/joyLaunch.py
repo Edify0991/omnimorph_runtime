@@ -396,8 +396,8 @@ class JoyLaunchApp:
             (["btn_l1", "btn_a"], lambda: self.process_mgr.launch_script(sdir / "controller.sh", use_sudo=True)),
             (["btn_l1", "btn_r1"], self.process_mgr.stop_all),
             (["lt", "btn_y"], lambda: self.process_mgr.launch_script(sdir / "driver.sh", use_sudo=True)),
-            (["btn_l1", "dpad_y:-1"], lambda: self.shared.write_walk_mode(self.cfg.primary_mode_id)),
-            (["btn_l1", "btn_b"], lambda: self.shared.write_walk_mode(self.cfg.secondary_mode_id)),
+            (["btn_l1", "dpad_y:-1"], lambda: self.shared.write_walk_mode(2000 + self.cfg.primary_mode_id)),
+            (["btn_l1", "btn_b"], lambda: self.shared.write_walk_mode(2000 + self.cfg.secondary_mode_id)),
             (["btn_l1", "dpad_y:1"], lambda: self.shared.write_walk_mode(1000 + self.cfg.primary_mode_id)),
             # "Fix stand" semantics: stop policy and let solver hold current pose in CSP.
             (["btn_l1", "btn_y"], lambda: self.shared.write_walk_mode(DeployControlWord.STOP_POLICY)),
@@ -434,7 +434,7 @@ class JoyLaunchApp:
         self.control_mode = mode
         log(f"[MODE] Control mode -> {mode.name}")
         if mode == RobotControlMode.NAVIGATOR:
-            self.shared.write_walk_mode(self.cfg.primary_mode_id)
+            self.shared.write_walk_mode(2000 + self.cfg.primary_mode_id)
 
     def _receiver_cmd_callback(self, cmd: CmdDataStruct) -> None:
         if self.control_mode != RobotControlMode.NAVIGATOR:

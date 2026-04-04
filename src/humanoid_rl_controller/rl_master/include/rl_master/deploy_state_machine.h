@@ -9,16 +9,23 @@
 namespace rl_master
 {
 
-// Generic mode code range:
-// - publish [0, 999] to switch active mode only.
+// Generic mode id range (for deploy_mode_profiles mapping).
 constexpr int kModeCodeMin = 0;
 constexpr int kModeCodeMax = 999;
 
-// Extended control words (written to walk_mode control channel).
+// Lifecycle control words (written to walk_mode control channel).
+// 0..999 range is reserved for lifecycle commands in control channel.
 constexpr int kCtrlWordStartPolicy = 10;
 constexpr int kCtrlWordStopPolicy = 11;
 constexpr int kCtrlWordZeroing = 12;
 constexpr int kCtrlWordEstop = 13;
+
+// Legacy lifecycle words kept for compatibility with tools that used 3001..3004.
+constexpr int kLegacyCtrlWordLifecycleBase = 3000;
+constexpr int kLegacyCtrlWordStartPolicy = kLegacyCtrlWordLifecycleBase + 1;
+constexpr int kLegacyCtrlWordStopPolicy = kLegacyCtrlWordLifecycleBase + 2;
+constexpr int kLegacyCtrlWordZeroing = kLegacyCtrlWordLifecycleBase + 3;
+constexpr int kLegacyCtrlWordEstop = kLegacyCtrlWordLifecycleBase + 4;
 
 // Generic extended mode control:
 // - [1000, 1999]: set mode=(code-1000) and request start.

@@ -101,15 +101,17 @@
 
 控制字（泛化）：
 
-- `[0..999]`: 直接设置 `mode_id`
 - `1000 + mode_id`: 设置 `mode_id` 并 `START_POLICY`
 - `2000 + mode_id`: 仅设置 `mode_id`（不触发生命周期变更）
-- `10/11/12/13`: `START_POLICY / STOP_POLICY / ZEROING / ESTOP`
+- `10/11/12/13`: `START_POLICY / STOP_POLICY / ZEROING / ESTOP`（推荐）
+- `3001/3002/3003/3004`: 兼容旧版本生命周期控制字
 
 说明：
 
 - `fix_stand` 不再作为“策略模式”硬编码。
 - 若需要固定姿态保持（CSP 持位），应使用 `STOP_POLICY(11)` 进入 hold。
+- 为避免与生命周期控制字冲突，禁止使用“直接 `mode_id`”切模式；请始终使用
+  `2000 + mode_id`（仅切模式）或 `1000 + mode_id`（切模式并启动）。
 
 ## 4. 代码模块划分（规范化与模块化）
 
