@@ -22,15 +22,15 @@ constexpr long kControlPeriodNs = 2'000'000; // 500 Hz
 const std::vector<float> kHomePositions = {
     0.0f,
     0.0f,
-    -0.12f,
-    0.24f,
-    -0.12f,
+    -0.24f,
+    0.48f,
+    -0.24f,
     0.0f,
     0.0f,
     0.0f,
-    -0.12f,
-    0.24f,
-    -0.12f,
+    -0.24f,
+    0.48f,
+    -0.24f,
     0.0f,
 };
 
@@ -118,6 +118,8 @@ void RobotSolver::initializeBuffers()
     motor_state_dq_ = std::vector<float>(kMotorCountMax, 0.0f);
     motor_state_tau_ = std::vector<float>(kMotorCountMax, 0.0f);
     motor_cmd_mode_ = std::vector<float>(kMotorCountMax, 0.0f);
+    hold_target_q_ = std::vector<float>(kInstalledMotorCount, 0.0f);
+    hold_target_latched_ = false;
 
     for (size_t i = 0; i < kInstalledMotorCount; ++i)
     {
@@ -296,7 +298,8 @@ void RobotSolver::getRLCmd()
 
             target_q[i] = joint_cmd_[i].q;
             target_dq[i] = joint_cmd_[i].dq;
-            joint_cmd_[i].mode = (i == 0 || i == 1 || i == 2 || i == 6 || i == 7 || i == 8) ? RUN_MODE_R1 : RUN_MODE_CST;
+            // joint_cmd_[i].mode = (i == 0 || i == 1 || i == 2 || i == 6 || i == 7 || i == 8) ? RUN_MODE_R1 : RUN_MODE_CST;
+            joint_cmd_[i].mode = RUN_MODE_CST;
         }
 
         const std::vector<float> joint_tau = computePdControl(target_q, target_dq);
@@ -545,6 +548,7 @@ void RobotSolver::run()
 
             if (current_any_active_mode)
             {
+                hold_target_latched_ = false;
                 getMotorState();
                 sendRLState();
                 sendMotorCmd();
@@ -552,15 +556,20 @@ void RobotSolver::run()
             }
             else
             {
-                if (last_open_rl_ != open_rl_)
+                getMotorState();
+                if (!hold_target_latched_)
                 {
                     std::cout << "[RL_solver] hold mode active" << std::endl;
-                    getMotorState();
+                    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+                    {
+                        hold_target_q_[i] = joint_state_[i].q;
+                    }
+                    hold_target_latched_ = true;
                 }
 
                 for (size_t i = 0; i < kInstalledMotorCount; ++i)
                 {
-                    joint_cmd_[i].q = joint_state_[i].q;
+                    joint_cmd_[i].q = hold_target_q_[i];
                     joint_cmd_[i].dq = 0.0;
                     joint_cmd_[i].tau = 0.0;
                     joint_cmd_[i].mode = RUN_MODE_CSP;

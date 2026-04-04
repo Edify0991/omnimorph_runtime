@@ -74,6 +74,8 @@ private:
     std::vector<float> motor_state_dq_;
     std::vector<float> motor_state_tau_;
     std::vector<float> motor_cmd_mode_;
+    std::vector<float> hold_target_q_;
+    bool hold_target_latched_ = false;
 
     int open_rl_ = 0;
     int last_open_rl_ = 0;
