@@ -11,6 +11,7 @@ flowchart TD
 
     F[RobotState + Cmd + last_action + phase_t] --> G[RL_controller::buildObservationFeatureContext]
     H[ReferenceMotionProvider] --> G
+    H2[OnnxPolicyRunner extra outputs] --> G
     I[ExternalObservationProvider] --> G
 
     E --> J[ObservationBuilder::build]
@@ -50,6 +51,14 @@ Key code:
 - `base_ang_vel`: IMU angular velocity
 - `base_rpy`: base orientation in RPY
 - `reference_motion`: feature from `feature_context.named_features["reference_motion"]`
+- `reference_joint_pos`: reference joint positions (`joint_pos` from file/policy outputs)
+- `reference_joint_vel`: reference joint velocities (`joint_vel` from file/policy outputs)
+- `motion_anchor_pos_b` / `motion_ref_pos_b`: local-frame anchor position from reference body trajectory
+- `motion_anchor_ori_b` / `motion_ref_ori_b`: local-frame anchor orientation (rot6) from reference body trajectory
+- `motion_body_pos_b`: local-frame reference body positions
+- `motion_body_ori_b`: local-frame reference body orientations (rot6)
+- `robot_body_pos`: local-frame robot body positions (from `robot_body_pos_w` + `robot_body_quat_w`)
+- `robot_body_ori`: local-frame robot body orientations (rot6)
 - `external_sensor`: feature from `feature_context.named_features[source]`
 - `feature`: generic named feature slot from `feature_context`
 
@@ -67,20 +76,20 @@ Total dim: **47**
 | 41..43 | 3 | base_ang_vel |
 | 44..46 | 3 | base_rpy |
 
-## 5. BeyondMimic Layout (Current `observation_manifest_beyondmimic.yaml`)
+## 5. BeyondMimic Layout Template (`observation_manifest_beyondmimic.yaml`)
 
-Total dim: **71** (= AMP 47 + reference_motion 24)
+Current default keeps backward compatibility at **71** dims (`AMP 47 + reference_motion 24`), and provides extra BeyondMimic terms with `enabled: false`.
 
-| Index range | Dim | Term |
-|---|---:|---|
-| 0..1 | 2 | phase |
-| 2..4 | 3 | command(vx, vy, dyaw) |
-| 5..16 | 12 | joint_pos |
-| 17..28 | 12 | joint_vel |
-| 29..40 | 12 | last_action |
-| 41..43 | 3 | base_ang_vel |
-| 44..46 | 3 | base_rpy |
-| 47..70 | 24 | reference_motion |
+When enabling additional terms, total dim is:
+
+`47 + reference_motion + reference_joint_pos + reference_joint_vel + motion_anchor_pos_b + motion_anchor_ori_b + motion_body_pos_b + motion_body_ori_b + robot_body_pos + robot_body_ori`
+
+其中 body 相关项通常按 body 数量 N 设置：
+
+- `motion_body_pos_b = 3 * N`
+- `motion_body_ori_b = 6 * N`
+- `robot_body_pos = 3 * N`
+- `robot_body_ori = 6 * N`
 
 ## 6. External Sensor Append Example
 

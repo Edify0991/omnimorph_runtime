@@ -95,7 +95,10 @@ sim2real:
   enable_reference_motion: false
   reference_motion_dim: 24
   reference_motion_sampling: "phase"   # phase / step
+  reference_motion_source: "auto"      # auto / file / policy_outputs
   reference_motion_file: "reference_motion/walk_ref.txt"
+  reference_anchor_body: "base"
+  reference_body_names: []             # e.g. ["base", "left_foot", "right_foot"]
   external_observations:
     - name: vision_latent
       dim: 64
@@ -103,6 +106,13 @@ sim2real:
     - name: lidar_latent
       dim: 32
       required: false
+    # Optional (BeyondMimic robot body local terms):
+    # - name: robot_body_pos_w   # shape: 3 * body_count
+    #   dim: 24
+    #   required: false
+    # - name: robot_body_quat_w  # shape: 4 * body_count, xyzw
+    #   dim: 32
+    #   required: false
   onnx_intra_threads: 1
   onnx_inter_threads: 1
   policy_io:
@@ -269,7 +279,10 @@ stand_sim2real:
   enable_reference_motion: false
   reference_motion_dim: 24
   reference_motion_sampling: "phase"
+  reference_motion_source: "auto"
   reference_motion_file: "reference_motion/stand_ref.txt"
+  reference_anchor_body: "base"
+  reference_body_names: []
   external_observations:
     - name: vision_latent
       dim: 64

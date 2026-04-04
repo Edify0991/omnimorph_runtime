@@ -80,6 +80,21 @@ const std::vector<float> *findFeature(
     }
     return &it->second;
 }
+
+void appendFeatureVector(
+    const ObservationTermConfig &term,
+    const ObservationFeatureContext &feature_context,
+    const std::string &default_source_name,
+    std::vector<float> *out)
+{
+    const std::string source_name = term.source.empty() ? default_source_name : term.source;
+    const std::vector<float> *source = findFeature(feature_context, source_name);
+    const int max_count = source ? std::min(term.count, static_cast<int>(source->size())) : 0;
+    for (int i = 0; i < term.count; ++i)
+    {
+        pushPadded(out, (source && i < max_count) ? (*source)[static_cast<size_t>(i)] : 0.0f, i, max_count);
+    }
+}
 } // namespace
 
 ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_file)
@@ -121,9 +136,26 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
         {
             term.count = getCountOrDefault(term_node, 12);
         }
+        else if (term.name == "reference_joint_pos" || term.name == "reference_joint_vel")
+        {
+            term.count = getCountOrDefault(term_node, 12);
+        }
         else if (term.name == "base_ang_vel" || term.name == "base_rpy")
         {
             term.count = getCountOrDefault(term_node, 3);
+        }
+        else if (term.name == "motion_anchor_pos_b" || term.name == "motion_ref_pos_b")
+        {
+            term.count = getCountOrDefault(term_node, 3);
+        }
+        else if (term.name == "motion_anchor_ori_b" || term.name == "motion_ref_ori_b")
+        {
+            term.count = getCountOrDefault(term_node, 6);
+        }
+        else if (term.name == "motion_body_pos_b" || term.name == "motion_body_ori_b" ||
+                 term.name == "robot_body_pos" || term.name == "robot_body_ori")
+        {
+            term.count = getCountOrDefault(term_node, 0);
         }
         else if (term.name == "reference_motion" || term.name == "external_sensor" || term.name == "feature")
         {
@@ -284,26 +316,84 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           false}},
         {"reference_motion",
          {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
-              const std::string source_name = term.source.empty() ? "reference_motion" : term.source;
-              const std::vector<float> *source = findFeature(feature_context, source_name);
-              const int max_count = source ? std::min(term.count, static_cast<int>(source->size())) : 0;
-              for (int i = 0; i < term.count; ++i)
-              {
-                  pushPadded(out, (source && i < max_count) ? (*source)[static_cast<size_t>(i)] : 0.0f, i, max_count);
-              }
+              appendFeatureVector(term, feature_context, "reference_motion", out);
+          },
+          0,
+          true,
+          false}},
+        {"reference_joint_pos",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "reference_joint_pos", out);
+          },
+          12,
+          true,
+          false}},
+        {"reference_joint_vel",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "reference_joint_vel", out);
+          },
+          12,
+          true,
+          false}},
+        {"motion_anchor_pos_b",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "motion_anchor_pos_b", out);
+          },
+          3,
+          true,
+          false}},
+        {"motion_ref_pos_b",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "motion_anchor_pos_b", out);
+          },
+          3,
+          true,
+          false}},
+        {"motion_anchor_ori_b",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "motion_anchor_ori_b", out);
+          },
+          6,
+          true,
+          false}},
+        {"motion_ref_ori_b",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "motion_anchor_ori_b", out);
+          },
+          6,
+          true,
+          false}},
+        {"motion_body_pos_b",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "motion_body_pos_b", out);
+          },
+          0,
+          true,
+          false}},
+        {"motion_body_ori_b",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "motion_body_ori_b", out);
+          },
+          0,
+          true,
+          false}},
+        {"robot_body_pos",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "robot_body_pos", out);
+          },
+          0,
+          true,
+          false}},
+        {"robot_body_ori",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              appendFeatureVector(term, feature_context, "robot_body_ori", out);
           },
           0,
           true,
           false}},
         {"external_sensor",
          {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
-              const std::string source_name = term.source.empty() ? "external_sensor" : term.source;
-              const std::vector<float> *source = findFeature(feature_context, source_name);
-              const int max_count = source ? std::min(term.count, static_cast<int>(source->size())) : 0;
-              for (int i = 0; i < term.count; ++i)
-              {
-                  pushPadded(out, (source && i < max_count) ? (*source)[static_cast<size_t>(i)] : 0.0f, i, max_count);
-              }
+              appendFeatureVector(term, feature_context, "external_sensor", out);
           },
           0,
           true,
@@ -376,7 +466,10 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
         {
             throw std::runtime_error("phase term count cannot exceed 2");
         }
-        if ((term.name == "reference_motion" || term.name == "external_sensor" || term.name == "feature") && term.count <= 0)
+        if ((term.name == "reference_motion" || term.name == "external_sensor" || term.name == "feature" ||
+             term.name == "motion_body_pos_b" || term.name == "motion_body_ori_b" ||
+             term.name == "robot_body_pos" || term.name == "robot_body_ori") &&
+            term.count <= 0)
         {
             throw std::runtime_error(term.name + " term requires count > 0");
         }

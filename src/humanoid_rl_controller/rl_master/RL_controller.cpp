@@ -6,8 +6,12 @@ https://blog.csdn.net/m0_57254760/article/details/138304321
 #include "rl_master/RL_controller.h"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cstddef>
+#include <cmath>
 #include <map>
+#include <string>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -16,6 +20,18 @@ https://blog.csdn.net/m0_57254760/article/details/138304321
 
 namespace
 {
+struct Vec3
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
+struct Mat3
+{
+    std::array<float, 9> v{};
+};
+
 std::vector<double> toDoubleVector(const std::vector<float> &values)
 {
     std::vector<double> out(values.size(), 0.0);
@@ -24,6 +40,401 @@ std::vector<double> toDoubleVector(const std::vector<float> &values)
         out[i] = static_cast<double>(values[i]);
     }
     return out;
+}
+
+std::vector<float> fitDim(const std::vector<float> &values, size_t dim)
+{
+    std::vector<float> out(dim, 0.0f);
+    const size_t copy_n = std::min(values.size(), dim);
+    std::copy(values.begin(), values.begin() + static_cast<std::ptrdiff_t>(copy_n), out.begin());
+    return out;
+}
+
+Mat3 makeIdentity()
+{
+    Mat3 out;
+    out.v = {1.0f, 0.0f, 0.0f,
+             0.0f, 1.0f, 0.0f,
+             0.0f, 0.0f, 1.0f};
+    return out;
+}
+
+Mat3 transpose(const Mat3 &m)
+{
+    Mat3 out;
+    out.v = {m.v[0], m.v[3], m.v[6],
+             m.v[1], m.v[4], m.v[7],
+             m.v[2], m.v[5], m.v[8]};
+    return out;
+}
+
+Mat3 multiply(const Mat3 &a, const Mat3 &b)
+{
+    Mat3 out = makeIdentity();
+    for (int r = 0; r < 3; ++r)
+    {
+        for (int c = 0; c < 3; ++c)
+        {
+            float value = 0.0f;
+            for (int k = 0; k < 3; ++k)
+            {
+                value += a.v[static_cast<size_t>(r * 3 + k)] * b.v[static_cast<size_t>(k * 3 + c)];
+            }
+            out.v[static_cast<size_t>(r * 3 + c)] = value;
+        }
+    }
+    return out;
+}
+
+Vec3 subtract(const Vec3 &a, const Vec3 &b)
+{
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+Vec3 rotate(const Mat3 &m, const Vec3 &v)
+{
+    return {
+        m.v[0] * v.x + m.v[1] * v.y + m.v[2] * v.z,
+        m.v[3] * v.x + m.v[4] * v.y + m.v[5] * v.z,
+        m.v[6] * v.x + m.v[7] * v.y + m.v[8] * v.z};
+}
+
+float yawFromQuatXyzw(const std::vector<float> &quat_xyzw)
+{
+    if (quat_xyzw.size() < 4)
+    {
+        return 0.0f;
+    }
+    const float x = quat_xyzw[0];
+    const float y = quat_xyzw[1];
+    const float z = quat_xyzw[2];
+    const float w = quat_xyzw[3];
+    const float t3 = 2.0f * (w * z + x * y);
+    const float t4 = 1.0f - 2.0f * (y * y + z * z);
+    return std::atan2(t3, t4);
+}
+
+Mat3 yawRotation(float yaw)
+{
+    const float c = std::cos(yaw);
+    const float s = std::sin(yaw);
+    Mat3 out;
+    out.v = {c, -s, 0.0f,
+             s, c, 0.0f,
+             0.0f, 0.0f, 1.0f};
+    return out;
+}
+
+Mat3 quatToRotXyzw(float x, float y, float z, float w)
+{
+    const float norm = std::sqrt(x * x + y * y + z * z + w * w);
+    if (!std::isfinite(norm) || norm < 1e-8f)
+    {
+        return makeIdentity();
+    }
+    x /= norm;
+    y /= norm;
+    z /= norm;
+    w /= norm;
+
+    Mat3 out;
+    out.v = {
+        1.0f - 2.0f * (y * y + z * z), 2.0f * (x * y - z * w), 2.0f * (x * z + y * w),
+        2.0f * (x * y + z * w), 1.0f - 2.0f * (x * x + z * z), 2.0f * (y * z - x * w),
+        2.0f * (x * z - y * w), 2.0f * (y * z + x * w), 1.0f - 2.0f * (x * x + y * y)};
+    return out;
+}
+
+Mat3 quatToRotXyzw(const std::vector<float> &quat_xyzw)
+{
+    if (quat_xyzw.size() < 4)
+    {
+        return makeIdentity();
+    }
+    return quatToRotXyzw(quat_xyzw[0], quat_xyzw[1], quat_xyzw[2], quat_xyzw[3]);
+}
+
+bool extractVec3(const std::vector<float> &data, size_t index, Vec3 *out)
+{
+    const size_t offset = index * 3;
+    if (!out || offset + 2 >= data.size())
+    {
+        return false;
+    }
+    out->x = data[offset + 0];
+    out->y = data[offset + 1];
+    out->z = data[offset + 2];
+    return std::isfinite(out->x) && std::isfinite(out->y) && std::isfinite(out->z);
+}
+
+bool extractQuatXyzw(const std::vector<float> &data, size_t index, std::vector<float> *out)
+{
+    const size_t offset = index * 4;
+    if (!out || offset + 3 >= data.size())
+    {
+        return false;
+    }
+    out->assign({data[offset + 0], data[offset + 1], data[offset + 2], data[offset + 3]});
+    return std::isfinite((*out)[0]) && std::isfinite((*out)[1]) && std::isfinite((*out)[2]) && std::isfinite((*out)[3]);
+}
+
+std::vector<float> rotToRot6(const Mat3 &rot)
+{
+    return {rot.v[0], rot.v[1], rot.v[3], rot.v[4], rot.v[6], rot.v[7]};
+}
+
+std::vector<float> convertQuatVectorWxyzToXyzw(const std::vector<float> &wxyz)
+{
+    if (wxyz.size() % 4 != 0)
+    {
+        return {};
+    }
+    std::vector<float> out(wxyz.size(), 0.0f);
+    for (size_t i = 0; i < wxyz.size(); i += 4)
+    {
+        out[i + 0] = wxyz[i + 1];
+        out[i + 1] = wxyz[i + 2];
+        out[i + 2] = wxyz[i + 3];
+        out[i + 3] = wxyz[i + 0];
+    }
+    return out;
+}
+
+const std::vector<float> *findNamedFeature(
+    const std::unordered_map<std::string, std::vector<float>> &features,
+    const std::string &name)
+{
+    const auto it = features.find(name);
+    if (it == features.end())
+    {
+        return nullptr;
+    }
+    return &it->second;
+}
+
+const std::vector<float> *findExtraOutputByName(
+    const std::unordered_map<std::string, std::vector<float>> &extra_outputs,
+    const std::string &preferred_prefix,
+    const std::string &output_name)
+{
+    const std::string preferred_key = preferred_prefix + output_name;
+    const auto preferred_it = extra_outputs.find(preferred_key);
+    if (preferred_it != extra_outputs.end())
+    {
+        return &preferred_it->second;
+    }
+
+    const std::string suffix = "/" + output_name;
+    for (const auto &[key, value] : extra_outputs)
+    {
+        if (key.size() >= suffix.size() &&
+            key.compare(key.size() - suffix.size(), suffix.size(), suffix) == 0)
+        {
+            return &value;
+        }
+    }
+    return nullptr;
+}
+
+void setFeatureIfNonEmpty(
+    ObservationFeatureContext *feature_context,
+    const std::string &name,
+    const std::vector<float> &values)
+{
+    if (!feature_context || values.empty())
+    {
+        return;
+    }
+    feature_context->named_features[name] = values;
+}
+
+size_t resolveAnchorIndex(
+    const std::vector<std::string> &body_names,
+    const std::string &anchor_body)
+{
+    if (body_names.empty())
+    {
+        return 0;
+    }
+    if (!anchor_body.empty())
+    {
+        for (size_t i = 0; i < body_names.size(); ++i)
+        {
+            if (body_names[i] == anchor_body)
+            {
+                return i;
+            }
+        }
+    }
+    return 0;
+}
+
+bool buildReferenceMotionLocalFeatures(
+    const std::vector<float> &reference_body_pos_w,
+    const std::vector<float> &reference_body_quat_w_xyzw,
+    size_t anchor_index,
+    const std::vector<float> &reference_anchor_init_pos_w,
+    const std::vector<float> &reference_anchor_init_quat_w,
+    const std::vector<float> &robot_base_init_quat_w,
+    const std::vector<float> &robot_base_curr_quat_w,
+    std::vector<float> *motion_anchor_pos_b,
+    std::vector<float> *motion_anchor_ori_b,
+    std::vector<float> *motion_body_pos_b,
+    std::vector<float> *motion_body_ori_b)
+{
+    if (reference_body_pos_w.size() % 3 != 0 ||
+        reference_body_quat_w_xyzw.size() % 4 != 0)
+    {
+        return false;
+    }
+    const size_t body_count = std::min(reference_body_pos_w.size() / 3, reference_body_quat_w_xyzw.size() / 4);
+    if (body_count == 0 || anchor_index >= body_count)
+    {
+        return false;
+    }
+    if (reference_anchor_init_pos_w.size() < 3 ||
+        reference_anchor_init_quat_w.size() < 4 ||
+        robot_base_init_quat_w.size() < 4 ||
+        robot_base_curr_quat_w.size() < 4)
+    {
+        return false;
+    }
+
+    Vec3 anchor_ref_init{};
+    anchor_ref_init.x = reference_anchor_init_pos_w[0];
+    anchor_ref_init.y = reference_anchor_init_pos_w[1];
+    anchor_ref_init.z = reference_anchor_init_pos_w[2];
+
+    const Mat3 ref_init_yaw = yawRotation(yawFromQuatXyzw(reference_anchor_init_quat_w));
+    const Mat3 robot_init_yaw = yawRotation(yawFromQuatXyzw(robot_base_init_quat_w));
+    const Mat3 robot_curr_yaw = yawRotation(yawFromQuatXyzw(robot_base_curr_quat_w));
+    const Mat3 world_to_init = multiply(robot_init_yaw, transpose(ref_init_yaw));
+    const Mat3 world_to_base_local = transpose(robot_curr_yaw);
+    const Mat3 local_rot = multiply(world_to_base_local, world_to_init);
+
+    Vec3 anchor_ref_curr{};
+    std::vector<float> anchor_ref_quat;
+    if (!extractVec3(reference_body_pos_w, anchor_index, &anchor_ref_curr) ||
+        !extractQuatXyzw(reference_body_quat_w_xyzw, anchor_index, &anchor_ref_quat))
+    {
+        return false;
+    }
+    const Vec3 anchor_delta = subtract(anchor_ref_curr, anchor_ref_init);
+    const Vec3 anchor_local = rotate(local_rot, anchor_delta);
+    const Mat3 anchor_rot_local = multiply(local_rot, quatToRotXyzw(anchor_ref_quat));
+
+    if (motion_anchor_pos_b)
+    {
+        motion_anchor_pos_b->assign({anchor_local.x, anchor_local.y, anchor_local.z});
+    }
+    if (motion_anchor_ori_b)
+    {
+        *motion_anchor_ori_b = rotToRot6(anchor_rot_local);
+    }
+    if (motion_body_pos_b)
+    {
+        motion_body_pos_b->clear();
+        motion_body_pos_b->reserve(body_count * 3);
+    }
+    if (motion_body_ori_b)
+    {
+        motion_body_ori_b->clear();
+        motion_body_ori_b->reserve(body_count * 6);
+    }
+
+    for (size_t i = 0; i < body_count; ++i)
+    {
+        Vec3 body_pos{};
+        std::vector<float> body_quat;
+        if (!extractVec3(reference_body_pos_w, i, &body_pos) ||
+            !extractQuatXyzw(reference_body_quat_w_xyzw, i, &body_quat))
+        {
+            continue;
+        }
+
+        const Vec3 body_delta = subtract(body_pos, anchor_ref_init);
+        const Vec3 body_local = rotate(local_rot, body_delta);
+        const Mat3 body_rot_local = multiply(local_rot, quatToRotXyzw(body_quat));
+
+        if (motion_body_pos_b)
+        {
+            motion_body_pos_b->push_back(body_local.x);
+            motion_body_pos_b->push_back(body_local.y);
+            motion_body_pos_b->push_back(body_local.z);
+        }
+        if (motion_body_ori_b)
+        {
+            const auto rot6 = rotToRot6(body_rot_local);
+            motion_body_ori_b->insert(motion_body_ori_b->end(), rot6.begin(), rot6.end());
+        }
+    }
+    return true;
+}
+
+bool buildRobotBodyLocalFeatures(
+    const std::vector<float> &robot_body_pos_w,
+    const std::vector<float> &robot_body_quat_w_xyzw,
+    size_t anchor_index,
+    std::vector<float> *robot_body_pos_b,
+    std::vector<float> *robot_body_ori_b)
+{
+    if (robot_body_pos_w.size() % 3 != 0 ||
+        robot_body_quat_w_xyzw.size() % 4 != 0)
+    {
+        return false;
+    }
+    const size_t body_count = std::min(robot_body_pos_w.size() / 3, robot_body_quat_w_xyzw.size() / 4);
+    if (body_count == 0 || anchor_index >= body_count)
+    {
+        return false;
+    }
+
+    Vec3 anchor_pos{};
+    std::vector<float> anchor_quat;
+    if (!extractVec3(robot_body_pos_w, anchor_index, &anchor_pos) ||
+        !extractQuatXyzw(robot_body_quat_w_xyzw, anchor_index, &anchor_quat))
+    {
+        return false;
+    }
+    const Mat3 anchor_inv = transpose(quatToRotXyzw(anchor_quat));
+
+    if (robot_body_pos_b)
+    {
+        robot_body_pos_b->clear();
+        robot_body_pos_b->reserve(body_count * 3);
+    }
+    if (robot_body_ori_b)
+    {
+        robot_body_ori_b->clear();
+        robot_body_ori_b->reserve(body_count * 6);
+    }
+
+    for (size_t i = 0; i < body_count; ++i)
+    {
+        Vec3 body_pos{};
+        std::vector<float> body_quat;
+        if (!extractVec3(robot_body_pos_w, i, &body_pos) ||
+            !extractQuatXyzw(robot_body_quat_w_xyzw, i, &body_quat))
+        {
+            continue;
+        }
+
+        const Vec3 body_local_pos = rotate(anchor_inv, subtract(body_pos, anchor_pos));
+        const Mat3 body_local_rot = multiply(anchor_inv, quatToRotXyzw(body_quat));
+
+        if (robot_body_pos_b)
+        {
+            robot_body_pos_b->push_back(body_local_pos.x);
+            robot_body_pos_b->push_back(body_local_pos.y);
+            robot_body_pos_b->push_back(body_local_pos.z);
+        }
+        if (robot_body_ori_b)
+        {
+            const auto rot6 = rotToRot6(body_local_rot);
+            robot_body_ori_b->insert(robot_body_ori_b->end(), rot6.begin(), rot6.end());
+        }
+    }
+    return true;
 }
 } // namespace
 
@@ -250,6 +661,11 @@ void RL_controller::handlePolicySwitch()
     joint_target_torque.assign(rl_master::kLegJointCount, 0.0f);
     latest_policy_extra_outputs_.clear();
     deploy_step_counter_ = 0;
+    auto &profile = activeModeProfile();
+    profile.reference_alignment_initialized = false;
+    profile.reference_anchor_init_pos_w.clear();
+    profile.reference_anchor_init_quat_w.clear();
+    profile.robot_base_init_quat_w.clear();
 
     if (cfg.reset_policy_on_mode_switch)
     {
@@ -642,10 +1058,20 @@ void RL_controller::initReferenceMotionProvider(const Sim2realCfg &cfg, Referenc
     {
         return;
     }
-    if (cfg.reference_motion_dim <= 0 || cfg.reference_motion_path.empty())
+
+    std::string source = cfg.reference_motion_source;
+    std::transform(source.begin(), source.end(), source.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (source == "policy_outputs")
     {
-        std::cerr << "[RL_controller][" << tag << "] reference motion config invalid. dim="
-                  << cfg.reference_motion_dim << ", path=" << cfg.reference_motion_path << std::endl;
+        return;
+    }
+    if (cfg.reference_motion_path.empty())
+    {
+        if (source == "file")
+        {
+            std::cerr << "[RL_controller][" << tag << "] reference_motion_source=file but reference_motion_path is empty."
+                      << std::endl;
+        }
         return;
     }
 
@@ -656,33 +1082,201 @@ void RL_controller::initReferenceMotionProvider(const Sim2realCfg &cfg, Referenc
         return;
     }
 
+    const auto &metadata = provider->metadata();
     std::cout << "[RL_controller][" << tag << "] reference motion loaded. frames="
-              << provider->frameCount() << ", dim=" << provider->dim() << std::endl;
+              << provider->frameCount() << ", dim=" << provider->dim()
+              << ", source_format=" << metadata.source_format
+              << ", body_count=" << metadata.body_names.size() << std::endl;
 }
 
 ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t)
 {
     ObservationFeatureContext feature_context;
-
-    if (cfg.enable_reference_motion && cfg.reference_motion_dim > 0)
-    {
-        const auto &provider = activeReferenceMotionProvider();
-        if (cfg.reference_motion_sampling == "step")
-        {
-            feature_context.named_features["reference_motion"] =
-                provider.sampleByStep(deploy_step_counter_, cfg.reference_motion_dim);
-        }
-        else
-        {
-            feature_context.named_features["reference_motion"] =
-                provider.sampleByPhase(phase_t, cfg.cycle_time, cfg.reference_motion_dim);
-        }
-    }
+    auto &profile = activeModeProfile();
+    std::string source = cfg.reference_motion_source;
+    std::transform(source.begin(), source.end(), source.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
     auto external = external_observation_provider_.collect(cfg.external_observations);
     for (auto &kv : external)
     {
         feature_context.named_features.emplace(std::move(kv.first), std::move(kv.second));
+    }
+
+    const bool enable_reference = cfg.enable_reference_motion;
+    const bool use_file_source = enable_reference && source != "policy_outputs";
+    const bool use_policy_source = enable_reference && source != "file";
+    const int reference_motion_dim = cfg.reference_motion_dim > 0 ? cfg.reference_motion_dim : activeReferenceMotionProvider().dim();
+
+    if (use_file_source && activeReferenceMotionProvider().available())
+    {
+        const auto &provider = activeReferenceMotionProvider();
+        const ReferenceMotionFrame sampled_frame =
+            (cfg.reference_motion_sampling == "step")
+                ? provider.sampleFrameByStep(deploy_step_counter_, reference_motion_dim)
+                : provider.sampleFrameByPhase(phase_t, cfg.cycle_time, reference_motion_dim);
+
+        if (!sampled_frame.reference_motion.empty())
+        {
+            setFeatureIfNonEmpty(
+                &feature_context,
+                "reference_motion",
+                reference_motion_dim > 0 ? fitDim(sampled_frame.reference_motion, static_cast<size_t>(reference_motion_dim))
+                                         : sampled_frame.reference_motion);
+        }
+        setFeatureIfNonEmpty(&feature_context, "reference_joint_pos", sampled_frame.joint_pos);
+        setFeatureIfNonEmpty(&feature_context, "reference_joint_vel", sampled_frame.joint_vel);
+        setFeatureIfNonEmpty(&feature_context, "reference_body_pos_w", sampled_frame.body_pos_w);
+        setFeatureIfNonEmpty(&feature_context, "reference_body_quat_w", sampled_frame.body_quat_w);
+    }
+
+    if (use_policy_source)
+    {
+        const std::string preferred_prefix = profile.tag + "/main/";
+        if (const auto *joint_pos = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "joint_pos"))
+        {
+            setFeatureIfNonEmpty(&feature_context, "reference_joint_pos", *joint_pos);
+        }
+        if (const auto *joint_vel = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "joint_vel"))
+        {
+            setFeatureIfNonEmpty(&feature_context, "reference_joint_vel", *joint_vel);
+        }
+        if (const auto *body_pos_w = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "body_pos_w"))
+        {
+            setFeatureIfNonEmpty(&feature_context, "reference_body_pos_w", *body_pos_w);
+        }
+        if (const auto *body_quat_w = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "body_quat_w"))
+        {
+            const std::vector<float> quat_xyzw = convertQuatVectorWxyzToXyzw(*body_quat_w);
+            setFeatureIfNonEmpty(&feature_context, "reference_body_quat_w", quat_xyzw);
+        }
+    }
+
+    if (findNamedFeature(feature_context.named_features, "reference_motion") == nullptr)
+    {
+        const auto *joint_pos = findNamedFeature(feature_context.named_features, "reference_joint_pos");
+        const auto *joint_vel = findNamedFeature(feature_context.named_features, "reference_joint_vel");
+        if (joint_pos && joint_vel)
+        {
+            std::vector<float> packed;
+            packed.reserve(joint_pos->size() + joint_vel->size());
+            packed.insert(packed.end(), joint_pos->begin(), joint_pos->end());
+            packed.insert(packed.end(), joint_vel->begin(), joint_vel->end());
+            if (reference_motion_dim > 0)
+            {
+                packed = fitDim(packed, static_cast<size_t>(reference_motion_dim));
+            }
+            setFeatureIfNonEmpty(&feature_context, "reference_motion", packed);
+        }
+    }
+    if (reference_motion_dim > 0 &&
+        findNamedFeature(feature_context.named_features, "reference_motion") == nullptr)
+    {
+        feature_context.named_features["reference_motion"] =
+            std::vector<float>(static_cast<size_t>(reference_motion_dim), 0.0f);
+    }
+
+    std::vector<std::string> body_names = cfg.reference_body_names;
+    std::string anchor_body = cfg.reference_anchor_body;
+    if (activeReferenceMotionProvider().available())
+    {
+        const auto &provider_metadata = activeReferenceMotionProvider().metadata();
+        if (!provider_metadata.body_names.empty())
+        {
+            body_names = provider_metadata.body_names;
+        }
+        if (!provider_metadata.anchor_body.empty())
+        {
+            anchor_body = provider_metadata.anchor_body;
+        }
+    }
+
+    const auto *reference_body_pos_w = findNamedFeature(feature_context.named_features, "reference_body_pos_w");
+    const auto *reference_body_quat_w = findNamedFeature(feature_context.named_features, "reference_body_quat_w");
+    if (reference_body_pos_w && reference_body_quat_w &&
+        reference_body_pos_w->size() % 3 == 0 && reference_body_quat_w->size() % 4 == 0)
+    {
+        const size_t body_count = std::min(reference_body_pos_w->size() / 3, reference_body_quat_w->size() / 4);
+        if (body_names.empty())
+        {
+            body_names.reserve(body_count);
+            for (size_t i = 0; i < body_count; ++i)
+            {
+                body_names.push_back("body_" + std::to_string(i));
+            }
+        }
+
+        const size_t anchor_index = resolveAnchorIndex(body_names, anchor_body);
+        Vec3 anchor_pos{};
+        std::vector<float> anchor_quat;
+        if (anchor_index < body_count &&
+            extractVec3(*reference_body_pos_w, anchor_index, &anchor_pos) &&
+            extractQuatXyzw(*reference_body_quat_w, anchor_index, &anchor_quat))
+        {
+            if (!profile.reference_alignment_initialized)
+            {
+                profile.reference_anchor_init_pos_w = {anchor_pos.x, anchor_pos.y, anchor_pos.z};
+                profile.reference_anchor_init_quat_w = anchor_quat;
+                profile.robot_base_init_quat_w = robot->base_quat;
+                profile.reference_alignment_initialized = true;
+            }
+
+            std::vector<float> motion_anchor_pos_b;
+            std::vector<float> motion_anchor_ori_b;
+            std::vector<float> motion_body_pos_b;
+            std::vector<float> motion_body_ori_b;
+            if (buildReferenceMotionLocalFeatures(
+                    *reference_body_pos_w,
+                    *reference_body_quat_w,
+                    anchor_index,
+                    profile.reference_anchor_init_pos_w,
+                    profile.reference_anchor_init_quat_w,
+                    profile.robot_base_init_quat_w,
+                    robot->base_quat,
+                    &motion_anchor_pos_b,
+                    &motion_anchor_ori_b,
+                    &motion_body_pos_b,
+                    &motion_body_ori_b))
+            {
+                setFeatureIfNonEmpty(&feature_context, "motion_anchor_pos_b", motion_anchor_pos_b);
+                setFeatureIfNonEmpty(&feature_context, "motion_ref_pos_b", motion_anchor_pos_b);
+                setFeatureIfNonEmpty(&feature_context, "motion_anchor_ori_b", motion_anchor_ori_b);
+                setFeatureIfNonEmpty(&feature_context, "motion_ref_ori_b", motion_anchor_ori_b);
+                setFeatureIfNonEmpty(&feature_context, "motion_body_pos_b", motion_body_pos_b);
+                setFeatureIfNonEmpty(&feature_context, "motion_body_ori_b", motion_body_ori_b);
+            }
+        }
+    }
+
+    const auto *robot_body_pos_w = findNamedFeature(feature_context.named_features, "robot_body_pos_w");
+    const auto *robot_body_quat_w = findNamedFeature(feature_context.named_features, "robot_body_quat_w");
+    if (robot_body_pos_w && robot_body_quat_w &&
+        robot_body_pos_w->size() % 3 == 0 && robot_body_quat_w->size() % 4 == 0)
+    {
+        const size_t body_count = std::min(robot_body_pos_w->size() / 3, robot_body_quat_w->size() / 4);
+        if (body_count > 0)
+        {
+            if (body_names.empty())
+            {
+                body_names.reserve(body_count);
+                for (size_t i = 0; i < body_count; ++i)
+                {
+                    body_names.push_back("body_" + std::to_string(i));
+                }
+            }
+            const size_t anchor_index = resolveAnchorIndex(body_names, anchor_body);
+            std::vector<float> robot_body_pos_b;
+            std::vector<float> robot_body_ori_b;
+            if (buildRobotBodyLocalFeatures(
+                    *robot_body_pos_w,
+                    *robot_body_quat_w,
+                    anchor_index,
+                    &robot_body_pos_b,
+                    &robot_body_ori_b))
+            {
+                setFeatureIfNonEmpty(&feature_context, "robot_body_pos", robot_body_pos_b);
+                setFeatureIfNonEmpty(&feature_context, "robot_body_ori", robot_body_ori_b);
+            }
+        }
     }
 
     return feature_context;
@@ -735,15 +1329,25 @@ void RL_controller::initDataLogger()
         metadata.string_fields[prefix + "policy_family"] = profile.cfg.policy_family;
         metadata.string_fields[prefix + "policy_path"] = profile.cfg.policy_path;
         metadata.string_fields[prefix + "observation_manifest"] = profile.cfg.observation_manifest_path;
+        metadata.string_fields[prefix + "reference_motion_source"] = profile.cfg.reference_motion_source;
+        metadata.string_fields[prefix + "reference_motion_path"] = profile.cfg.reference_motion_path;
+        metadata.string_fields[prefix + "reference_anchor_body_cfg"] = profile.cfg.reference_anchor_body;
+        metadata.string_fields[prefix + "reference_source_format"] = profile.reference_motion.metadata().source_format;
+        metadata.string_fields[prefix + "reference_anchor_body_loaded"] = profile.reference_motion.metadata().anchor_body;
 
         metadata.vector_fields[prefix + "kps"] = toDoubleVector(profile.cfg.kps);
         metadata.vector_fields[prefix + "kds"] = toDoubleVector(profile.cfg.kds);
         metadata.vector_fields[prefix + "tau_limit"] = toDoubleVector(profile.cfg.tau_limit);
+        metadata.numeric_fields[prefix + "reference_motion_dim_cfg"] = static_cast<double>(profile.cfg.reference_motion_dim);
+        metadata.numeric_fields[prefix + "reference_motion_dim_loaded"] = static_cast<double>(profile.reference_motion.dim());
+        metadata.numeric_fields[prefix + "reference_motion_frames"] = static_cast<double>(profile.reference_motion.frameCount());
 
         metadata.string_list_fields[prefix + "action_joint_order"] = profile.cfg.action_joint_order;
         metadata.string_list_fields[prefix + "obs_joint_order"] = profile.cfg.obs_joint_order;
         metadata.string_list_fields[prefix + "sub_model_names"] = collectSubModelNames(profile.cfg);
         metadata.string_list_fields[prefix + "sub_model_paths"] = collectSubModelPaths(profile.cfg);
+        metadata.string_list_fields[prefix + "reference_body_names_cfg"] = profile.cfg.reference_body_names;
+        metadata.string_list_fields[prefix + "reference_body_names_loaded"] = profile.reference_motion.metadata().body_names;
     }
 
     if (!data_logger_->open(runtime_cfg.data_path, "controller", metadata))

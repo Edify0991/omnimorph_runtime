@@ -108,6 +108,9 @@ public:
     std::string reference_motion_file;
     std::string reference_motion_path;
     std::string reference_motion_sampling = "phase"; // phase / step
+    std::string reference_motion_source = "auto";    // auto / file / policy_outputs
+    std::string reference_anchor_body = "base";
+    std::vector<std::string> reference_body_names;
     std::vector<ExternalObservationSpec> external_observations;
 
     bool auto_start_policy = true;
@@ -294,6 +297,9 @@ public:
             reference_motion_dim = yamlReadOr<int>(cfg, "reference_motion_dim", 0);
             reference_motion_file = yamlReadOr<std::string>(cfg, "reference_motion_file", "");
             reference_motion_sampling = yamlReadOr<std::string>(cfg, "reference_motion_sampling", "phase");
+            reference_motion_source = yamlReadOr<std::string>(cfg, "reference_motion_source", "auto");
+            reference_anchor_body = yamlReadOr<std::string>(cfg, "reference_anchor_body", "base");
+            reference_body_names = yamlReadOr<std::vector<std::string>>(cfg, "reference_body_names", {});
             const std::string reference_motion_path_raw = yamlReadOr<std::string>(cfg, "reference_motion_path", "");
             if (!reference_motion_path_raw.empty())
             {
@@ -391,6 +397,8 @@ public:
         std::cout << "Control Mode: " << control_mode << std::endl;
         std::cout << "RL Control Frequency: " << RL_control_f << std::endl;
         std::cout << "Sub Models: " << sub_models.size() << std::endl;
+        std::cout << "Reference Motion Source: " << reference_motion_source << std::endl;
+        std::cout << "Reference Motion Path: " << reference_motion_path << std::endl;
         std::cout << "External Obs Inputs: " << external_observations.size() << std::endl;
         std::cout << "=============================" << std::endl;
     }

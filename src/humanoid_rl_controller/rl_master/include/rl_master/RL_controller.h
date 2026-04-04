@@ -99,6 +99,10 @@ private:
         std::unique_ptr<ObservationBuilder> observation_builder;
         PolicyRuntimeGroup policy_group;
         ReferenceMotionProvider reference_motion;
+        bool reference_alignment_initialized = false;
+        std::vector<float> reference_anchor_init_pos_w;
+        std::vector<float> reference_anchor_init_quat_w;
+        std::vector<float> robot_base_init_quat_w;
     };
 
     static const std::array<std::string, rl_master::kLegJointCount> &canonicalJointOrder();

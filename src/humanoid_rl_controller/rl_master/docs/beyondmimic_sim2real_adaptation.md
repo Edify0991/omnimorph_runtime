@@ -1,43 +1,91 @@
-# BeyondMimic Sim2Real Adaptation (DDS Transport + SHM Motor Loop)
+# BeyondMimic Sim2Real Adaptation (DDS + SHM Motor Loop)
 
-This project keeps ROS2 build/packaging, migrates upper runtime transport to DDS topics, and retains shared-memory only for the motor target/feedback closed loop.
+This repository now aligns the reference-motion path with the BeyondMimic-style deploy pattern while keeping your hard boundary:
 
-## What Was Added
+- Motor closed loop stays on shared memory (`sendMotorCmd` / `getMotorState`).
+- Upper-level transport stays on DDS.
+- Reference motion can come from file, ONNX extra outputs, or both.
 
-- A unified ONNX runner: `OnnxPolicyRunner`
-  - Supports named input/output binding.
-  - Supports optional `time_step` input (BeyondMimic-style rollout counter).
-  - Supports optional multi-output extraction (`extra_output_names`).
-  - Supports strict/compat modes for model I/O checks.
-- Per-policy observation builder separation
-  - Walk and Stand can now use different observation manifests and dimensions.
-- Policy-switch reset behavior
-  - On mode-profile switch, stacked observation buffer and policy internal step can reset safely.
-- Runtime lifecycle state machine
-  - `START_POLICY / STOP_POLICY / ZEROING / ESTOP` via `walk_mode` control words.
-  - Generic mode switching via `mode_id`, `1000+mode_id`, `2000+mode_id`.
-- Multi-model runtime hook
-  - Primary policy with optional weighted `sub_models` ensemble.
-- Observation feature context
-  - Added `reference_motion` and `external_sensor` terms for BeyondMimic-style and multimodal deploy.
+## 1. Added Observation Terms
 
-## Config Keys
+`ObservationBuilder` now supports these BeyondMimic-related terms:
 
-In each policy block (`sim2real`, `stand_sim2real`), use:
+- `reference_joint_pos`
+- `reference_joint_vel`
+- `motion_anchor_pos_b` (alias: `motion_ref_pos_b`)
+- `motion_anchor_ori_b` (alias: `motion_ref_ori_b`)
+- `motion_body_pos_b`
+- `motion_body_ori_b`
+- `robot_body_pos`
+- `robot_body_ori`
+
+Meaning:
+
+- `motion_*`: local-frame features derived from reference body trajectories.
+- `robot_body_*`: local-frame robot body features derived from runtime robot body world poses (`robot_body_pos_w`, `robot_body_quat_w`).
+
+## 2. Reference Motion Source Policy
+
+New config keys in `rl_cfg.yaml`:
 
 ```yaml
-policy_io:
-  obs_input_name: "obs"
-  action_output_name: "actions"
-  enable_time_step_input: false
-  time_step_input_name: "time_step"
-  time_step_start: 0
-  strict_model_io: false
-  reset_policy_on_mode_switch: true
-  extra_output_names: []
+enable_reference_motion: true
+reference_motion_source: "auto"      # auto / file / policy_outputs
+reference_motion_dim: 24
+reference_motion_sampling: "phase"   # phase / step
+reference_motion_file: "reference_motion/walk_ref.yaml"
+reference_anchor_body: "base"
+reference_body_names: ["base", "left_foot", "right_foot"]
 ```
 
-BeyondMimic-like export usually uses:
+Behavior:
+
+1. `file`: file only.
+2. `policy_outputs`: ONNX extra outputs only.
+3. `auto`: load file first, then overwrite by ONNX extra outputs when present.
+
+## 3. Reference Motion File Format (Recommended)
+
+Recommended structured YAML:
+
+```yaml
+reference_motion:
+  source_format: "beyondmimic_v1"
+  anchor_body: "base"
+  body_names: ["base", "left_foot", "right_foot"]
+  body_quat_format: "wxyz"   # loader converts to internal xyzw
+  fps: 50
+  frames:
+    - joint_pos: [ ... ]
+      joint_vel: [ ... ]
+      body_pos_w: [x0, y0, z0, x1, y1, z1, ...]
+      body_quat_w: [w0, x0, y0, z0, w1, x1, y1, z1, ...]
+      # reference_motion is optional; if missing, loader packs joint_pos + joint_vel
+```
+
+Legacy compatibility:
+
+- Plain text rows (comma/space separated floats) are still supported as `reference_motion`.
+
+## 4. Safety Checks During Loading
+
+`ReferenceMotionProvider` rejects invalid files with strict checks:
+
+1. Numeric validity: no NaN/Inf.
+2. Range checks: bounds on `joint_pos`, `joint_vel`, `body_pos_w`, and generic vectors.
+3. Dimension checks:
+   - `body_pos_w` must be `3*N`.
+   - `body_quat_w` must be `4*N`.
+   - Body count must be consistent across frames.
+4. Quaternion checks:
+   - Zero/invalid quaternion is rejected.
+   - Mild non-unit quaternions are normalized with warning.
+5. Frame count guard:
+   - Internal frame cap avoids loading unbounded files.
+
+## 5. ONNX Output Contract (BeyondMimic Style)
+
+Recommended policy export outputs:
 
 ```yaml
 policy_io:
@@ -48,9 +96,32 @@ policy_io:
   extra_output_names: ["joint_pos", "joint_vel", "body_pos_w", "body_quat_w"]
 ```
 
-## Runtime Notes
+Note:
 
-- DDS topics are used for policy command/state, teleop command, and mode/state command.
-- Shared memory is retained only in `RL_solver` motor loop (`sendMotorCmd` / `getMotorState`).
-- Controller loop period now follows `RL_control_f` in config instead of fixed 50 Hz.
-- Suggested BeyondMimic manifest: `config/observation_manifest_beyondmimic.yaml`.
+- `body_quat_w` is treated as `wxyz` (matching common BeyondMimic export), then converted to internal `xyzw`.
+
+## 6. Manifest Template
+
+`config/observation_manifest_beyondmimic.yaml` now includes the missing terms as templates with `enabled: false` by default.
+
+When enabling body terms, set explicit dimensions:
+
+- `motion_body_pos_b = 3 * body_count`
+- `motion_body_ori_b = 6 * body_count`
+- `robot_body_pos = 3 * body_count`
+- `robot_body_ori = 6 * body_count`
+
+## 7. Runtime Metadata Extensions
+
+`controller_metadata.json` now logs reference-motion metadata for run alignment:
+
+- `reference_motion_source`
+- `reference_motion_path`
+- `reference_motion_dim_cfg`
+- `reference_motion_dim_loaded`
+- `reference_motion_frames`
+- `reference_source_format`
+- `reference_anchor_body_cfg`
+- `reference_anchor_body_loaded`
+- `reference_body_names_cfg`
+- `reference_body_names_loaded`

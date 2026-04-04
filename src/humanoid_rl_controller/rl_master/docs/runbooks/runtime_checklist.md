@@ -85,9 +85,11 @@ JSON object includes:
 - `schema_version`
 - `created_time_unix_sec`
 - `string_fields` (policy path/name/family, manifest path, module)
+- `string_fields` also include reference-motion source/path/anchor and loaded source format
 - `numeric_fields` (obs/action dims, control hz, watchdog timeout)
+- `numeric_fields` also include reference-motion configured/loaded dim and frame count
 - `vector_fields` (kps/kds/tau limits)
-- `string_list_fields` (joint order mappings, sub-model names/paths)
+- `string_list_fields` (joint order mappings, sub-model names/paths, reference body name list)
 
 ### 4.2 Records File (JSONL)
 
