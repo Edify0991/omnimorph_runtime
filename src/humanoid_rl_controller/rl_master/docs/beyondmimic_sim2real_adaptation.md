@@ -125,3 +125,32 @@ When enabling body terms, set explicit dimensions:
 - `reference_anchor_body_loaded`
 - `reference_body_names_cfg`
 - `reference_body_names_loaded`
+
+## 8. AMP Discriminator Compatibility
+
+The runtime now supports optional AMP discriminator inference through `amp_discriminator` config.
+
+Usage intent:
+
+- Keep main policy output unchanged.
+- Run discriminator in parallel on `stacked_observation` or `observation`.
+- Log discriminator score for online monitoring and post-run analysis.
+
+Main config keys:
+
+```yaml
+amp_discriminator:
+  enabled: true
+  input_source: "stacked_observation"
+  policy_file: "policies/amp_discriminator.onnx"
+  policy_io:
+    obs_input_name: "obs"
+    score_output_name: "disc_score"
+    extra_output_names: []
+    warn_below: -0.2
+```
+
+When enabled, controller logs:
+
+- vector: `amp_discriminator_score`
+- scalar: `amp_discriminator_score_mean`

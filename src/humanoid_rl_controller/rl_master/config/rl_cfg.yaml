@@ -130,6 +130,19 @@ sim2real:
     # enable_time_step_input: true
     # time_step_input_name: "time_step"
     # extra_output_names: ["joint_pos", "joint_vel", "body_pos_w", "body_quat_w"]
+  amp_discriminator:
+    enabled: false
+    input_source: "stacked_observation"   # stacked_observation / observation
+    policy_file: "policies/amp_discriminator.onnx"
+    policy_io:
+      obs_input_name: "obs"
+      score_output_name: "disc_score"
+      enable_time_step_input: false
+      time_step_input_name: "time_step"
+      time_step_start: 0
+      strict_model_io: false
+      extra_output_names: []
+      warn_below: -1.0e9
   # Optional multi-model ensemble:
   # sub_models:
   #   - name: residual_head
@@ -301,6 +314,19 @@ stand_sim2real:
     strict_model_io: false
     reset_policy_on_mode_switch: true
     extra_output_names: []
+  amp_discriminator:
+    enabled: false
+    input_source: "stacked_observation"
+    policy_file: "policies/stand_amp_discriminator.onnx"
+    policy_io:
+      obs_input_name: "obs"
+      score_output_name: "disc_score"
+      enable_time_step_input: false
+      time_step_input_name: "time_step"
+      time_step_start: 0
+      strict_model_io: false
+      extra_output_names: []
+      warn_below: -1.0e9
   # sub_models:
   #   - name: stand_residual
   #     enabled: false

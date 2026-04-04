@@ -98,6 +98,7 @@ private:
         ObservationManifest observation_manifest;
         std::unique_ptr<ObservationBuilder> observation_builder;
         PolicyRuntimeGroup policy_group;
+        std::unique_ptr<OnnxPolicyRunner> amp_discriminator;
         ReferenceMotionProvider reference_motion;
         bool reference_alignment_initialized = false;
         std::vector<float> reference_anchor_init_pos_w;
@@ -120,6 +121,13 @@ private:
     void updateStateFromIO(const rl_master::RobotStateData &state);
     void updateCommandFromIO(const rl_master::TeleopCommand &command);
     void initPolicyGroup(const Sim2realCfg &cfg, const std::string &tag, PolicyRuntimeGroup *group);
+    void initAmpDiscriminatorRunner(const Sim2realCfg &cfg, const std::string &tag, std::unique_ptr<OnnxPolicyRunner> *runner);
+    void runAmpDiscriminator(
+        const Sim2realCfg &cfg,
+        const std::string &tag,
+        OnnxPolicyRunner *runner,
+        const std::vector<float> &current_observation,
+        const std::vector<float> &stacked_observation);
     PolicyRunOutput runPolicyGroup(PolicyRuntimeGroup *group, const std::vector<float> &stacked_obs);
     void initReferenceMotionProvider(const Sim2realCfg &cfg, ReferenceMotionProvider *provider, const std::string &tag);
     ObservationFeatureContext buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t);

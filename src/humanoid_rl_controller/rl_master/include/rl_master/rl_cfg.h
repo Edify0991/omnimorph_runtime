@@ -63,6 +63,27 @@ struct PolicySubModelCfg
     std::vector<std::string> extra_output_names;
 };
 
+struct AmpDiscriminatorCfg
+{
+    bool enabled = false;
+    std::string policy_file;
+    std::string policy_path;
+
+    // stacked_observation / observation
+    std::string input_source = "stacked_observation";
+
+    std::string obs_input_name = "obs";
+    std::string score_output_name = "disc_score";
+    std::string time_step_input_name = "time_step";
+    int64_t time_step_start = 0;
+    bool enable_time_step_input = false;
+    bool strict_model_io = false;
+    std::vector<std::string> extra_output_names;
+
+    // Disabled when set to a very negative number (default).
+    float warn_below = -1.0e9f;
+};
+
 class Sim2realCfg
 {
 public:
@@ -102,6 +123,7 @@ public:
     bool reset_policy_on_mode_switch = true;
     std::vector<std::string> extra_output_names;
     std::vector<PolicySubModelCfg> sub_models;
+    AmpDiscriminatorCfg amp_discriminator;
 
     bool enable_reference_motion = false;
     int reference_motion_dim = 0;
@@ -165,6 +187,7 @@ public:
             robotCfg.motor_torque_limit.clear();
             sub_models.clear();
             external_observations.clear();
+            amp_discriminator = AmpDiscriminatorCfg{};
 
             humanoid_rl_root_dir = config["humanoid_rl_root_dir"].as<std::string>();
             const YAML::Node cfg = config[config_type];
@@ -293,6 +316,38 @@ public:
                 }
             }
 
+            if (cfg["amp_discriminator"])
+            {
+                const YAML::Node disc = cfg["amp_discriminator"];
+                amp_discriminator.enabled = yamlReadOr<bool>(disc, "enabled", false);
+                amp_discriminator.policy_file = yamlReadOr<std::string>(disc, "policy_file", "");
+                amp_discriminator.input_source = yamlReadOr<std::string>(disc, "input_source", "stacked_observation");
+
+                const std::string disc_path_raw = yamlReadOr<std::string>(disc, "policy_path", "");
+                if (!disc_path_raw.empty())
+                {
+                    amp_discriminator.policy_path = resolvePath(disc_path_raw);
+                }
+                else if (!amp_discriminator.policy_file.empty())
+                {
+                    amp_discriminator.policy_path = resolvePath(amp_discriminator.policy_file);
+                }
+                if (amp_discriminator.enabled && amp_discriminator.policy_path.empty())
+                {
+                    throw std::runtime_error("amp_discriminator enabled but policy_file/policy_path is empty");
+                }
+
+                const YAML::Node disc_io_cfg = disc["policy_io"] ? disc["policy_io"] : disc;
+                amp_discriminator.obs_input_name = yamlReadOr<std::string>(disc_io_cfg, "obs_input_name", "obs");
+                amp_discriminator.score_output_name = yamlReadOr<std::string>(disc_io_cfg, "score_output_name", "disc_score");
+                amp_discriminator.time_step_input_name = yamlReadOr<std::string>(disc_io_cfg, "time_step_input_name", "time_step");
+                amp_discriminator.time_step_start = yamlReadOr<int64_t>(disc_io_cfg, "time_step_start", 0);
+                amp_discriminator.enable_time_step_input = yamlReadOr<bool>(disc_io_cfg, "enable_time_step_input", false);
+                amp_discriminator.strict_model_io = yamlReadOr<bool>(disc_io_cfg, "strict_model_io", false);
+                amp_discriminator.extra_output_names = yamlReadOr<std::vector<std::string>>(disc_io_cfg, "extra_output_names", {});
+                amp_discriminator.warn_below = yamlReadOr<float>(disc_io_cfg, "warn_below", -1.0e9f);
+            }
+
             enable_reference_motion = yamlReadOr<bool>(cfg, "enable_reference_motion", false);
             reference_motion_dim = yamlReadOr<int>(cfg, "reference_motion_dim", 0);
             reference_motion_file = yamlReadOr<std::string>(cfg, "reference_motion_file", "");
@@ -397,6 +452,8 @@ public:
         std::cout << "Control Mode: " << control_mode << std::endl;
         std::cout << "RL Control Frequency: " << RL_control_f << std::endl;
         std::cout << "Sub Models: " << sub_models.size() << std::endl;
+        std::cout << "AMP Discriminator Enabled: " << (amp_discriminator.enabled ? "true" : "false") << std::endl;
+        std::cout << "AMP Discriminator Path: " << amp_discriminator.policy_path << std::endl;
         std::cout << "Reference Motion Source: " << reference_motion_source << std::endl;
         std::cout << "Reference Motion Path: " << reference_motion_path << std::endl;
         std::cout << "External Obs Inputs: " << external_observations.size() << std::endl;

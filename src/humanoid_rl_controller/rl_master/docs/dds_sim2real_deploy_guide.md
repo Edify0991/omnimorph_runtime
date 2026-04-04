@@ -138,6 +138,7 @@
   `robot_body_pos` / `robot_body_ori`）
 - 视觉/雷达等外部观测占位接口（`external_observations`）
 - 主模型 + 多个 `sub_models` 的融合推理
+- AMP 判别器可选推理（`amp_discriminator`），用于在线质量监测/日志记录，不影响主控制输出
 - `deploy_mode_profiles` 驱动的 `mode_id -> policy config section` 动态映射
 - 部署状态机（启动、停止、回零、急停）
 - 参考动作多来源融合（`reference_motion_source=auto/file/policy_outputs`）与加载安全检查
