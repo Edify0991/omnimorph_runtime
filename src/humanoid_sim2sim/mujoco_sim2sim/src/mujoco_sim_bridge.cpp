@@ -183,8 +183,10 @@ void MujocoSimBridge::loadParameters()
     fixed_base_height_ = this->get_parameter("fixed_base_height").as_double();
     enable_viewer_ = this->get_parameter("enable_viewer").as_bool();
     viewer_fps_ = std::max(1.0, this->get_parameter("viewer_fps").as_double());
-    viewer_width_ = std::max(320, this->get_parameter("viewer_width").as_int());
-    viewer_height_ = std::max(240, this->get_parameter("viewer_height").as_int());
+    const int64_t viewer_width_param = this->get_parameter("viewer_width").as_int();
+    const int64_t viewer_height_param = this->get_parameter("viewer_height").as_int();
+    viewer_width_ = static_cast<int>(std::clamp<int64_t>(viewer_width_param, 320, 8192));
+    viewer_height_ = static_cast<int>(std::clamp<int64_t>(viewer_height_param, 240, 8192));
     viewer_title_ = this->get_parameter("viewer_title").as_string();
 
     joint_names_ = normalizeNameParam(
