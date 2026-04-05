@@ -285,6 +285,17 @@ void RobotSolver::getRLCmd()
 
     const bool policy_mode = rl_master::isOpenRlPolicyEnabled(dds_cmd.open_rl);
     const bool command_stream_mode = rl_master::isOpenRlCommandStream(dds_cmd.open_rl);
+    const bool test_csp_mode = rl_master::isOpenRlTestCspStream(dds_cmd.open_rl);
+    const bool test_cst_mode = rl_master::isOpenRlTestCstStream(dds_cmd.open_rl);
+    const bool test_r1_mode = rl_master::isOpenRlTestR1Stream(dds_cmd.open_rl);
+
+    auto tauLimitAt = [this](size_t i) -> float {
+        if (i < sim2real_cfg_.tau_limit.size())
+        {
+            return std::max(0.0f, std::abs(sim2real_cfg_.tau_limit[i]));
+        }
+        return 300.0f;
+    };
 
     if (policy_mode)
     {
@@ -312,15 +323,39 @@ void RobotSolver::getRLCmd()
             }
         }
     }
-    else if (command_stream_mode)
+    else if (command_stream_mode || test_csp_mode)
     {
-        // Non-policy command stream: keep all joints in CSP and track commanded positions.
+        // Position stream: keep joints in CSP and track commanded positions.
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
         {
             joint_cmd_[i].q = dds_cmd.joint_target_q[i];
             joint_cmd_[i].dq = 0.0f;
             joint_cmd_[i].tau = 0.0f;
             joint_cmd_[i].mode = RUN_MODE_CSP;
+        }
+    }
+    else if (test_cst_mode)
+    {
+        // Torque stream: use commanded joint torques directly in CST mode.
+        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        {
+            const float tau_limit = tauLimitAt(i);
+            joint_cmd_[i].q = joint_state_[i].q;
+            joint_cmd_[i].dq = 0.0f;
+            joint_cmd_[i].tau = std::clamp(dds_cmd.joint_target_tau[i], -tau_limit, tau_limit);
+            joint_cmd_[i].mode = RUN_MODE_CST;
+        }
+    }
+    else if (test_r1_mode)
+    {
+        // Mixed stream: forward target q/dq/tau with R1 run mode.
+        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        {
+            const float tau_limit = tauLimitAt(i);
+            joint_cmd_[i].q = dds_cmd.joint_target_q[i];
+            joint_cmd_[i].dq = dds_cmd.joint_target_dq[i];
+            joint_cmd_[i].tau = std::clamp(dds_cmd.joint_target_tau[i], -tau_limit, tau_limit);
+            joint_cmd_[i].mode = RUN_MODE_R1;
         }
     }
 
@@ -529,8 +564,7 @@ void RobotSolver::run()
 
             getRLCmd();
             const bool policy_mode_active = rl_master::isOpenRlPolicyEnabled(static_cast<float>(open_rl_));
-            const bool command_stream_active = rl_master::isOpenRlCommandStream(static_cast<float>(open_rl_));
-            const bool any_active_mode = policy_mode_active || command_stream_active;
+            const bool any_active_mode = rl_master::isOpenRlAnyEnabled(static_cast<float>(open_rl_));
             if (any_active_mode && !latest_cmd_fresh_)
             {
                 open_rl_ = static_cast<int>(rl_master::kOpenRlDisabled);
@@ -538,8 +572,7 @@ void RobotSolver::run()
 
             const bool last_policy_mode_active = rl_master::isOpenRlPolicyEnabled(static_cast<float>(last_open_rl_));
             const bool current_policy_mode_active = rl_master::isOpenRlPolicyEnabled(static_cast<float>(open_rl_));
-            const bool current_command_stream_active = rl_master::isOpenRlCommandStream(static_cast<float>(open_rl_));
-            const bool current_any_active_mode = current_policy_mode_active || current_command_stream_active;
+            const bool current_any_active_mode = rl_master::isOpenRlAnyEnabled(static_cast<float>(open_rl_));
 
             if (current_policy_mode_active && !last_policy_mode_active)
             {

@@ -34,13 +34,13 @@ The deploy stack is now grouped by functional ownership:
 From workspace root:
 
 ```bash
-colcon build --packages-select SharedMemory imu_communication_yesense rl_master
+colcon build --packages-select SharedMemory imu_communication_yesense rl_master joint_motor_test
 ```
 
 For sim2sim (MuJoCo) add:
 
 ```bash
-colcon build --symlink-install --packages-up-to rl_master mujoco_sim2sim
+colcon build --symlink-install --packages-up-to rl_master mujoco_sim2sim joint_motor_test
 ```
 
 If first-time host setup:
@@ -60,6 +60,13 @@ Recommended launch order:
 4. `RL_controller`
 5. `joyLaunch.py`
 6. DDS self-check
+
+Offline motor/joint test path (without `RL_controller`):
+
+1. Motor driver stack (real) or MuJoCo bridge (`fixed_base:=true`)
+2. `RL_solver` (real path only)
+3. `joint_motor_test_runner`
+4. Publish lifecycle/mode control word (`1000+test_mode_id` or `10`)
 
 Example:
 
@@ -150,6 +157,11 @@ python3 src/humanoid_rl_controller/rl_master/data_process.py \
   --records /path/to/session_solver_records.jsonl \
   --vector-field motor_state_tau
 ```
+
+Joint motor test records:
+
+- `<session_base>_joint_motor_test_metadata.json`
+- `<session_base>_joint_motor_test_records.jsonl`
 
 ## 6. Validation Checklist After Changes
 

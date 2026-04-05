@@ -74,6 +74,7 @@
 - `open_rl=0`: hold（不推理，solver 回退 CSP 持位）
 - `open_rl=10`: policy torque mode（推理控制，solver 使用 CST/R1 组合）
 - `open_rl=20`: command stream mode（非推理命令流，solver 使用 CSP 位置跟踪，如 zeroing）
+- `open_rl=30/40/50`: joint_motor_test 命令流（分别对应 CSP / CST / R1 测试）
 
 ### 3.2 `/humanoid/rl/state`
 
@@ -131,6 +132,11 @@
   - `include/rl_master/solver/robot_solver.h`
   - `solver/robot_solver.cpp`
   - `rl_solver.cpp`（仅保留进程入口、实时优先级与信号处理）
+- 关节/电机离线测试包：
+  - `src/humanoid_rl_controller/joint_motor_test`
+  - 支持 `file/sine` 轨迹源、`all/sequential` 关节激活、`CSP/CST/R1` 命令流
+  - 复用同一状态机/控制字通道，并输出结构化日志（含轨迹与安全参数元数据）
+  - 说明文档：`src/humanoid_rl_controller/joint_motor_test/docs/joint_motor_test_guide.md`
 - 状态机：
   - `include/rl_master/deploy_state_machine.h`
   - `deploy_state_machine.cpp`

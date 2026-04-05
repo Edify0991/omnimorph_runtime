@@ -123,8 +123,8 @@ Key combinations (default):
 - `L1 + A`: launch `controller.sh`
 - `L1 + R1`: stop all processes started by `joyLaunch.py`
 - `LT + Y`: launch `driver.sh`
-- `L1 + DPAD_DOWN`: set mode `primary_mode_id`
-- `L1 + B`: set mode `secondary_mode_id`
+- `L1 + DPAD_DOWN`: send `2000 + primary_mode_id` (switch mode only)
+- `L1 + B`: send `2000 + secondary_mode_id` (switch mode only)
 - `L1 + DPAD_UP`: send `1000 + primary_mode_id` (switch + start policy)
 - `L1 + Y`: lifecycle command `STOP_POLICY` (hold current pose / CSP)
 - `L1 + LS`: lifecycle command `STOP_POLICY`

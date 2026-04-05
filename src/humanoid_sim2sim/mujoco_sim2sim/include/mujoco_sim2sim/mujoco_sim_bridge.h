@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <limits>
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
@@ -45,6 +46,7 @@ private:
 
     void commandCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
     void controlLoopTick();
+    void enforceBaseLock();
 
     bool commandFresh(rclcpp::Time now) const;
     void updateControlInput(rclcpp::Time now);
@@ -72,6 +74,8 @@ private:
     double open_rl_enable_threshold_ = 1.0;
     bool use_command_torque_ff_ = false;
     bool pause_when_no_command_ = false;
+    bool fix_base_ = false;
+    double fixed_base_height_ = -1.0;
 
     std::vector<double> kp_;
     std::vector<double> kd_;
@@ -83,6 +87,8 @@ private:
     std::array<int, kJointCount> actuator_ids_{};
     std::array<float, kJointCount> applied_tau_{};
     std::array<float, kJointCount> last_target_q_{};
+    std::array<double, 7> fixed_base_qpos_{};
+    bool fixed_base_pose_initialized_ = false;
 
     int base_body_id_ = -1;
     int base_free_joint_id_ = -1;

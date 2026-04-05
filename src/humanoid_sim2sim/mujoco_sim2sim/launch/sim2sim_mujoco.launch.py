@@ -28,6 +28,16 @@ def generate_launch_description():
         default_value="100.0",
         description="Control frequency for the MuJoCo bridge.",
     )
+    fixed_base_arg = DeclareLaunchArgument(
+        "fixed_base",
+        default_value="false",
+        description="Whether to lock robot base pose during sim2sim.",
+    )
+    fixed_base_height_arg = DeclareLaunchArgument(
+        "fixed_base_height",
+        default_value="-1.0",
+        description="Override locked base height (meters). Negative keeps model initial value.",
+    )
     start_controller_arg = DeclareLaunchArgument(
         "start_rl_controller",
         default_value="true",
@@ -52,6 +62,8 @@ def generate_launch_description():
             {
                 "model_path": LaunchConfiguration("model_path"),
                 "control_hz": ParameterValue(LaunchConfiguration("control_hz"), value_type=float),
+                "fix_base": ParameterValue(LaunchConfiguration("fixed_base"), value_type=bool),
+                "fixed_base_height": ParameterValue(LaunchConfiguration("fixed_base_height"), value_type=float),
             },
         ],
     )
@@ -61,6 +73,8 @@ def generate_launch_description():
             model_path_arg,
             bridge_cfg_arg,
             control_hz_arg,
+            fixed_base_arg,
+            fixed_base_height_arg,
             start_controller_arg,
             rl_controller,
             mujoco_bridge,

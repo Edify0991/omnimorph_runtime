@@ -56,6 +56,7 @@ MujocoSimBridge::MujocoSimBridge()
     actuator_ids_.fill(-1);
     applied_tau_.fill(0.0f);
     last_target_q_.fill(0.0f);
+    fixed_base_qpos_.fill(0.0);
 
     loadParameters();
     loadModel();
@@ -104,6 +105,8 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<double>("open_rl_enable_threshold", 1.0);
     this->declare_parameter<bool>("use_command_torque_ff", false);
     this->declare_parameter<bool>("pause_when_no_command", false);
+    this->declare_parameter<bool>("fix_base", false);
+    this->declare_parameter<double>("fixed_base_height", -1.0);
     this->declare_parameter<std::vector<double>>("kp", std::vector<double>(kJointCount, 80.0));
     this->declare_parameter<std::vector<double>>("kd", std::vector<double>(kJointCount, 2.0));
     this->declare_parameter<std::vector<double>>("torque_limit", std::vector<double>(kJointCount, 120.0));
@@ -117,6 +120,8 @@ void MujocoSimBridge::loadParameters()
     open_rl_enable_threshold_ = this->get_parameter("open_rl_enable_threshold").as_double();
     use_command_torque_ff_ = this->get_parameter("use_command_torque_ff").as_bool();
     pause_when_no_command_ = this->get_parameter("pause_when_no_command").as_bool();
+    fix_base_ = this->get_parameter("fix_base").as_bool();
+    fixed_base_height_ = this->get_parameter("fixed_base_height").as_double();
 
     joint_names_ = normalizeNameParam(
         this->get_parameter("joint_names").as_string_array(),
@@ -293,6 +298,55 @@ void MujocoSimBridge::initializeState()
             last_target_q_[i] = static_cast<float>(data_->qpos[qpos_adr]);
         }
     }
+
+    if (fix_base_ && base_free_qpos_adr_ >= 0 && (base_free_qpos_adr_ + 6) < model_->nq)
+    {
+        for (size_t i = 0; i < fixed_base_qpos_.size(); ++i)
+        {
+            fixed_base_qpos_[i] = data_->qpos[base_free_qpos_adr_ + static_cast<int>(i)];
+        }
+        if (fixed_base_height_ >= 0.0)
+        {
+            fixed_base_qpos_[2] = fixed_base_height_;
+        }
+        fixed_base_pose_initialized_ = true;
+        enforceBaseLock();
+        mj_forward(model_, data_);
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Base lock enabled. fixed xyz=(%.4f, %.4f, %.4f)",
+            fixed_base_qpos_[0],
+            fixed_base_qpos_[1],
+            fixed_base_qpos_[2]);
+    }
+    else if (fix_base_)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "fix_base=true but free base joint is unavailable; base lock disabled.");
+        fix_base_ = false;
+    }
+}
+
+void MujocoSimBridge::enforceBaseLock()
+{
+    if (!fix_base_ || !fixed_base_pose_initialized_ || base_free_qpos_adr_ < 0 || base_free_qvel_adr_ < 0)
+    {
+        return;
+    }
+    if ((base_free_qpos_adr_ + 6) >= model_->nq || (base_free_qvel_adr_ + 5) >= model_->nv)
+    {
+        return;
+    }
+
+    for (size_t i = 0; i < fixed_base_qpos_.size(); ++i)
+    {
+        data_->qpos[base_free_qpos_adr_ + static_cast<int>(i)] = fixed_base_qpos_[i];
+    }
+    for (int i = 0; i < 6; ++i)
+    {
+        data_->qvel[base_free_qvel_adr_ + i] = 0.0;
+    }
 }
 
 void MujocoSimBridge::commandCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg)
@@ -325,17 +379,22 @@ void MujocoSimBridge::controlLoopTick()
     const rclcpp::Time now = this->now();
     const bool has_fresh_command = commandFresh(now);
 
+    enforceBaseLock();
     updateControlInput(now);
 
     if (has_fresh_command || !pause_when_no_command_)
     {
         for (int i = 0; i < substeps_per_control_; ++i)
         {
+            enforceBaseLock();
             mj_step(model_, data_);
+            enforceBaseLock();
         }
+        mj_forward(model_, data_);
     }
     else
     {
+        enforceBaseLock();
         mj_forward(model_, data_);
     }
 
@@ -362,8 +421,14 @@ void MujocoSimBridge::updateControlInput(rclcpp::Time now)
 
     const bool is_fresh = command.valid &&
                           ((now - command.receive_time).seconds() <= command_timeout_sec_);
-    const bool enable_rl = is_fresh &&
-                           (command.command.open_rl > static_cast<float>(open_rl_enable_threshold_));
+    const float open_rl_value = command.command.open_rl;
+    const bool mode_policy = is_fresh && rl_master::isOpenRlPolicyEnabled(open_rl_value);
+    const bool mode_command_csp = is_fresh &&
+                                  (rl_master::isOpenRlCommandStream(open_rl_value) ||
+                                   rl_master::isOpenRlTestCspStream(open_rl_value));
+    const bool mode_test_cst = is_fresh && rl_master::isOpenRlTestCstStream(open_rl_value);
+    const bool mode_test_r1 = is_fresh && rl_master::isOpenRlTestR1Stream(open_rl_value);
+    const bool enable_rl = mode_policy || mode_command_csp || mode_test_cst || mode_test_r1;
 
     if (!is_fresh)
     {
@@ -372,6 +437,16 @@ void MujocoSimBridge::updateControlInput(rclcpp::Time now)
             RCLCPP_WARN(this->get_logger(), "Policy command timed out. Entering hold behavior.");
             last_timeout_warn_ = now;
         }
+    }
+    else if (!enable_rl &&
+             open_rl_value > static_cast<float>(open_rl_enable_threshold_) &&
+             (now - last_timeout_warn_).seconds() > 1.0)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Unknown open_rl mode %.2f in sim bridge, fallback to hold behavior.",
+            static_cast<double>(open_rl_value));
+        last_timeout_warn_ = now;
     }
 
     for (size_t i = 0; i < kJointCount; ++i)
@@ -391,10 +466,10 @@ void MujocoSimBridge::updateControlInput(rclcpp::Time now)
         const double q = data_->qpos[qpos_adr];
         const double dq = data_->qvel[qvel_adr];
 
-        double q_des = q;
+        double q_des = static_cast<double>(last_target_q_[i]);
         double dq_des = 0.0;
         double tau_ff = 0.0;
-        if (enable_rl)
+        if (mode_policy || mode_command_csp || mode_test_r1)
         {
             q_des = static_cast<double>(command.command.joint_target_q[i]);
             dq_des = static_cast<double>(command.command.joint_target_dq[i]);
@@ -402,10 +477,18 @@ void MujocoSimBridge::updateControlInput(rclcpp::Time now)
             last_target_q_[i] = static_cast<float>(q_des);
         }
 
-        double tau = kp_[i] * (q_des - q) + kd_[i] * (dq_des - dq);
-        if (use_command_torque_ff_)
+        double tau = 0.0;
+        if (mode_test_cst)
         {
-            tau += tau_ff;
+            tau = static_cast<double>(command.command.joint_target_tau[i]);
+        }
+        else
+        {
+            tau = kp_[i] * (q_des - q) + kd_[i] * (dq_des - dq);
+            if ((mode_policy || mode_test_r1) && use_command_torque_ff_)
+            {
+                tau += tau_ff;
+            }
         }
         const double limit = std::max(1e-6, std::abs(torque_limit_[i]));
         tau = std::clamp(tau, -limit, limit);

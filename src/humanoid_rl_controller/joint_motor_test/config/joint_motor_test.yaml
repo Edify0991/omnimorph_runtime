@@ -1,0 +1,57 @@
+﻿joint_motor_test:
+  # Use 1000 + test_mode_id to switch+start, or 2000 + test_mode_id to switch only.
+  test_mode_id: 90
+  control_hz: 500.0
+
+  # file / sine
+  trajectory_source: file
+
+  # csp / cst / r1
+  control_mode: csp
+
+  # Offline reference trajectory file.
+  # Supported row formats:
+  # - 12  cols: q[12]
+  # - 13  cols: time + q[12]
+  # - 24  cols: q[12] + dq[12]
+  # - 25  cols: time + q[12] + dq[12]
+  # - 36  cols: q[12] + dq[12] + tau[12]
+  # - 37  cols: time + q[12] + dq[12] + tau[12]
+  trajectory_file: ""
+
+  loop_trajectory: true
+  restart_trajectory_on_enter_running: true
+
+  # Lifecycle behavior (shared state machine).
+  auto_start_policy: false
+  zeroing_duration_s: 2.0
+  zero_pose: [0.0]
+
+  # Fallback gains used when control_mode=cst/r1 and trajectory tau is not provided.
+  fallback_kp: [60.0]
+  fallback_kd: [2.0]
+  tau_limit: [120.0]
+  strict_safety_checks: true
+  max_abs_q: 6.5
+  max_abs_dq: 40.0
+  max_abs_tau: 200.0
+
+  # Structured logging.
+  save_data: true
+  data_path: ""
+
+  # Sine generator settings (used when trajectory_source=sine).
+  sine:
+    duration_sec: 12.0
+    offset: [0.0]
+    amplitude: [0.10]
+    period_sec: [2.0]
+    phase_rad: [0.0]
+
+    # all / sequential
+    activation_mode: all
+    sequential_joint_order: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    sequential_segment_sec: 2.0
+
+    # Export generated sine reference trajectory CSV.
+    export_reference_path: ""
