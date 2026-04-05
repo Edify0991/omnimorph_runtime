@@ -4,7 +4,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -18,6 +18,11 @@ def generate_launch_description():
         default_value="",
         description="Absolute path to MuJoCo XML/MJB model file.",
     )
+    backend_arg = DeclareLaunchArgument(
+        "backend",
+        default_value="cpp",
+        description="sim2sim backend: cpp or python_interactive",
+    )
     bridge_cfg_arg = DeclareLaunchArgument(
         "bridge_config",
         default_value=default_bridge_cfg,
@@ -28,6 +33,11 @@ def generate_launch_description():
         default_value="100.0",
         description="Control frequency for the MuJoCo bridge.",
     )
+    pause_no_cmd_arg = DeclareLaunchArgument(
+        "pause_when_no_command",
+        default_value="false",
+        description="Pause stepping when no fresh command is available.",
+    )
     fixed_base_arg = DeclareLaunchArgument(
         "fixed_base",
         default_value="false",
@@ -37,6 +47,11 @@ def generate_launch_description():
         "fixed_base_height",
         default_value="-1.0",
         description="Override locked base height (meters). Negative keeps model initial value.",
+    )
+    actuator_mode_arg = DeclareLaunchArgument(
+        "actuator_control_mode",
+        default_value="auto",
+        description="MuJoCo actuator control mode: auto/torque/position.",
     )
     enable_viewer_arg = DeclareLaunchArgument(
         "enable_viewer",
@@ -63,9 +78,19 @@ def generate_launch_description():
         default_value="MuJoCo Sim2Sim Viewer",
         description="Viewer window title.",
     )
+    show_left_ui_arg = DeclareLaunchArgument(
+        "show_left_ui",
+        default_value="true",
+        description="Python interactive backend only: show left UI panel.",
+    )
+    show_right_ui_arg = DeclareLaunchArgument(
+        "show_right_ui",
+        default_value="true",
+        description="Python interactive backend only: show right UI panel.",
+    )
     start_controller_arg = DeclareLaunchArgument(
         "start_rl_controller",
-        default_value="true",
+        default_value="false",
         description="Whether to launch rl_master/RL_controller together.",
     )
 
@@ -77,23 +102,43 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("start_rl_controller")),
     )
 
-    mujoco_bridge = Node(
+    common_bridge_parameters = [
+        LaunchConfiguration("bridge_config"),
+        {
+            "model_path": LaunchConfiguration("model_path"),
+            "control_hz": ParameterValue(LaunchConfiguration("control_hz"), value_type=float),
+            "pause_when_no_command": ParameterValue(LaunchConfiguration("pause_when_no_command"), value_type=bool),
+            "fix_base": ParameterValue(LaunchConfiguration("fixed_base"), value_type=bool),
+            "fixed_base_height": ParameterValue(LaunchConfiguration("fixed_base_height"), value_type=float),
+            "actuator_control_mode": LaunchConfiguration("actuator_control_mode"),
+            "enable_viewer": ParameterValue(LaunchConfiguration("enable_viewer"), value_type=bool),
+            "viewer_fps": ParameterValue(LaunchConfiguration("viewer_fps"), value_type=float),
+            "viewer_width": ParameterValue(LaunchConfiguration("viewer_width"), value_type=int),
+            "viewer_height": ParameterValue(LaunchConfiguration("viewer_height"), value_type=int),
+            "viewer_title": LaunchConfiguration("viewer_title"),
+        },
+    ]
+
+    cpp_bridge = Node(
         package="mujoco_sim2sim",
         executable="mujoco_sim_bridge",
         name="mujoco_sim_bridge",
         output="screen",
+        condition=IfCondition(PythonExpression(["'", LaunchConfiguration("backend"), "' == 'cpp'"])),
+        parameters=common_bridge_parameters,
+    )
+
+    python_interactive_bridge = Node(
+        package="mujoco_sim2sim",
+        executable="mujoco_sim_interactive_backend.py",
+        name="mujoco_sim_interactive_backend",
+        output="screen",
+        condition=IfCondition(PythonExpression(["'", LaunchConfiguration("backend"), "' == 'python_interactive'"])),
         parameters=[
-            LaunchConfiguration("bridge_config"),
+            *common_bridge_parameters,
             {
-                "model_path": LaunchConfiguration("model_path"),
-                "control_hz": ParameterValue(LaunchConfiguration("control_hz"), value_type=float),
-                "fix_base": ParameterValue(LaunchConfiguration("fixed_base"), value_type=bool),
-                "fixed_base_height": ParameterValue(LaunchConfiguration("fixed_base_height"), value_type=float),
-                "enable_viewer": ParameterValue(LaunchConfiguration("enable_viewer"), value_type=bool),
-                "viewer_fps": ParameterValue(LaunchConfiguration("viewer_fps"), value_type=float),
-                "viewer_width": ParameterValue(LaunchConfiguration("viewer_width"), value_type=int),
-                "viewer_height": ParameterValue(LaunchConfiguration("viewer_height"), value_type=int),
-                "viewer_title": LaunchConfiguration("viewer_title"),
+                "show_left_ui": ParameterValue(LaunchConfiguration("show_left_ui"), value_type=bool),
+                "show_right_ui": ParameterValue(LaunchConfiguration("show_right_ui"), value_type=bool),
             },
         ],
     )
@@ -101,17 +146,23 @@ def generate_launch_description():
     return LaunchDescription(
         [
             model_path_arg,
+            backend_arg,
             bridge_cfg_arg,
             control_hz_arg,
+            pause_no_cmd_arg,
             fixed_base_arg,
             fixed_base_height_arg,
+            actuator_mode_arg,
             enable_viewer_arg,
             viewer_fps_arg,
             viewer_width_arg,
             viewer_height_arg,
             viewer_title_arg,
+            show_left_ui_arg,
+            show_right_ui_arg,
             start_controller_arg,
             rl_controller,
-            mujoco_bridge,
+            cpp_bridge,
+            python_interactive_bridge,
         ]
     )

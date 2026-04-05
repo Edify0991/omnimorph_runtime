@@ -107,4 +107,9 @@ install(FILES README.md
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  scripts/mujoco_sim_interactive_backend.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -45,6 +47,7 @@ bool endsWith(const std::string &value, const std::string &suffix)
     }
     return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
+
 } // namespace
 
 namespace mujoco_sim2sim
@@ -161,6 +164,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<bool>("pause_when_no_command", false);
     this->declare_parameter<bool>("fix_base", false);
     this->declare_parameter<double>("fixed_base_height", -1.0);
+    this->declare_parameter<std::string>("actuator_control_mode", "auto");
     this->declare_parameter<bool>("enable_viewer", false);
     this->declare_parameter<double>("viewer_fps", 60.0);
     this->declare_parameter<int>("viewer_width", 1280);
@@ -181,6 +185,7 @@ void MujocoSimBridge::loadParameters()
     pause_when_no_command_ = this->get_parameter("pause_when_no_command").as_bool();
     fix_base_ = this->get_parameter("fix_base").as_bool();
     fixed_base_height_ = this->get_parameter("fixed_base_height").as_double();
+    actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
     enable_viewer_ = this->get_parameter("enable_viewer").as_bool();
     viewer_fps_ = std::max(1.0, this->get_parameter("viewer_fps").as_double());
     const int64_t viewer_width_param = this->get_parameter("viewer_width").as_int();
@@ -250,6 +255,8 @@ void MujocoSimBridge::loadModel()
 
 void MujocoSimBridge::resolveModelMappings()
 {
+    int position_like_actuator_count = 0;
+
     for (size_t i = 0; i < kJointCount; ++i)
     {
         const int joint_id = mj_name2id(model_, mjOBJ_JOINT, joint_names_[i].c_str());
@@ -293,7 +300,38 @@ void MujocoSimBridge::resolveModelMappings()
             throw std::runtime_error("Resolved actuator index out of range for " + actuator_names_[i]);
         }
         actuator_ids_[i] = actuator_id;
+
+        if (model_->actuator_biastype[actuator_id] != mjBIAS_NONE)
+        {
+            ++position_like_actuator_count;
+        }
     }
+
+    const std::string mode_lower = [&]() {
+        std::string out = actuator_control_mode_;
+        std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        return out;
+    }();
+    if (mode_lower == "position")
+    {
+        use_position_actuator_control_ = true;
+    }
+    else if (mode_lower == "torque")
+    {
+        use_position_actuator_control_ = false;
+    }
+    else
+    {
+        use_position_actuator_control_ = (position_like_actuator_count > static_cast<int>(kJointCount / 2));
+    }
+    RCLCPP_INFO(
+        this->get_logger(),
+        "Actuator control mode: %s (position_like=%d/%zu)",
+        use_position_actuator_control_ ? "position" : "torque",
+        position_like_actuator_count,
+        kJointCount);
 
     base_body_id_ = mj_name2id(model_, mjOBJ_BODY, base_body_name_.c_str());
     if (base_body_id_ < 0)
@@ -430,6 +468,43 @@ void MujocoSimBridge::initializeViewer()
 
     glfwMakeContextCurrent(viewer_state_->window);
     glfwSwapInterval(1);
+    glfwSetWindowUserPointer(viewer_state_->window, this);
+    glfwSetMouseButtonCallback(
+        viewer_state_->window,
+        [](GLFWwindow *window, int button, int action, int mods) {
+            auto *bridge = static_cast<MujocoSimBridge *>(glfwGetWindowUserPointer(window));
+            if (bridge)
+            {
+                bridge->handleViewerMouseButton(button, action, mods);
+            }
+        });
+    glfwSetCursorPosCallback(
+        viewer_state_->window,
+        [](GLFWwindow *window, double xpos, double ypos) {
+            auto *bridge = static_cast<MujocoSimBridge *>(glfwGetWindowUserPointer(window));
+            if (bridge)
+            {
+                bridge->handleViewerMouseMove(xpos, ypos);
+            }
+        });
+    glfwSetScrollCallback(
+        viewer_state_->window,
+        [](GLFWwindow *window, double, double yoffset) {
+            auto *bridge = static_cast<MujocoSimBridge *>(glfwGetWindowUserPointer(window));
+            if (bridge)
+            {
+                bridge->handleViewerScroll(yoffset);
+            }
+        });
+    glfwSetKeyCallback(
+        viewer_state_->window,
+        [](GLFWwindow *window, int key, int, int action, int mods) {
+            auto *bridge = static_cast<MujocoSimBridge *>(glfwGetWindowUserPointer(window));
+            if (bridge)
+            {
+                bridge->handleViewerKey(key, action, mods);
+            }
+        });
 
     mjv_makeScene(model_, &viewer_state_->scene, 4000);
     viewer_state_->scene_initialized = true;
@@ -440,6 +515,8 @@ void MujocoSimBridge::initializeViewer()
     viewer_state_->camera.elevation = -20.0;
     viewer_state_->camera.distance = 3.0;
     viewer_state_->last_render_time = std::chrono::steady_clock::now();
+    viewer_state_->option.flags[mjVIS_CONTACTPOINT] = viewer_show_contact_ ? 1 : 0;
+    viewer_state_->option.flags[mjVIS_CONTACTFORCE] = viewer_show_contact_ ? 1 : 0;
 
     RCLCPP_INFO(
         this->get_logger(),
@@ -508,8 +585,215 @@ void MujocoSimBridge::renderViewerFrame()
         mjCAT_ALL,
         &viewer_state_->scene);
     mjr_render(viewport, &viewer_state_->scene, &viewer_state_->context);
+
+    if (viewer_show_hud_)
+    {
+        std::ostringstream left;
+        std::ostringstream right;
+        left << "Space: pause/resume\n"
+             << "Right: step once\n"
+             << "[ / ]: speed -/+\n"
+             << "C: toggle contacts\n"
+             << "B: toggle base omega\n"
+             << "H: toggle HUD\n"
+             << "Ncon";
+        right << (viewer_paused_ ? "paused" : "running") << "\n"
+              << "step\n"
+              << sim_speed_scale_ << "x\n"
+              << (viewer_show_contact_ ? "on" : "off") << "\n"
+              << (viewer_show_base_speed_ ? "on" : "off") << "\n"
+              << "on\n"
+              << data_->ncon;
+
+        if (viewer_show_base_speed_)
+        {
+            double wx = 0.0;
+            double wy = 0.0;
+            double wz = 0.0;
+            if (base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
+            {
+                wx = data_->qvel[base_free_qvel_adr_ + 3];
+                wy = data_->qvel[base_free_qvel_adr_ + 4];
+                wz = data_->qvel[base_free_qvel_adr_ + 5];
+            }
+            left << "\nBase omega";
+            right << "\n[" << wx << ", " << wy << ", " << wz << "]";
+        }
+
+        mjr_overlay(
+            mjFONT_NORMAL,
+            mjGRID_TOPLEFT,
+            viewport,
+            left.str().c_str(),
+            right.str().c_str(),
+            &viewer_state_->context);
+    }
+
     glfwSwapBuffers(viewer_state_->window);
     viewer_state_->last_render_time = now;
+#endif
+}
+
+void MujocoSimBridge::handleViewerMouseButton(int button, int action, int)
+{
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+    if (action == GLFW_PRESS)
+    {
+        if (button == GLFW_MOUSE_BUTTON_LEFT)
+        {
+            viewer_mouse_left_down_ = true;
+        }
+        else if (button == GLFW_MOUSE_BUTTON_MIDDLE)
+        {
+            viewer_mouse_middle_down_ = true;
+        }
+        else if (button == GLFW_MOUSE_BUTTON_RIGHT)
+        {
+            viewer_mouse_right_down_ = true;
+        }
+    }
+    else if (action == GLFW_RELEASE)
+    {
+        if (button == GLFW_MOUSE_BUTTON_LEFT)
+        {
+            viewer_mouse_left_down_ = false;
+        }
+        else if (button == GLFW_MOUSE_BUTTON_MIDDLE)
+        {
+            viewer_mouse_middle_down_ = false;
+        }
+        else if (button == GLFW_MOUSE_BUTTON_RIGHT)
+        {
+            viewer_mouse_right_down_ = false;
+        }
+    }
+#else
+    (void)button;
+    (void)action;
+#endif
+}
+
+void MujocoSimBridge::handleViewerMouseMove(double xpos, double ypos)
+{
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+    if (!enable_viewer_ || !viewer_state_ || !viewer_state_->window)
+    {
+        return;
+    }
+
+    const double dx = xpos - viewer_last_mouse_x_;
+    const double dy = ypos - viewer_last_mouse_y_;
+    viewer_last_mouse_x_ = xpos;
+    viewer_last_mouse_y_ = ypos;
+
+    if (!viewer_mouse_left_down_ && !viewer_mouse_middle_down_ && !viewer_mouse_right_down_)
+    {
+        return;
+    }
+
+    const int shift_pressed =
+        (glfwGetKey(viewer_state_->window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) ||
+        (glfwGetKey(viewer_state_->window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+
+    int action = mjMOUSE_ZOOM;
+    if (viewer_mouse_right_down_)
+    {
+        action = shift_pressed ? mjMOUSE_MOVE_H : mjMOUSE_MOVE_V;
+    }
+    else if (viewer_mouse_left_down_)
+    {
+        action = shift_pressed ? mjMOUSE_ROTATE_H : mjMOUSE_ROTATE_V;
+    }
+    else if (viewer_mouse_middle_down_)
+    {
+        action = mjMOUSE_ZOOM;
+    }
+
+    int width = 0;
+    int height = 0;
+    glfwGetWindowSize(viewer_state_->window, &width, &height);
+    const double norm = std::max(1, height);
+    mjv_moveCamera(
+        model_,
+        action,
+        dx / norm,
+        dy / norm,
+        &viewer_state_->scene,
+        &viewer_state_->camera);
+#else
+    (void)xpos;
+    (void)ypos;
+#endif
+}
+
+void MujocoSimBridge::handleViewerScroll(double yoffset)
+{
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+    if (!enable_viewer_ || !viewer_state_)
+    {
+        return;
+    }
+    mjv_moveCamera(
+        model_,
+        mjMOUSE_ZOOM,
+        0.0,
+        -0.05 * yoffset,
+        &viewer_state_->scene,
+        &viewer_state_->camera);
+#else
+    (void)yoffset;
+#endif
+}
+
+void MujocoSimBridge::handleViewerKey(int key, int action, int)
+{
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+    if (action != GLFW_PRESS || !viewer_state_)
+    {
+        return;
+    }
+
+    if (key == GLFW_KEY_SPACE)
+    {
+        viewer_paused_ = !viewer_paused_;
+        return;
+    }
+    if (key == GLFW_KEY_RIGHT)
+    {
+        viewer_step_once_ = true;
+        viewer_paused_ = true;
+        return;
+    }
+    if (key == GLFW_KEY_LEFT_BRACKET)
+    {
+        sim_speed_scale_ = std::max(0.1, sim_speed_scale_ / 1.25);
+        return;
+    }
+    if (key == GLFW_KEY_RIGHT_BRACKET)
+    {
+        sim_speed_scale_ = std::min(4.0, sim_speed_scale_ * 1.25);
+        return;
+    }
+    if (key == GLFW_KEY_C)
+    {
+        viewer_show_contact_ = !viewer_show_contact_;
+        viewer_state_->option.flags[mjVIS_CONTACTPOINT] = viewer_show_contact_ ? 1 : 0;
+        viewer_state_->option.flags[mjVIS_CONTACTFORCE] = viewer_show_contact_ ? 1 : 0;
+        return;
+    }
+    if (key == GLFW_KEY_B)
+    {
+        viewer_show_base_speed_ = !viewer_show_base_speed_;
+        return;
+    }
+    if (key == GLFW_KEY_H)
+    {
+        viewer_show_hud_ = !viewer_show_hud_;
+        return;
+    }
+#else
+    (void)key;
+    (void)action;
 #endif
 }
 
@@ -563,19 +847,22 @@ void MujocoSimBridge::controlLoopTick()
 {
     const rclcpp::Time now = this->now();
     const bool has_fresh_command = commandFresh(now);
+    const bool should_step = !viewer_paused_ || viewer_step_once_;
+    const int speed_substeps = std::max(1, static_cast<int>(std::lround(substeps_per_control_ * sim_speed_scale_)));
 
     enforceBaseLock();
     updateControlInput(now);
 
-    if (has_fresh_command || !pause_when_no_command_)
+    if (should_step && (has_fresh_command || !pause_when_no_command_))
     {
-        for (int i = 0; i < substeps_per_control_; ++i)
+        for (int i = 0; i < speed_substeps; ++i)
         {
             enforceBaseLock();
             mj_step(model_, data_);
             enforceBaseLock();
         }
         mj_forward(model_, data_);
+        viewer_step_once_ = false;
     }
     else
     {
@@ -663,24 +950,37 @@ void MujocoSimBridge::updateControlInput(rclcpp::Time now)
             last_target_q_[i] = static_cast<float>(q_des);
         }
 
-        double tau = 0.0;
-        if (mode_test_cst)
+        if (use_position_actuator_control_)
         {
-            tau = static_cast<double>(command.command.joint_target_tau[i]);
+            if (mode_test_cst)
+            {
+                // Position actuators do not accept direct torque command; keep position hold behavior.
+                q_des = static_cast<double>(last_target_q_[i]);
+            }
+            data_->ctrl[actuator_id] = q_des;
+            applied_tau_[i] = 0.0f;
         }
         else
         {
-            tau = kp_[i] * (q_des - q) + kd_[i] * (dq_des - dq);
-            if ((mode_policy || mode_test_r1) && use_command_torque_ff_)
+            double tau = 0.0;
+            if (mode_test_cst)
             {
-                tau += tau_ff;
+                tau = static_cast<double>(command.command.joint_target_tau[i]);
             }
-        }
-        const double limit = std::max(1e-6, std::abs(torque_limit_[i]));
-        tau = std::clamp(tau, -limit, limit);
+            else
+            {
+                tau = kp_[i] * (q_des - q) + kd_[i] * (dq_des - dq);
+                if ((mode_policy || mode_test_r1) && use_command_torque_ff_)
+                {
+                    tau += tau_ff;
+                }
+            }
+            const double limit = std::max(1e-6, std::abs(torque_limit_[i]));
+            tau = std::clamp(tau, -limit, limit);
 
-        data_->ctrl[actuator_id] = tau;
-        applied_tau_[i] = static_cast<float>(tau);
+            data_->ctrl[actuator_id] = tau;
+            applied_tau_[i] = static_cast<float>(tau);
+        }
     }
 }
 

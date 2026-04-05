@@ -123,11 +123,30 @@ ros2 launch joint_motor_test joint_motor_test.launch.py \
 ```bash
 ros2 launch joint_motor_test joint_motor_test_sim2sim.launch.py \
   model_path:=/abs/path/to/robot.xml \
+  backend:=python_interactive \
   test_config_path:=/abs/path/to/joint_motor_test.yaml \
   fixed_base:=true \
   fixed_base_height:=-1.0 \
-  enable_viewer:=true
+  actuator_control_mode:=auto \
+  pause_when_no_command:=false \
+  enable_viewer:=true \
+  show_left_ui:=true \
+  show_right_ui:=true
 ```
+
+Viewer controls:
+
+- `backend:=python_interactive`: use official MuJoCo Python viewer UI (left/right panels, camera, perturbation tools).
+- `backend:=cpp`: use bridge built-in hotkeys below.
+
+CPP backend hotkeys:
+
+- `Space`: pause/resume
+- `Right`: single-step (paused)
+- `[` / `]`: speed down/up
+- `C`: contact visualization on/off
+- `B`: base angular velocity HUD on/off
+- `H`: HUD on/off
 
 ## 7. Data Logging
 

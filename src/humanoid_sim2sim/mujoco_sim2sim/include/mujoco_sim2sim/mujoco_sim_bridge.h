@@ -16,6 +16,7 @@
 
 struct mjData_;
 struct mjModel_;
+struct GLFWwindow;
 
 namespace mujoco_sim2sim
 {
@@ -47,6 +48,10 @@ private:
     void initializeViewer();
     void shutdownViewer();
     void renderViewerFrame();
+    void handleViewerMouseButton(int button, int action, int mods);
+    void handleViewerMouseMove(double xpos, double ypos);
+    void handleViewerScroll(double yoffset);
+    void handleViewerKey(int key, int action, int mods);
 
     void commandCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
     void controlLoopTick();
@@ -80,6 +85,8 @@ private:
     bool pause_when_no_command_ = false;
     bool fix_base_ = false;
     double fixed_base_height_ = -1.0;
+    std::string actuator_control_mode_ = "auto";
+    bool use_position_actuator_control_ = false;
     bool enable_viewer_ = false;
     double viewer_fps_ = 60.0;
     int viewer_width_ = 1280;
@@ -108,6 +115,17 @@ private:
     mjModel_ *model_ = nullptr;
     mjData_ *data_ = nullptr;
     std::unique_ptr<ViewerState> viewer_state_;
+    bool viewer_mouse_left_down_ = false;
+    bool viewer_mouse_middle_down_ = false;
+    bool viewer_mouse_right_down_ = false;
+    double viewer_last_mouse_x_ = 0.0;
+    double viewer_last_mouse_y_ = 0.0;
+    bool viewer_show_contact_ = false;
+    bool viewer_show_hud_ = true;
+    bool viewer_show_base_speed_ = true;
+    bool viewer_paused_ = false;
+    bool viewer_step_once_ = false;
+    double sim_speed_scale_ = 1.0;
 
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr state_pub_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr command_sub_;

@@ -48,11 +48,16 @@ mujoco_sim_bridge:
     fix_base: false
     # Keep negative to preserve model initial height.
     fixed_base_height: -1.0
+    # auto / torque / position
+    actuator_control_mode: "auto"
     enable_viewer: false
     viewer_fps: 60.0
     viewer_width: 1280
     viewer_height: 720
     viewer_title: "MuJoCo Sim2Sim Viewer"
+    # Python interactive backend only.
+    show_left_ui: true
+    show_right_ui: true
 
     # Joint-space stabilization for simulation side.
     use_command_torque_ff: false
