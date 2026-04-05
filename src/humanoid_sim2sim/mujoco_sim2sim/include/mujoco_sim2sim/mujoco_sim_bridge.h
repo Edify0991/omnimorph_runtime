@@ -14,8 +14,8 @@
 
 #include "rl_master/robot_types.h"
 
-struct mjData;
-struct mjModel;
+struct mjData_;
+struct mjModel_;
 
 namespace mujoco_sim2sim
 {
@@ -96,8 +96,8 @@ private:
     int base_free_qvel_adr_ = -1;
     int substeps_per_control_ = 1;
 
-    mjModel *model_ = nullptr;
-    mjData *data_ = nullptr;
+    mjModel_ *model_ = nullptr;
+    mjData_ *data_ = nullptr;
 
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr state_pub_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr command_sub_;
