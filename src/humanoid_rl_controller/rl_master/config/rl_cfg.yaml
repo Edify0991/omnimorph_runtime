@@ -44,45 +44,45 @@ sim2real:
   RL_control_f: 100
   # policy action output order. If omitted, default is robot canonical order.
   action_joint_order:
-    - right_hip_roll_joint
-    - right_hip_yaw_joint
-    - right_hip_pitch_joint
-    - right_knee_joint
-    - right_ankle_pitch_joint
-    - right_ankle_roll_joint
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
     - left_hip_roll_joint
-    - left_hip_yaw_joint
-    - left_hip_pitch_joint
-    - left_knee_joint
-    - left_ankle_pitch_joint
-    - left_ankle_roll_joint
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
   obs_joint_order:
-    - right_hip_roll_joint
-    - right_hip_yaw_joint
-    - right_hip_pitch_joint
-    - right_knee_joint
-    - right_ankle_pitch_joint
-    - right_ankle_roll_joint
-    - left_hip_roll_joint
-    - left_hip_yaw_joint
-    - left_hip_pitch_joint
-    - left_knee_joint
-    - left_ankle_pitch_joint
-    - left_ankle_roll_joint
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
   # Example (IsaacLab left-first style), replace above list if needed:
   # action_joint_order:
-  #   - left_hip_roll_joint
-  #   - left_hip_yaw_joint
-  #   - left_hip_pitch_joint
-  #   - left_knee_joint
-  #   - left_ankle_pitch_joint
-  #   - left_ankle_roll_joint
-  #   - right_hip_roll_joint
-  #   - right_hip_yaw_joint
-  #   - right_hip_pitch_joint
-  #   - right_knee_joint
-  #   - right_ankle_pitch_joint
-  #   - right_ankle_roll_joint
+  #   - left_hip_roll
+  #   - left_hip_yaw
+  #   - left_hip_pitch
+  #   - left_knee_pitch
+  #   - left_ankle_pitch
+  #   - left_ankle_roll
+  #   - right_hip_roll
+  #   - right_hip_yaw
+  #   - right_hip_pitch
+  #   - right_knee_pitch
+  #   - right_ankle_pitch
+  #   - right_ankle_roll
   # obs_joint_order can use the same left-first list as action_joint_order.
   observation_manifest_file: "observation_manifest_amp.yaml"
   # beyondmimic example:
@@ -165,38 +165,38 @@ sim2real:
   
   robot:
     default_joint_angles:
-      right_hip_roll_joint: 0.0
-      right_hip_yaw_joint: 0.0
-      right_hip_pitch_joint: -0.24
-      right_knee_joint: 0.48
-      right_ankle_pitch_joint: -0.24
-      right_ankle_roll_joint: 0.0
-      left_hip_roll_joint: 0.0
-      left_hip_yaw_joint: 0.0
-      left_hip_pitch_joint: -0.24
-      left_knee_joint: 0.48
-      left_ankle_pitch_joint: -0.24
-      left_ankle_roll_joint: 0.0
+      right_hip_roll: 0.0
+      right_hip_yaw: 0.0
+      right_hip_pitch: -0.24
+      right_knee_pitch: 0.48
+      right_ankle_pitch: -0.24
+      right_ankle_roll: 0.0
+      left_hip_roll: 0.0
+      left_hip_yaw: 0.0
+      left_hip_pitch: -0.24
+      left_knee_pitch: 0.48
+      left_ankle_pitch: -0.24
+      left_ankle_roll: 0.0
     
     joint_limit_range:
-      hip_roll_joint: [-0.2, 0.2]
-      hip_yaw_joint: [-1.05, 1.05]
-      hip_pitch_joint: [-0.45, 0.38]
-      knee_joint: [0.0, 1.48]
-      ankle_pitch_joint: [-0.64, 0.4]
-      ankle_roll_joint: [-0.26, 0.26]
-      hip_linear_motor: [0, 200]
-      knee_linear_motor: [0, 200]
-      ankle_left_linear_motor: [0, 100]
-      ankle_right_linear_motor: [0, 100]
+      hip_roll: [-0.2, 0.2]
+      hip_yaw: [-1.05, 1.05]
+      hip_pitch: [-0.45, 0.38]
+      knee_pitch: [0.0, 1.48]
+      ankle_pitch: [-0.64, 0.4]
+      ankle_roll: [-0.26, 0.26]
+      # hip_linear_motor: [0, 200]
+      # knee_linear_motor: [0, 200]
+      # ankle_left_linear_motor: [0, 100]
+      # ankle_right_linear_motor: [0, 100]
     
     motor_torque_limit:
-      hip_roll_joint: 330
-      hip_yaw_joint: 150
-      hip_pitch_joint: 330
-      knee_joint: 8000
-      ankle_left_motor: 90
-      ankle_right_motor: 90
+      hip_roll: 330
+      hip_yaw: 150
+      hip_pitch: 330
+      knee_pitch: 8000
+      ankle_pitch: 90
+      ankle_roll: 90
   
   scales:
     lin_vel: 2.0
@@ -260,31 +260,31 @@ stand_sim2real:
   motor_N: 12
   RL_control_f: 100
   action_joint_order:
-    - right_hip_roll_joint
-    - right_hip_yaw_joint
-    - right_hip_pitch_joint
-    - right_knee_joint
-    - right_ankle_pitch_joint
-    - right_ankle_roll_joint
-    - left_hip_roll_joint
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
     - left_hip_yaw_joint
-    - left_hip_pitch_joint
-    - left_knee_joint
-    - left_ankle_pitch_joint
-    - left_ankle_roll_joint
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
   obs_joint_order:
-    - right_hip_roll_joint
-    - right_hip_yaw_joint
-    - right_hip_pitch_joint
-    - right_knee_joint
-    - right_ankle_pitch_joint
-    - right_ankle_roll_joint
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
     - left_hip_roll_joint
-    - left_hip_yaw_joint
-    - left_hip_pitch_joint
-    - left_knee_joint
-    - left_ankle_pitch_joint
-    - left_ankle_roll_joint
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
   observation_manifest_file: "observation_manifest_amp.yaml"
   enable_reference_motion: false
   reference_motion_dim: 24
@@ -344,30 +344,30 @@ stand_sim2real:
   
   robot:
     default_joint_angles:
-      left_hip_roll_joint: 0.0
-      left_hip_yaw_joint: 0.0
-      left_hip_pitch_joint: -0.24
-      left_knee_joint: 0.48
-      left_ankle_pitch_joint: -0.24
-      left_ankle_roll_joint: 0.0
-      right_hip_roll_joint: 0.0
-      right_hip_yaw_joint: 0.0
-      right_hip_pitch_joint: -0.24
-      right_knee_joint: 0.48
-      right_ankle_pitch_joint: -0.24
-      right_ankle_roll_joint: 0.0
+      left_hip_roll: 0.0
+      left_hip_yaw: 0.0
+      left_hip_pitch: -0.24
+      left_knee_pitch: 0.48
+      left_ankle_pitch: -0.24
+      left_ankle_roll: 0.0
+      right_hip_roll: 0.0
+      right_hip_yaw: 0.0
+      right_hip_pitch: -0.24
+      right_knee_pitch: 0.48
+      right_ankle_pitch: -0.24
+      right_ankle_roll: 0.0
     
     joint_limit_range:
-      hip_roll_joint: [-0.2, 0.2]
-      hip_yaw_joint: [-1.05, 1.05]
-      hip_pitch_joint: [-0.45, 0.38]
-      knee_joint: [0.0, 1.48]
-      ankle_pitch_joint: [-0.64, 0.4]
-      ankle_roll_joint: [-0.26, 0.26]
-      hip_linear_motor: [0, 200]
-      knee_linear_motor: [0, 200]
-      ankle_left_linear_motor: [0, 100]
-      ankle_right_linear_motor: [0, 100]
+      hip_roll: [-0.2, 0.2]
+      hip_yaw: [-1.05, 1.05]
+      hip_pitch: [-0.45, 0.38]
+      knee_pitch: [0.0, 1.48]
+      ankle_pitch: [-0.64, 0.4]
+      ankle_roll: [-0.26, 0.26]
+      # hip_linear_motor: [0, 200]
+      # knee_linear_motor: [0, 200]
+      # ankle_left_linear_motor: [0, 100]
+      # ankle_right_linear_motor: [0, 100]
     
     motor_torque_limit:
       hip_roll_joint: 330

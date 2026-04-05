@@ -10,18 +10,18 @@ std::unique_ptr<RobotState> RobotState::create()
 const std::array<std::string, rl_master::kLegJointCount> &RobotState::joint_name_order()
 {
     static const std::array<std::string, rl_master::kLegJointCount> kJointOrder = {
-        "right_hip_roll_joint",
-        "right_hip_yaw_joint",
-        "right_hip_pitch_joint",
-        "right_knee_joint",
-        "right_ankle_pitch_joint",
-        "right_ankle_roll_joint",
-        "left_hip_roll_joint",
-        "left_hip_yaw_joint",
-        "left_hip_pitch_joint",
-        "left_knee_joint",
-        "left_ankle_pitch_joint",
-        "left_ankle_roll_joint"};
+        "right_hip_roll",
+        "right_hip_yaw",
+        "right_hip_pitch",
+        "right_knee_pitch",
+        "right_ankle_pitch",
+        "right_ankle_roll",
+        "left_hip_roll",
+        "left_hip_yaw",
+        "left_hip_pitch",
+        "left_knee_pitch",
+        "left_ankle_pitch",
+        "left_ankle_roll"};
     return kJointOrder;
 }
 
