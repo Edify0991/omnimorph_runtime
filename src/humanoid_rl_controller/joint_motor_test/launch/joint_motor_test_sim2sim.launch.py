@@ -34,6 +34,31 @@ def generate_launch_description():
         default_value="-1.0",
         description="Optional fixed base height override for sim2sim",
     )
+    enable_viewer_arg = DeclareLaunchArgument(
+        "enable_viewer",
+        default_value="false",
+        description="Enable MuJoCo viewer window",
+    )
+    viewer_fps_arg = DeclareLaunchArgument(
+        "viewer_fps",
+        default_value="60.0",
+        description="MuJoCo viewer render rate",
+    )
+    viewer_width_arg = DeclareLaunchArgument(
+        "viewer_width",
+        default_value="1280",
+        description="MuJoCo viewer width",
+    )
+    viewer_height_arg = DeclareLaunchArgument(
+        "viewer_height",
+        default_value="720",
+        description="MuJoCo viewer height",
+    )
+    viewer_title_arg = DeclareLaunchArgument(
+        "viewer_title",
+        default_value="MuJoCo Sim2Sim Viewer",
+        description="MuJoCo viewer title",
+    )
 
     sim2sim_include = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(mujoco_launch),
@@ -42,6 +67,11 @@ def generate_launch_description():
             "start_rl_controller": "false",
             "fixed_base": LaunchConfiguration("fixed_base"),
             "fixed_base_height": LaunchConfiguration("fixed_base_height"),
+            "enable_viewer": LaunchConfiguration("enable_viewer"),
+            "viewer_fps": LaunchConfiguration("viewer_fps"),
+            "viewer_width": LaunchConfiguration("viewer_width"),
+            "viewer_height": LaunchConfiguration("viewer_height"),
+            "viewer_title": LaunchConfiguration("viewer_title"),
         }.items(),
     )
 
@@ -57,6 +87,11 @@ def generate_launch_description():
         test_config_arg,
         fixed_base_arg,
         fixed_base_height_arg,
+        enable_viewer_arg,
+        viewer_fps_arg,
+        viewer_width_arg,
+        viewer_height_arg,
+        viewer_title_arg,
         sim2sim_include,
         test_node,
     ])

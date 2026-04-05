@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(mujoco_sim2sim)
+option(MUJOCO_SIM2SIM_ENABLE_VIEWER "Enable optional MuJoCo GLFW viewer support" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,6 +31,26 @@ find_library(MUJOCO_LIBRARY
 )
 
 if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
+  set(MUJOCO_SIM2SIM_WITH_VIEWER OFF)
+  set(MUJOCO_SIM2SIM_GLFW_LIB "")
+
+  if(MUJOCO_SIM2SIM_ENABLE_VIEWER)
+    find_package(glfw3 QUIET)
+    if(TARGET glfw)
+      set(MUJOCO_SIM2SIM_WITH_VIEWER ON)
+      set(MUJOCO_SIM2SIM_GLFW_LIB glfw)
+    elseif(TARGET glfw3)
+      set(MUJOCO_SIM2SIM_WITH_VIEWER ON)
+      set(MUJOCO_SIM2SIM_GLFW_LIB glfw3)
+    else()
+      find_library(MUJOCO_SIM2SIM_GLFW_RAW_LIB NAMES glfw glfw3)
+      if(MUJOCO_SIM2SIM_GLFW_RAW_LIB)
+        set(MUJOCO_SIM2SIM_WITH_VIEWER ON)
+        set(MUJOCO_SIM2SIM_GLFW_LIB ${MUJOCO_SIM2SIM_GLFW_RAW_LIB})
+      endif()
+    endif()
+  endif()
+
   add_executable(mujoco_sim_bridge
     src/main.cpp
     src/mujoco_sim_bridge.cpp
@@ -50,6 +71,18 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
   target_link_libraries(mujoco_sim_bridge
     ${MUJOCO_LIBRARY}
   )
+
+  if(MUJOCO_SIM2SIM_WITH_VIEWER)
+    target_compile_definitions(mujoco_sim_bridge PRIVATE MUJOCO_SIM2SIM_WITH_VIEWER=1)
+    target_link_libraries(mujoco_sim_bridge ${MUJOCO_SIM2SIM_GLFW_LIB})
+    find_package(OpenGL QUIET)
+    if(OpenGL_FOUND)
+      target_link_libraries(mujoco_sim_bridge OpenGL::GL)
+    endif()
+    message(STATUS "mujoco_sim2sim: GLFW viewer support enabled.")
+  else()
+    message(STATUS "mujoco_sim2sim: GLFW viewer support disabled.")
+  endif()
 
   install(TARGETS mujoco_sim_bridge
     DESTINATION lib/${PROJECT_NAME}

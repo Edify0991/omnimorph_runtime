@@ -28,6 +28,7 @@ public:
 
 private:
     static constexpr size_t kJointCount = rl_master::kLegJointCount;
+    struct ViewerState;
 
     struct CommandCache
     {
@@ -43,6 +44,9 @@ private:
     void resolveModelMappings();
     void setupRosInterfaces();
     void initializeState();
+    void initializeViewer();
+    void shutdownViewer();
+    void renderViewerFrame();
 
     void commandCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
     void controlLoopTick();
@@ -76,6 +80,11 @@ private:
     bool pause_when_no_command_ = false;
     bool fix_base_ = false;
     double fixed_base_height_ = -1.0;
+    bool enable_viewer_ = false;
+    double viewer_fps_ = 60.0;
+    int viewer_width_ = 1280;
+    int viewer_height_ = 720;
+    std::string viewer_title_ = "MuJoCo Sim2Sim Viewer";
 
     std::vector<double> kp_;
     std::vector<double> kd_;
@@ -98,6 +107,7 @@ private:
 
     mjModel_ *model_ = nullptr;
     mjData_ *data_ = nullptr;
+    std::unique_ptr<ViewerState> viewer_state_;
 
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr state_pub_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr command_sub_;

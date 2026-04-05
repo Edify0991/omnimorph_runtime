@@ -6,6 +6,7 @@
 - It steps MuJoCo physics and publishes `/humanoid/rl/state`.
 - `RL_controller` can run without code change, only the deployment object switches from real robot (`RL_solver`) to MuJoCo.
 - For trajectory test scenarios, base lock is supported via launch args `fixed_base:=true` and optional `fixed_base_height:=...`.
+- Optional visualization window is supported via `enable_viewer:=true` (requires build with GLFW support).
 
 Detailed guide:
 

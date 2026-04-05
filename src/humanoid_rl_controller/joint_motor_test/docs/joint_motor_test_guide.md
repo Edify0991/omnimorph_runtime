@@ -125,7 +125,8 @@ ros2 launch joint_motor_test joint_motor_test_sim2sim.launch.py \
   model_path:=/abs/path/to/robot.xml \
   test_config_path:=/abs/path/to/joint_motor_test.yaml \
   fixed_base:=true \
-  fixed_base_height:=-1.0
+  fixed_base_height:=-1.0 \
+  enable_viewer:=true
 ```
 
 ## 7. Data Logging

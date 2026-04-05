@@ -38,6 +38,31 @@ def generate_launch_description():
         default_value="-1.0",
         description="Override locked base height (meters). Negative keeps model initial value.",
     )
+    enable_viewer_arg = DeclareLaunchArgument(
+        "enable_viewer",
+        default_value="false",
+        description="Enable MuJoCo GLFW visualization window.",
+    )
+    viewer_fps_arg = DeclareLaunchArgument(
+        "viewer_fps",
+        default_value="60.0",
+        description="Viewer render rate in Hz.",
+    )
+    viewer_width_arg = DeclareLaunchArgument(
+        "viewer_width",
+        default_value="1280",
+        description="Viewer window width in pixels.",
+    )
+    viewer_height_arg = DeclareLaunchArgument(
+        "viewer_height",
+        default_value="720",
+        description="Viewer window height in pixels.",
+    )
+    viewer_title_arg = DeclareLaunchArgument(
+        "viewer_title",
+        default_value="MuJoCo Sim2Sim Viewer",
+        description="Viewer window title.",
+    )
     start_controller_arg = DeclareLaunchArgument(
         "start_rl_controller",
         default_value="true",
@@ -64,6 +89,11 @@ def generate_launch_description():
                 "control_hz": ParameterValue(LaunchConfiguration("control_hz"), value_type=float),
                 "fix_base": ParameterValue(LaunchConfiguration("fixed_base"), value_type=bool),
                 "fixed_base_height": ParameterValue(LaunchConfiguration("fixed_base_height"), value_type=float),
+                "enable_viewer": ParameterValue(LaunchConfiguration("enable_viewer"), value_type=bool),
+                "viewer_fps": ParameterValue(LaunchConfiguration("viewer_fps"), value_type=float),
+                "viewer_width": ParameterValue(LaunchConfiguration("viewer_width"), value_type=int),
+                "viewer_height": ParameterValue(LaunchConfiguration("viewer_height"), value_type=int),
+                "viewer_title": LaunchConfiguration("viewer_title"),
             },
         ],
     )
@@ -75,6 +105,11 @@ def generate_launch_description():
             control_hz_arg,
             fixed_base_arg,
             fixed_base_height_arg,
+            enable_viewer_arg,
+            viewer_fps_arg,
+            viewer_width_arg,
+            viewer_height_arg,
+            viewer_title_arg,
             start_controller_arg,
             rl_controller,
             mujoco_bridge,

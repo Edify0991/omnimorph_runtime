@@ -4,7 +4,8 @@
   control_hz: 500.0
 
   # file / sine
-  trajectory_source: file
+  # Default to sine so launch can run out-of-box without a trajectory file.
+  trajectory_source: sine
 
   # csp / cst / r1
   control_mode: csp

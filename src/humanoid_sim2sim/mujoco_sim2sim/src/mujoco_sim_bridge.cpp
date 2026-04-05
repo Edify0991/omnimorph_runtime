@@ -11,6 +11,9 @@
 #include <vector>
 
 #include <mujoco/mujoco.h>
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+#include <GLFW/glfw3.h>
+#endif
 
 #include "rl_master/dds_protocol.h"
 #include "rl_master/rl_protocol.h"
@@ -47,6 +50,54 @@ bool endsWith(const std::string &value, const std::string &suffix)
 namespace mujoco_sim2sim
 {
 
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+struct MujocoSimBridge::ViewerState
+{
+    GLFWwindow *window = nullptr;
+    mjvCamera camera;
+    mjvOption option;
+    mjvScene scene;
+    mjrContext context;
+    std::chrono::steady_clock::time_point last_render_time{};
+    bool glfw_initialized = false;
+    bool scene_initialized = false;
+    bool context_initialized = false;
+
+    ViewerState()
+    {
+        mjv_defaultCamera(&camera);
+        mjv_defaultOption(&option);
+        mjv_defaultScene(&scene);
+        mjr_defaultContext(&context);
+    }
+
+    ~ViewerState()
+    {
+        if (context_initialized)
+        {
+            mjr_freeContext(&context);
+        }
+        if (scene_initialized)
+        {
+            mjv_freeScene(&scene);
+        }
+        if (window)
+        {
+            glfwDestroyWindow(window);
+            window = nullptr;
+        }
+        if (glfw_initialized)
+        {
+            glfwTerminate();
+        }
+    }
+};
+#else
+struct MujocoSimBridge::ViewerState
+{
+};
+#endif
+
 MujocoSimBridge::MujocoSimBridge()
     : rclcpp::Node("mujoco_sim_bridge")
 {
@@ -62,15 +113,17 @@ MujocoSimBridge::MujocoSimBridge()
     loadModel();
     resolveModelMappings();
     initializeState();
+    initializeViewer();
     setupRosInterfaces();
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim bridge ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d",
+        "MuJoCo sim2sim bridge ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, viewer=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
-        substeps_per_control_);
+        substeps_per_control_,
+        enable_viewer_ ? "on" : "off");
 }
 
 MujocoSimBridge::~MujocoSimBridge()
@@ -78,6 +131,7 @@ MujocoSimBridge::~MujocoSimBridge()
     control_timer_.reset();
     command_sub_.reset();
     state_pub_.reset();
+    shutdownViewer();
 
     if (data_)
     {
@@ -107,6 +161,11 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<bool>("pause_when_no_command", false);
     this->declare_parameter<bool>("fix_base", false);
     this->declare_parameter<double>("fixed_base_height", -1.0);
+    this->declare_parameter<bool>("enable_viewer", false);
+    this->declare_parameter<double>("viewer_fps", 60.0);
+    this->declare_parameter<int>("viewer_width", 1280);
+    this->declare_parameter<int>("viewer_height", 720);
+    this->declare_parameter<std::string>("viewer_title", "MuJoCo Sim2Sim Viewer");
     this->declare_parameter<std::vector<double>>("kp", std::vector<double>(kJointCount, 80.0));
     this->declare_parameter<std::vector<double>>("kd", std::vector<double>(kJointCount, 2.0));
     this->declare_parameter<std::vector<double>>("torque_limit", std::vector<double>(kJointCount, 120.0));
@@ -122,6 +181,11 @@ void MujocoSimBridge::loadParameters()
     pause_when_no_command_ = this->get_parameter("pause_when_no_command").as_bool();
     fix_base_ = this->get_parameter("fix_base").as_bool();
     fixed_base_height_ = this->get_parameter("fixed_base_height").as_double();
+    enable_viewer_ = this->get_parameter("enable_viewer").as_bool();
+    viewer_fps_ = std::max(1.0, this->get_parameter("viewer_fps").as_double());
+    viewer_width_ = std::max(320, this->get_parameter("viewer_width").as_int());
+    viewer_height_ = std::max(240, this->get_parameter("viewer_height").as_int());
+    viewer_title_ = this->get_parameter("viewer_title").as_string();
 
     joint_names_ = normalizeNameParam(
         this->get_parameter("joint_names").as_string_array(),
@@ -328,6 +392,125 @@ void MujocoSimBridge::initializeState()
     }
 }
 
+void MujocoSimBridge::initializeViewer()
+{
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+    if (!enable_viewer_)
+    {
+        return;
+    }
+
+    viewer_state_ = std::make_unique<ViewerState>();
+    if (!glfwInit())
+    {
+        RCLCPP_WARN(this->get_logger(), "GLFW init failed. Disable MuJoCo viewer and continue headless.");
+        enable_viewer_ = false;
+        viewer_state_.reset();
+        return;
+    }
+    viewer_state_->glfw_initialized = true;
+
+    glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+    glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
+    viewer_state_->window = glfwCreateWindow(
+        viewer_width_,
+        viewer_height_,
+        viewer_title_.c_str(),
+        nullptr,
+        nullptr);
+    if (!viewer_state_->window)
+    {
+        RCLCPP_WARN(this->get_logger(), "GLFW window creation failed. Disable MuJoCo viewer and continue headless.");
+        enable_viewer_ = false;
+        shutdownViewer();
+        return;
+    }
+
+    glfwMakeContextCurrent(viewer_state_->window);
+    glfwSwapInterval(1);
+
+    mjv_makeScene(model_, &viewer_state_->scene, 4000);
+    viewer_state_->scene_initialized = true;
+    mjr_makeContext(model_, &viewer_state_->context, mjFONTSCALE_150);
+    viewer_state_->context_initialized = true;
+    viewer_state_->camera.type = mjCAMERA_FREE;
+    viewer_state_->camera.azimuth = 90.0;
+    viewer_state_->camera.elevation = -20.0;
+    viewer_state_->camera.distance = 3.0;
+    viewer_state_->last_render_time = std::chrono::steady_clock::now();
+
+    RCLCPP_INFO(
+        this->get_logger(),
+        "MuJoCo viewer enabled: %dx%d @ %.1fHz",
+        viewer_width_,
+        viewer_height_,
+        viewer_fps_);
+#else
+    if (enable_viewer_)
+    {
+        RCLCPP_WARN(this->get_logger(), "Viewer requested but mujoco_sim2sim was built without GLFW support.");
+        enable_viewer_ = false;
+    }
+#endif
+}
+
+void MujocoSimBridge::shutdownViewer()
+{
+    viewer_state_.reset();
+}
+
+void MujocoSimBridge::renderViewerFrame()
+{
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+    if (!enable_viewer_ || !viewer_state_ || !viewer_state_->window)
+    {
+        return;
+    }
+    if (glfwWindowShouldClose(viewer_state_->window))
+    {
+        RCLCPP_INFO(this->get_logger(), "MuJoCo viewer window closed by user. Continue headless.");
+        enable_viewer_ = false;
+        shutdownViewer();
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const double min_render_period = 1.0 / std::max(1.0, viewer_fps_);
+    if (viewer_state_->last_render_time.time_since_epoch().count() != 0)
+    {
+        const double dt = std::chrono::duration<double>(now - viewer_state_->last_render_time).count();
+        if (dt < min_render_period)
+        {
+            return;
+        }
+    }
+
+    glfwMakeContextCurrent(viewer_state_->window);
+    glfwPollEvents();
+
+    int fb_w = 0;
+    int fb_h = 0;
+    glfwGetFramebufferSize(viewer_state_->window, &fb_w, &fb_h);
+    if (fb_w <= 0 || fb_h <= 0)
+    {
+        return;
+    }
+
+    const mjrRect viewport{0, 0, fb_w, fb_h};
+    mjv_updateScene(
+        model_,
+        data_,
+        &viewer_state_->option,
+        nullptr,
+        &viewer_state_->camera,
+        mjCAT_ALL,
+        &viewer_state_->scene);
+    mjr_render(viewport, &viewer_state_->scene, &viewer_state_->context);
+    glfwSwapBuffers(viewer_state_->window);
+    viewer_state_->last_render_time = now;
+#endif
+}
+
 void MujocoSimBridge::enforceBaseLock()
 {
     if (!fix_base_ || !fixed_base_pose_initialized_ || base_free_qpos_adr_ < 0 || base_free_qvel_adr_ < 0)
@@ -399,6 +582,7 @@ void MujocoSimBridge::controlLoopTick()
     }
 
     publishRobotState();
+    renderViewerFrame();
 }
 
 bool MujocoSimBridge::commandFresh(rclcpp::Time now) const
