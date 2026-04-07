@@ -200,7 +200,41 @@ deploy_mode_profiles:
 - `geometry_msgs`
 - `SharedMemory`（仅 RL_solver 电机闭环需要）
 
-### 6.2 `imu_communication_yesense`
+### 6.2 实时线程配置（新增）
+
+`RL_controller` 与 `RL_solver` 的实时调度和绑核不再硬编码，支持 YAML 与环境变量覆盖。
+
+YAML 两层配置：
+
+- profile 内默认：`sim2real.realtime` / `stand_sim2real.realtime`
+- 进程级覆盖：`runtime_process.controller` / `runtime_process.solver`（优先级更高）
+
+示例：
+
+```yaml
+runtime_process:
+  controller:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
+  solver:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 2
+    use_fifo: true
+    fifo_priority: 90
+```
+
+环境变量覆盖（高于 YAML）：
+
+- `RL_MASTER_CONTROLLER_RT_ENABLED/LOCK_MEMORY/SET_AFFINITY/CPU_ID/USE_FIFO/FIFO_PRIORITY`
+- `RL_MASTER_SOLVER_RT_ENABLED/LOCK_MEMORY/SET_AFFINITY/CPU_ID/USE_FIFO/FIFO_PRIORITY`
+
+### 6.3 `imu_communication_yesense`
 
 - `rclcpp`
 - `sensor_msgs`

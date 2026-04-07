@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <yaml-cpp/yaml.h>
+#include "rl_master/runtime/realtime_utils.h"
 
 template <typename T>
 inline T yamlReadOr(const YAML::Node &node, const char *key, const T &default_value)
@@ -32,6 +33,52 @@ inline std::string getCurrentTime()
     std::ostringstream oss;
     oss << std::put_time(&tm, "%b%d_%H-%M-%S");
     return oss.str();
+}
+
+inline rl_master::runtime::RealtimeConfig parseRealtimeConfigNode(
+    const YAML::Node &node,
+    const rl_master::runtime::RealtimeConfig &defaults = {})
+{
+    rl_master::runtime::RealtimeConfig config = defaults;
+    if (!node)
+    {
+        return config;
+    }
+    config.enabled = yamlReadOr<bool>(node, "enabled", config.enabled);
+    config.lock_memory = yamlReadOr<bool>(node, "lock_memory", config.lock_memory);
+    config.set_affinity = yamlReadOr<bool>(node, "set_affinity", config.set_affinity);
+    config.cpu_id = yamlReadOr<int>(node, "cpu_id", config.cpu_id);
+    config.use_fifo_scheduler = yamlReadOr<bool>(node, "use_fifo", config.use_fifo_scheduler);
+    config.fifo_priority = yamlReadOr<int>(node, "fifo_priority", config.fifo_priority);
+    return config;
+}
+
+inline bool loadProcessRealtimeConfigFromYAML(
+    const std::string &yaml_file,
+    const std::string &process_name,
+    rl_master::runtime::RealtimeConfig *out,
+    const std::string &group_name = "runtime_process")
+{
+    if (!out || process_name.empty())
+    {
+        return false;
+    }
+
+    try
+    {
+        const YAML::Node config = YAML::LoadFile(yaml_file);
+        const YAML::Node process_node = config[group_name] ? config[group_name][process_name] : YAML::Node();
+        if (!process_node)
+        {
+            return false;
+        }
+        *out = parseRealtimeConfigNode(process_node, *out);
+        return true;
+    }
+    catch (const std::exception &)
+    {
+        return false;
+    }
 }
 
 #define RL_CFG_PATH RL_MASTER_ROOT_DIR "/config/rl_cfg.yaml"
@@ -149,6 +196,7 @@ public:
     bool save_data_flag = false;
     std::string control_mode;
     float action_filter = 0.0f;
+    rl_master::runtime::RealtimeConfig realtime;
 
     class RobotCfg
     {
@@ -389,6 +437,17 @@ public:
             cmd_timeout_s = yamlReadOr<double>(cfg, "cmd_timeout_s", 0.12);
             loop_overrun_warn_us = yamlReadOr<int>(cfg, "loop_overrun_warn_us", 2000);
 
+            realtime = parseRealtimeConfigNode(cfg["realtime"]);
+            if (!cfg["realtime"])
+            {
+                realtime.enabled = yamlReadOr<bool>(cfg, "realtime_enabled", realtime.enabled);
+                realtime.lock_memory = yamlReadOr<bool>(cfg, "realtime_lock_memory", realtime.lock_memory);
+                realtime.set_affinity = yamlReadOr<bool>(cfg, "realtime_set_affinity", realtime.set_affinity);
+                realtime.cpu_id = yamlReadOr<int>(cfg, "realtime_cpu_id", realtime.cpu_id);
+                realtime.use_fifo_scheduler = yamlReadOr<bool>(cfg, "realtime_use_fifo", realtime.use_fifo_scheduler);
+                realtime.fifo_priority = yamlReadOr<int>(cfg, "realtime_fifo_priority", realtime.fifo_priority);
+            }
+
             tau_limit = cfg["tau_limit"].as<std::vector<float>>();
             save_data_flag = cfg["save_data_flag"].as<bool>();
             control_mode = cfg["control_mode"].as<std::string>();
@@ -457,6 +516,13 @@ public:
         std::cout << "Reference Motion Source: " << reference_motion_source << std::endl;
         std::cout << "Reference Motion Path: " << reference_motion_path << std::endl;
         std::cout << "External Obs Inputs: " << external_observations.size() << std::endl;
+        std::cout << "Realtime: enabled=" << (realtime.enabled ? "true" : "false")
+                  << ", lock_memory=" << (realtime.lock_memory ? "true" : "false")
+                  << ", set_affinity=" << (realtime.set_affinity ? "true" : "false")
+                  << ", cpu_id=" << realtime.cpu_id
+                  << ", use_fifo=" << (realtime.use_fifo_scheduler ? "true" : "false")
+                  << ", fifo_priority=" << realtime.fifo_priority
+                  << std::endl;
         std::cout << "=============================" << std::endl;
     }
 };

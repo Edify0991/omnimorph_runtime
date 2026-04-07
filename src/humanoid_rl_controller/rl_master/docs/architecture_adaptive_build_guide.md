@@ -6,6 +6,7 @@ Scope:
 - Keeps your existing DDS topics/protocol unchanged.
 - Keeps your deploy lifecycle/state machine unchanged.
 - Only upgrades build-system portability and architecture-aware optimization flags.
+- Adds configurable realtime thread pinning/scheduling for `RL_controller` and `RL_solver`.
 
 ## 1) What Changed
 
@@ -79,3 +80,56 @@ Then rebuild `rl_master`.
   in `config/rl_cfg.yaml`, then tune per CPU load.
 - If you deploy on heterogeneous ARM cores (big.LITTLE), keep your real-time pinning policy aligned with big cores.
 - Keep `native_tuning=OFF` for release artifacts shared across multiple ARM devices.
+
+## 5) Realtime Thread Pinning (YAML)
+
+Two levels are supported:
+
+1. Per-profile defaults (`sim2real.realtime`, `stand_sim2real.realtime`)
+2. Process-level override (`runtime_process.controller`, `runtime_process.solver`)
+
+Process-level override has higher priority and is recommended for big.LITTLE tuning.
+
+Example:
+
+```yaml
+runtime_process:
+  controller:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
+  solver:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 2
+    use_fifo: true
+    fifo_priority: 90
+```
+
+## 6) Realtime Thread Pinning (Launch / Env Override)
+
+Environment variables can override YAML at runtime:
+
+- Controller prefix: `RL_MASTER_CONTROLLER_RT_`
+- Solver prefix: `RL_MASTER_SOLVER_RT_`
+- Keys: `ENABLED`, `LOCK_MEMORY`, `SET_AFFINITY`, `CPU_ID`, `USE_FIFO`, `FIFO_PRIORITY`
+
+Examples:
+
+```bash
+export RL_MASTER_SOLVER_RT_CPU_ID=4
+export RL_MASTER_SOLVER_RT_FIFO_PRIORITY=92
+```
+
+In `sim2sim_mujoco.launch.py`, when `start_rl_controller:=true`, you can override controller realtime settings directly via launch args:
+
+```bash
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  start_rl_controller:=true \
+  controller_rt_cpu_id:=4 \
+  controller_rt_fifo_priority:=92
+```

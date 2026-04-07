@@ -20,6 +20,24 @@ deploy_mode_profiles:
     config_section: stand_sim2real
     tag: stand
 
+# Process-level realtime overrides for thread scheduling and CPU affinity.
+# These override per-profile `realtime` when present.
+runtime_process:
+  controller:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
+  solver:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 2
+    use_fifo: true
+    fifo_priority: 90
+
 sim2real:
   policy_name: "2026-01-11_01-27-10"
   policy_family: "amp"  # amp / beyondmimic / custom
@@ -42,6 +60,13 @@ sim2real:
   action_dim: 12
   motor_N: 12
   RL_control_f: 100
+  realtime:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
   # policy action output order. If omitted, default is robot canonical order.
   action_joint_order:
     - right_hip_roll
@@ -259,6 +284,13 @@ stand_sim2real:
   action_dim: 12
   motor_N: 12
   RL_control_f: 100
+  realtime:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
   action_joint_order:
     - right_hip_roll
     - right_hip_yaw

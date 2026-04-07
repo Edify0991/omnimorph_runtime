@@ -53,6 +53,11 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
     controller->RL_controller_Init();
     robot_io->connect();
 
+    rl_master::runtime::RealtimeConfig runtime_rt = controller->runtimeCfg().realtime;
+    (void)loadProcessRealtimeConfigFromYAML(RL_CFG_PATH, "controller", &runtime_rt);
+    runtime_rt = rl_master::runtime::overrideRealtimeConfigFromEnv(runtime_rt, "RL_MASTER_CONTROLLER_RT_");
+    rl_master::runtime::configureRealtime(runtime_rt, "RL_controller");
+
     rl_master::RobotStateData io_state;
     rl_master::TeleopCommand teleop_cmd;
     int mode_command = rl_master::kModeCodeMin;
@@ -142,7 +147,6 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
 
 int main()
 {
-    rl_master::runtime::setRealtimePriority(3, 90);
     signal(SIGINT, handleSignal);
 
     auto rl_controller = RL_controller::create();

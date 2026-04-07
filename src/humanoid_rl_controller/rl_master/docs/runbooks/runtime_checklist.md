@@ -43,6 +43,20 @@ For sim2sim (MuJoCo) add:
 colcon build --symlink-install --packages-up-to rl_master mujoco_sim2sim joint_motor_test
 ```
 
+Architecture-adaptive + portable ARM baseline build:
+
+```bash
+colcon build --symlink-install \
+  --packages-up-to rl_master mujoco_sim2sim joint_motor_test \
+  --cmake-args \
+    -DRL_MASTER_ENABLE_ARCH_TUNING=ON \
+    -DRL_MASTER_ENABLE_NATIVE_TUNING=OFF \
+    -DRL_MASTER_ARM_BASELINE=armv8-a \
+    -DMUJOCO_SIM2SIM_ENABLE_ARCH_TUNING=ON \
+    -DMUJOCO_SIM2SIM_ENABLE_NATIVE_TUNING=OFF \
+    -DMUJOCO_SIM2SIM_ARM_BASELINE=armv8-a
+```
+
 If first-time host setup:
 
 ```bash
@@ -177,6 +191,11 @@ Joint motor test records:
   - `getMotorState()`
   - `sendMotorCmd()`
 - Upper-level transport remains DDS-based.
+- Realtime thread settings are configurable:
+  - YAML: `runtime_process.controller` / `runtime_process.solver` and per-profile `realtime`.
+  - Env override:
+    - `RL_MASTER_CONTROLLER_RT_ENABLED|LOCK_MEMORY|SET_AFFINITY|CPU_ID|USE_FIFO|FIFO_PRIORITY`
+    - `RL_MASTER_SOLVER_RT_ENABLED|LOCK_MEMORY|SET_AFFINITY|CPU_ID|USE_FIFO|FIFO_PRIORITY`
 - Controller mode switching is profile-driven:
   - Configure `deploy_mode_profiles` in `config/rl_cfg.yaml`.
   - Runtime control word channel supports `1000+mode_id`, `2000+mode_id` (mode switch),
