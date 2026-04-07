@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
 import math
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -11,9 +13,20 @@ from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Float32MultiArray
 
-import mujoco
-import mujoco.viewer
-import numpy as np
+_NUMPY_IMPORT_ERROR = None
+try:
+    import numpy as np
+except Exception as exc:
+    np = None  # type: ignore[assignment]
+    _NUMPY_IMPORT_ERROR = exc
+
+_MUJOCO_IMPORT_ERROR = None
+try:
+    import mujoco
+    import mujoco.viewer
+except Exception as exc:
+    mujoco = None  # type: ignore[assignment]
+    _MUJOCO_IMPORT_ERROR = exc
 
 
 K_JOINT_COUNT = 12
@@ -512,6 +525,35 @@ class MujocoInteractiveBackend(Node):
 
 
 def main() -> None:
+    if _NUMPY_IMPORT_ERROR is not None:
+        print(
+            "[mujoco_sim_interactive_backend] fatal error: failed to import numpy. "
+            f"python={sys.executable}, error={_NUMPY_IMPORT_ERROR}",
+            flush=True,
+        )
+        print(
+            f"[mujoco_sim_interactive_backend] install hint: {sys.executable} -m pip install numpy",
+            flush=True,
+        )
+        raise RuntimeError("numpy import failed")
+
+    if _MUJOCO_IMPORT_ERROR is not None:
+        print(
+            "[mujoco_sim_interactive_backend] fatal error: failed to import mujoco. "
+            f"python={sys.executable}, error={_MUJOCO_IMPORT_ERROR}",
+            flush=True,
+        )
+        print(
+            f"[mujoco_sim_interactive_backend] install hint: {sys.executable} -m pip install mujoco",
+            flush=True,
+        )
+        print(
+            "[mujoco_sim_interactive_backend] if you use ROS2 overlay, run the install command "
+            "after `source /opt/ros/humble/setup.bash` and your workspace setup.",
+            flush=True,
+        )
+        raise RuntimeError("mujoco import failed")
+
     rclpy.init()
     node = None
     try:
