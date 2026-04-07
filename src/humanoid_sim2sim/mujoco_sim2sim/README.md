@@ -32,3 +32,9 @@ Python interactive backend runtime dependencies:
 
 - `pip install mujoco numpy`
 - ROS2 Python runtime (`rclpy`) available in your Humble environment.
+
+Architecture-adaptive CMake options:
+
+- `-DMUJOCO_SIM2SIM_ENABLE_ARCH_TUNING=ON|OFF`
+- `-DMUJOCO_SIM2SIM_ENABLE_NATIVE_TUNING=ON|OFF`
+- `-DMUJOCO_SIM2SIM_ARM_BASELINE=armv8-a` (for portable ARM builds)

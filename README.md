@@ -40,6 +40,8 @@ Controller policy selection is now mode-profile driven:
   - `src/humanoid_rl_controller/joint_motor_test/docs/joint_motor_test_guide.md`
 - BeyondMimic/AMP adaptation:
   - `src/humanoid_rl_controller/rl_master/docs/beyondmimic_sim2real_adaptation.md`
+- Architecture-adaptive build (ARM/x86_64):
+  - `src/humanoid_rl_controller/rl_master/docs/architecture_adaptive_build_guide.md`
 - Script runtime notes:
   - `script/README.md`
 - Full runtime checklist and analysis workflow:
