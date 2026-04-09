@@ -26,6 +26,27 @@ inline T yamlReadOr(const YAML::Node &node, const char *key, const T &default_va
     return node[key].as<T>();
 }
 
+inline std::map<std::string, std::string> yamlReadStringMapOr(
+    const YAML::Node &node,
+    const char *key)
+{
+    std::map<std::string, std::string> out;
+    if (!node || !node[key])
+    {
+        return out;
+    }
+    const YAML::Node map_node = node[key];
+    if (!map_node.IsMap())
+    {
+        throw std::runtime_error(std::string("yaml key is not a map: ") + key);
+    }
+    for (auto it = map_node.begin(); it != map_node.end(); ++it)
+    {
+        out[it->first.as<std::string>()] = it->second.as<std::string>();
+    }
+    return out;
+}
+
 inline std::string getCurrentTime()
 {
     const auto t = std::time(nullptr);
@@ -108,6 +129,10 @@ struct PolicySubModelCfg
     bool enable_time_step_input = false;
     bool strict_model_io = false;
     std::vector<std::string> extra_output_names;
+    bool enable_metadata_check = false;
+    bool metadata_check_strict = true;
+    std::vector<std::string> required_metadata_keys;
+    std::map<std::string, std::string> expected_metadata;
 };
 
 struct AmpDiscriminatorCfg
@@ -126,6 +151,10 @@ struct AmpDiscriminatorCfg
     bool enable_time_step_input = false;
     bool strict_model_io = false;
     std::vector<std::string> extra_output_names;
+    bool enable_metadata_check = false;
+    bool metadata_check_strict = true;
+    std::vector<std::string> required_metadata_keys;
+    std::map<std::string, std::string> expected_metadata;
 
     // Disabled when set to a very negative number (default).
     float warn_below = -1.0e9f;
@@ -169,6 +198,10 @@ public:
     bool strict_model_io = false;
     bool reset_policy_on_mode_switch = true;
     std::vector<std::string> extra_output_names;
+    bool enable_metadata_check = false;
+    bool metadata_check_strict = true;
+    std::vector<std::string> required_metadata_keys;
+    std::map<std::string, std::string> expected_metadata;
     std::vector<PolicySubModelCfg> sub_models;
     AmpDiscriminatorCfg amp_discriminator;
 
@@ -323,6 +356,11 @@ public:
             strict_model_io = yamlReadOr<bool>(policy_io_cfg, "strict_model_io", false);
             reset_policy_on_mode_switch = yamlReadOr<bool>(policy_io_cfg, "reset_policy_on_mode_switch", true);
             extra_output_names = yamlReadOr<std::vector<std::string>>(policy_io_cfg, "extra_output_names", {});
+            enable_metadata_check = yamlReadOr<bool>(policy_io_cfg, "enable_metadata_check", false);
+            metadata_check_strict = yamlReadOr<bool>(policy_io_cfg, "metadata_check_strict", true);
+            required_metadata_keys =
+                yamlReadOr<std::vector<std::string>>(policy_io_cfg, "required_metadata_keys", {});
+            expected_metadata = yamlReadStringMapOr(policy_io_cfg, "expected_metadata");
 
             if (cfg["sub_models"])
             {
@@ -358,6 +396,17 @@ public:
                     sub.enable_time_step_input = yamlReadOr<bool>(sub_io_cfg, "enable_time_step_input", enable_time_step_input);
                     sub.strict_model_io = yamlReadOr<bool>(sub_io_cfg, "strict_model_io", strict_model_io);
                     sub.extra_output_names = yamlReadOr<std::vector<std::string>>(sub_io_cfg, "extra_output_names", {});
+                    sub.enable_metadata_check = yamlReadOr<bool>(sub_io_cfg, "enable_metadata_check", enable_metadata_check);
+                    sub.metadata_check_strict = yamlReadOr<bool>(sub_io_cfg, "metadata_check_strict", metadata_check_strict);
+                    sub.required_metadata_keys = yamlReadOr<std::vector<std::string>>(
+                        sub_io_cfg,
+                        "required_metadata_keys",
+                        required_metadata_keys);
+                    sub.expected_metadata = expected_metadata;
+                    if (sub_io_cfg && sub_io_cfg["expected_metadata"])
+                    {
+                        sub.expected_metadata = yamlReadStringMapOr(sub_io_cfg, "expected_metadata");
+                    }
 
                     sub_models.push_back(sub);
                     ++sub_index;
@@ -393,6 +442,11 @@ public:
                 amp_discriminator.enable_time_step_input = yamlReadOr<bool>(disc_io_cfg, "enable_time_step_input", false);
                 amp_discriminator.strict_model_io = yamlReadOr<bool>(disc_io_cfg, "strict_model_io", false);
                 amp_discriminator.extra_output_names = yamlReadOr<std::vector<std::string>>(disc_io_cfg, "extra_output_names", {});
+                amp_discriminator.enable_metadata_check = yamlReadOr<bool>(disc_io_cfg, "enable_metadata_check", false);
+                amp_discriminator.metadata_check_strict = yamlReadOr<bool>(disc_io_cfg, "metadata_check_strict", true);
+                amp_discriminator.required_metadata_keys =
+                    yamlReadOr<std::vector<std::string>>(disc_io_cfg, "required_metadata_keys", {});
+                amp_discriminator.expected_metadata = yamlReadStringMapOr(disc_io_cfg, "expected_metadata");
                 amp_discriminator.warn_below = yamlReadOr<float>(disc_io_cfg, "warn_below", -1.0e9f);
             }
 

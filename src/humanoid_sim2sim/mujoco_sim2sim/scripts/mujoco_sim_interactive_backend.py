@@ -45,6 +45,17 @@ TOPIC_POLICY_COMMAND = "/humanoid/rl/command"
 TOPIC_ROBOT_STATE = "/humanoid/rl/state"
 
 
+def normalize_no_command_behavior(raw: str) -> str:
+    value = (raw or "").strip().lower()
+    if value in ("hold_position", "position_hold", "position", "hold-pos"):
+        return "hold_position"
+    if value in ("zero_torque", "zero", "torque_off", "off"):
+        return "zero_torque"
+    if value in ("hold_last", "hold", "last"):
+        return "hold_last"
+    return "hold_position"
+
+
 def default_joint_names() -> List[str]:
     return [
         "right_hip_roll",
@@ -138,6 +149,8 @@ class MujocoInteractiveBackend(Node):
         self._resolve_mappings()
         self._initialize_base_lock_if_enabled()
         self._initialize_last_targets()
+        self._log_startup_diagnostics()
+        self._warned_idle_position_fallback = False
 
         qos_cmd = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -158,12 +171,12 @@ class MujocoInteractiveBackend(Node):
         self.last_timeout_warn_sec = 0.0
 
         self.get_logger().info(
-            "interactive backend ready: model=%s control_hz=%.1f substeps=%d viewer=%s actuator_mode=%s",
-            self.model_path,
-            self.control_hz,
-            self.substeps_per_control,
-            "on" if self.enable_viewer else "off",
-            "position" if self.use_position_actuator_control else "torque",
+            "interactive backend ready: "
+            f"model={self.model_path} "
+            f"control_hz={self.control_hz:.1f} "
+            f"substeps={self.substeps_per_control} "
+            f"viewer={'on' if self.enable_viewer else 'off'} "
+            f"actuator_mode={'position' if self.use_position_actuator_control else 'torque'}"
         )
 
     def _declare_parameters(self) -> None:
@@ -175,6 +188,7 @@ class MujocoInteractiveBackend(Node):
         self.declare_parameter("control_hz", 100.0)
         self.declare_parameter("sim_dt", 0.001)
         self.declare_parameter("command_timeout_sec", 0.1)
+        self.declare_parameter("no_command_behavior", "hold_position")
         self.declare_parameter("open_rl_enable_threshold", 1.0)
         self.declare_parameter("use_command_torque_ff", False)
         self.declare_parameter("pause_when_no_command", False)
@@ -200,6 +214,7 @@ class MujocoInteractiveBackend(Node):
         self.control_hz = max(1.0, float(self.get_parameter("control_hz").value))
         self.sim_dt = max(1e-5, float(self.get_parameter("sim_dt").value))
         self.command_timeout_sec = max(0.01, float(self.get_parameter("command_timeout_sec").value))
+        self.no_command_behavior = normalize_no_command_behavior(str(self.get_parameter("no_command_behavior").value))
         self.open_rl_enable_threshold = float(self.get_parameter("open_rl_enable_threshold").value)
         self.use_command_torque_ff = bool(self.get_parameter("use_command_torque_ff").value)
         self.pause_when_no_command = bool(self.get_parameter("pause_when_no_command").value)
@@ -258,7 +273,7 @@ class MujocoInteractiveBackend(Node):
                 if int(self.model.nu) == K_JOINT_COUNT:
                     aid = i
                     self.get_logger().warn(
-                        "actuator '%s' not found, fallback to actuator index %d", self.actuator_names[i], aid
+                        f"actuator '{self.actuator_names[i]}' not found, fallback to actuator index {aid}"
                     )
                 else:
                     raise RuntimeError(f"actuator not found: {self.actuator_names[i]}")
@@ -305,6 +320,88 @@ class MujocoInteractiveBackend(Node):
             adr = int(self.qpos_addrs[i])
             if 0 <= adr < int(self.model.nq):
                 self.last_target_q[i] = float(self.data.qpos[adr])
+
+    def _log_startup_diagnostics(self) -> None:
+        eps = 1e-4
+        near_limit_count = 0
+        self.get_logger().info("===== MuJoCo startup diagnostics =====")
+        self.get_logger().info(
+            f"control_hz={self.control_hz:.1f} sim_dt={self.sim_dt:.6f} "
+            f"substeps={self.substeps_per_control} pause_when_no_command={self.pause_when_no_command} "
+            f"actuator_mode={'position' if self.use_position_actuator_control else 'torque'} "
+            f"no_command_behavior={self.no_command_behavior}"
+        )
+
+        for i in range(K_JOINT_COUNT):
+            jid = int(self.joint_ids[i])
+            aid = int(self.actuator_ids[i])
+            qadr = int(self.qpos_addrs[i])
+            vadr = int(self.qvel_addrs[i])
+            q0 = float(self.last_target_q[i])
+            dq0 = float(self.data.qvel[vadr]) if (0 <= vadr < int(self.model.nv)) else 0.0
+
+            limit_desc = "unlimited"
+            near_limit = False
+            if 0 <= jid < int(self.model.njnt) and int(self.model.jnt_limited[jid]) != 0:
+                q_min = float(self.model.jnt_range[jid][0])
+                q_max = float(self.model.jnt_range[jid][1])
+                limit_desc = f"[{q_min:.4f}, {q_max:.4f}]"
+                near_limit = (q0 <= q_min + eps) or (q0 >= q_max - eps)
+                if near_limit:
+                    near_limit_count += 1
+
+            ctrl_desc = "n/a"
+            if 0 <= aid < int(self.model.nu):
+                if int(self.model.actuator_ctrllimited[aid]) != 0:
+                    cmin = float(self.model.actuator_ctrlrange[aid][0])
+                    cmax = float(self.model.actuator_ctrlrange[aid][1])
+                    ctrl_desc = f"[{cmin:.4f}, {cmax:.4f}]"
+                else:
+                    ctrl_desc = "unlimited"
+
+            self.get_logger().info(
+                f"[joint {i:02d}] name={self.joint_names[i]} jid={jid} qadr={qadr} vadr={vadr} "
+                f"q0={q0:.6f} dq0={dq0:.6f} range={limit_desc} near_limit={near_limit} "
+                f"actuator={self.actuator_names[i]} aid={aid} ctrl={ctrl_desc}"
+            )
+
+        if self.base_free_joint_id >= 0 and self.base_free_qpos_adr >= 0 and self.base_free_qvel_adr >= 0:
+            if (self.base_free_qpos_adr + 6) < int(self.model.nq):
+                px = float(self.data.qpos[self.base_free_qpos_adr + 0])
+                py = float(self.data.qpos[self.base_free_qpos_adr + 1])
+                pz = float(self.data.qpos[self.base_free_qpos_adr + 2])
+                qw = float(self.data.qpos[self.base_free_qpos_adr + 3])
+                qx = float(self.data.qpos[self.base_free_qpos_adr + 4])
+                qy = float(self.data.qpos[self.base_free_qpos_adr + 5])
+                qz = float(self.data.qpos[self.base_free_qpos_adr + 6])
+                self.get_logger().info(
+                    "base_free_joint: "
+                    f"jid={self.base_free_joint_id} qpos_adr={self.base_free_qpos_adr} "
+                    f"pos=({px:.6f}, {py:.6f}, {pz:.6f}) quat_wxyz=({qw:.6f}, {qx:.6f}, {qy:.6f}, {qz:.6f})"
+                )
+            if (self.base_free_qvel_adr + 5) < int(self.model.nv):
+                lvx = float(self.data.qvel[self.base_free_qvel_adr + 0])
+                lvy = float(self.data.qvel[self.base_free_qvel_adr + 1])
+                lvz = float(self.data.qvel[self.base_free_qvel_adr + 2])
+                avx = float(self.data.qvel[self.base_free_qvel_adr + 3])
+                avy = float(self.data.qvel[self.base_free_qvel_adr + 4])
+                avz = float(self.data.qvel[self.base_free_qvel_adr + 5])
+                self.get_logger().info(
+                    "base_free_joint velocity: "
+                    f"lin=({lvx:.6f}, {lvy:.6f}, {lvz:.6f}) "
+                    f"ang=({avx:.6f}, {avy:.6f}, {avz:.6f})"
+                )
+        else:
+            self.get_logger().warn(
+                f"no free base joint resolved (base_body_id={self.base_body_id}, base_free_joint_id={self.base_free_joint_id})"
+            )
+
+        if near_limit_count > 0:
+            self.get_logger().warn(
+                f"{near_limit_count}/{K_JOINT_COUNT} joints start near their limits. "
+                "This usually means model init pose or joint mapping needs checking."
+            )
+        self.get_logger().info("===== End startup diagnostics =====")
 
     def _initialize_base_lock_if_enabled(self) -> None:
         self.fixed_base_qpos = np.zeros(7, dtype=np.float64)
@@ -378,6 +475,7 @@ class MujocoInteractiveBackend(Node):
     def _update_control_input(self, now_sec: float) -> None:
         cmd = self._command_snapshot()
         is_fresh = cmd.valid and ((now_sec - cmd.recv_time_sec) <= self.command_timeout_sec)
+        no_command_idle = not is_fresh
 
         mode_policy = is_fresh and mode_match(cmd.open_rl, K_OPEN_RL_POLICY)
         mode_command_csp = is_fresh and (
@@ -392,8 +490,18 @@ class MujocoInteractiveBackend(Node):
                 self.get_logger().warn("policy command timeout, fallback hold")
                 self.last_timeout_warn_sec = now_sec
         elif (not enable_rl) and (cmd.open_rl > self.open_rl_enable_threshold) and ((now_sec - self.last_timeout_warn_sec) > 1.0):
-            self.get_logger().warn("unknown open_rl mode %.2f, fallback hold", cmd.open_rl)
+            self.get_logger().warn(f"unknown open_rl mode {cmd.open_rl:.2f}, fallback hold")
             self.last_timeout_warn_sec = now_sec
+
+        idle_hold_position = no_command_idle and (self.no_command_behavior == "hold_position")
+        idle_zero_torque = no_command_idle and (self.no_command_behavior == "zero_torque")
+        if idle_hold_position and (not self.use_position_actuator_control) and (not self._warned_idle_position_fallback):
+            self.get_logger().warn(
+                "no_command_behavior=hold_position requested, but current actuator mode is torque. "
+                "fallback to torque PD hold_last. If you need strict position hold, use position actuators "
+                "or set actuator_control_mode:=position and ensure model supports it."
+            )
+            self._warned_idle_position_fallback = True
 
         for i in range(K_JOINT_COUNT):
             qadr = int(self.qpos_addrs[i])
@@ -415,6 +523,11 @@ class MujocoInteractiveBackend(Node):
                 dq_des = float(cmd.dq[i])
                 tau_ff = float(cmd.tau[i])
                 self.last_target_q[i] = q_des
+
+            if idle_zero_torque:
+                self.data.ctrl[aid] = 0.0
+                self.applied_tau[i] = 0.0
+                continue
 
             if self.use_position_actuator_control:
                 if mode_test_cst:

@@ -9,6 +9,8 @@
 
 这样可以复用同一套策略部署代码（观测构建、状态机、多模型推理、日志等），只替换部署对象。
 
+从 2026-04 的重构开始，`sim2sim` 与 `sim2real` 的 `open_rl` 模式解析也统一到同一份共享代码里，避免两端模式判定漂移。
+
 ## 2. 架构设计（对齐主流做法）
 
 `mujoco_sim2sim` 采用“控制器与仿真器解耦”模式：
@@ -82,6 +84,8 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
 - `rl_master/RL_controller`
 - `mujoco_sim2sim/mujoco_sim_bridge`
 
+建议在做“与 sim2real 逻辑一致性”验证时使用 `backend:=cpp`，这样会直接走 C++ 共享模式解析内核。
+
 ## 5.2 只启仿真桥（你自己手动起控制器）
 
 ```bash
@@ -134,6 +138,18 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
 - 现有 real deploy 启动流程
 
 你可以把它理解为“新增一个仿真侧 `RobotIO` 对端”。
+
+### 8.1 共同逻辑与适配层划分（关键）
+
+- 共同逻辑（`sim2sim` 与 `sim2real` 共用）：
+  - `rl_master/include/rl_master/command_runtime_mode.h`
+  - 负责 `open_rl + command freshness` 到运行模式的统一解析：
+    - `hold / policy / command_stream / test_csp / test_cst / test_r1`
+- 环境适配层（各自实现）：
+  - `sim2sim`：`mujoco_sim_bridge.cpp` 把统一模式映射到 MuJoCo actuator 控制输入。
+  - `sim2real`：`solver/robot_solver.cpp` 把统一模式映射到电机 `CSP/CST/R1` 下发。
+
+这意味着你在 sim2sim 里可以提前检查大部分部署逻辑（模式切换、命令超时、hold 行为、策略命令语义），差异主要只剩“物理对象 I/O”。
 
 ## 9. 调试建议
 

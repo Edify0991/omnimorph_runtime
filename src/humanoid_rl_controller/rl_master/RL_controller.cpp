@@ -999,6 +999,10 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
         sub_cfg.enable_time_step_input = sub.enable_time_step_input;
         sub_cfg.strict_model_io = sub.strict_model_io;
         sub_cfg.extra_output_names = sub.extra_output_names;
+        sub_cfg.enable_metadata_check = sub.enable_metadata_check;
+        sub_cfg.metadata_check_strict = sub.metadata_check_strict;
+        sub_cfg.required_metadata_keys = sub.required_metadata_keys;
+        sub_cfg.expected_metadata = sub.expected_metadata;
 
         PolicyRunnerNode node;
         node.name = tag + "/" + sub.name;
@@ -1043,6 +1047,10 @@ void RL_controller::initAmpDiscriminatorRunner(
     disc_cfg.enable_time_step_input = cfg.amp_discriminator.enable_time_step_input;
     disc_cfg.strict_model_io = cfg.amp_discriminator.strict_model_io;
     disc_cfg.extra_output_names = cfg.amp_discriminator.extra_output_names;
+    disc_cfg.enable_metadata_check = cfg.amp_discriminator.enable_metadata_check;
+    disc_cfg.metadata_check_strict = cfg.amp_discriminator.metadata_check_strict;
+    disc_cfg.required_metadata_keys = cfg.amp_discriminator.required_metadata_keys;
+    disc_cfg.expected_metadata = cfg.amp_discriminator.expected_metadata;
     disc_cfg.action_dim = 0;
 
     auto local_runner = std::make_unique<OnnxPolicyRunner>(

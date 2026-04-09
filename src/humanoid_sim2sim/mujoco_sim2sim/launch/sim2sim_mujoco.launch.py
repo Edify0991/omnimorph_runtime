@@ -38,6 +38,11 @@ def generate_launch_description():
         default_value="false",
         description="Pause stepping when no fresh command is available.",
     )
+    no_cmd_behavior_arg = DeclareLaunchArgument(
+        "no_command_behavior",
+        default_value="hold_position",
+        description="Behavior when command stream is stale: hold_position / hold_last / zero_torque.",
+    )
     fixed_base_arg = DeclareLaunchArgument(
         "fixed_base",
         default_value="false",
@@ -146,6 +151,7 @@ def generate_launch_description():
             "model_path": LaunchConfiguration("model_path"),
             "control_hz": ParameterValue(LaunchConfiguration("control_hz"), value_type=float),
             "pause_when_no_command": ParameterValue(LaunchConfiguration("pause_when_no_command"), value_type=bool),
+            "no_command_behavior": LaunchConfiguration("no_command_behavior"),
             "fix_base": ParameterValue(LaunchConfiguration("fixed_base"), value_type=bool),
             "fixed_base_height": ParameterValue(LaunchConfiguration("fixed_base_height"), value_type=float),
             "actuator_control_mode": LaunchConfiguration("actuator_control_mode"),
@@ -169,7 +175,9 @@ def generate_launch_description():
     python_interactive_bridge = Node(
         package="mujoco_sim2sim",
         executable="mujoco_sim_interactive_backend.py",
-        name="mujoco_sim_interactive_backend",
+        # Keep node name aligned with yaml root key `mujoco_sim_bridge`
+        # so both backends consume the same parameter block.
+        name="mujoco_sim_bridge",
         output="screen",
         condition=IfCondition(PythonExpression(["'", LaunchConfiguration("backend"), "' == 'python_interactive'"])),
         parameters=[
@@ -188,6 +196,7 @@ def generate_launch_description():
             bridge_cfg_arg,
             control_hz_arg,
             pause_no_cmd_arg,
+            no_cmd_behavior_arg,
             fixed_base_arg,
             fixed_base_height_arg,
             actuator_mode_arg,

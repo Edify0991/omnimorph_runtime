@@ -179,6 +179,12 @@ Joint motor test records:
 
 ## 6. Validation Checklist After Changes
 
+- Preflight config/manifest/ONNX contract check:
+
+```bash
+python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py
+```
+
 - `ros2 topic echo /imu/yesense --once`
 - `ros2 topic echo /humanoid/rl/state --once`
 - `ros2 topic echo /humanoid/rl/command --once`

@@ -83,6 +83,7 @@ private:
     double open_rl_enable_threshold_ = 1.0;
     bool use_command_torque_ff_ = false;
     bool pause_when_no_command_ = false;
+    std::string no_command_behavior_ = "hold_position";
     bool fix_base_ = false;
     double fixed_base_height_ = -1.0;
     std::string actuator_control_mode_ = "auto";
@@ -134,6 +135,7 @@ private:
     mutable std::mutex command_mutex_;
     CommandCache latest_command_;
     rclcpp::Time last_timeout_warn_{0, 0, RCL_ROS_TIME};
+    bool warned_idle_position_fallback_ = false;
 };
 
 } // namespace mujoco_sim2sim

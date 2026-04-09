@@ -99,6 +99,8 @@ policy_io:
 Note:
 
 - `body_quat_w` is treated as `wxyz` (matching common BeyondMimic export), then converted to internal `xyzw`.
+- If `policy_io.enable_metadata_check=true`, runtime also validates ONNX custom metadata
+  (`required_metadata_keys` + `expected_metadata`).
 
 ## 6. Manifest Template
 

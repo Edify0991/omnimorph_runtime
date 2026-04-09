@@ -18,6 +18,7 @@
 #endif
 
 #include "rl_master/dds_protocol.h"
+#include "rl_master/command_runtime_mode.h"
 #include "rl_master/rl_protocol.h"
 
 namespace
@@ -46,6 +47,27 @@ bool endsWith(const std::string &value, const std::string &suffix)
         return false;
     }
     return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+std::string normalizeNoCommandBehavior(const std::string &raw)
+{
+    std::string value = raw;
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    if (value == "hold_position" || value == "position_hold" || value == "position" || value == "hold-pos")
+    {
+        return "hold_position";
+    }
+    if (value == "zero_torque" || value == "zero" || value == "torque_off" || value == "off")
+    {
+        return "zero_torque";
+    }
+    if (value == "hold_last" || value == "hold" || value == "last")
+    {
+        return "hold_last";
+    }
+    return "hold_position";
 }
 
 } // namespace
@@ -121,12 +143,13 @@ MujocoSimBridge::MujocoSimBridge()
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim bridge ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, viewer=%s",
+        "MuJoCo sim2sim bridge ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, viewer=%s, no_command_behavior=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
         substeps_per_control_,
-        enable_viewer_ ? "on" : "off");
+        enable_viewer_ ? "on" : "off",
+        no_command_behavior_.c_str());
 }
 
 MujocoSimBridge::~MujocoSimBridge()
@@ -162,6 +185,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<double>("open_rl_enable_threshold", 1.0);
     this->declare_parameter<bool>("use_command_torque_ff", false);
     this->declare_parameter<bool>("pause_when_no_command", false);
+    this->declare_parameter<std::string>("no_command_behavior", "hold_position");
     this->declare_parameter<bool>("fix_base", false);
     this->declare_parameter<double>("fixed_base_height", -1.0);
     this->declare_parameter<std::string>("actuator_control_mode", "auto");
@@ -183,6 +207,7 @@ void MujocoSimBridge::loadParameters()
     open_rl_enable_threshold_ = this->get_parameter("open_rl_enable_threshold").as_double();
     use_command_torque_ff_ = this->get_parameter("use_command_torque_ff").as_bool();
     pause_when_no_command_ = this->get_parameter("pause_when_no_command").as_bool();
+    no_command_behavior_ = normalizeNoCommandBehavior(this->get_parameter("no_command_behavior").as_string());
     fix_base_ = this->get_parameter("fix_base").as_bool();
     fixed_base_height_ = this->get_parameter("fixed_base_height").as_double();
     actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
@@ -894,14 +919,15 @@ void MujocoSimBridge::updateControlInput(rclcpp::Time now)
 
     const bool is_fresh = command.valid &&
                           ((now - command.receive_time).seconds() <= command_timeout_sec_);
+    const bool idle_no_command = !is_fresh;
     const float open_rl_value = command.command.open_rl;
-    const bool mode_policy = is_fresh && rl_master::isOpenRlPolicyEnabled(open_rl_value);
-    const bool mode_command_csp = is_fresh &&
-                                  (rl_master::isOpenRlCommandStream(open_rl_value) ||
-                                   rl_master::isOpenRlTestCspStream(open_rl_value));
-    const bool mode_test_cst = is_fresh && rl_master::isOpenRlTestCstStream(open_rl_value);
-    const bool mode_test_r1 = is_fresh && rl_master::isOpenRlTestR1Stream(open_rl_value);
-    const bool enable_rl = mode_policy || mode_command_csp || mode_test_cst || mode_test_r1;
+    const auto runtime_mode = rl_master::resolveCommandRuntimeMode(
+        is_fresh,
+        open_rl_value,
+        static_cast<float>(open_rl_enable_threshold_));
+    const bool mode_policy = runtime_mode.mode == rl_master::CommandRuntimeMode::kPolicy;
+    const bool mode_test_cst = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCst;
+    const bool mode_test_r1 = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1;
 
     if (!is_fresh)
     {
@@ -911,8 +937,7 @@ void MujocoSimBridge::updateControlInput(rclcpp::Time now)
             last_timeout_warn_ = now;
         }
     }
-    else if (!enable_rl &&
-             open_rl_value > static_cast<float>(open_rl_enable_threshold_) &&
+    else if (runtime_mode.unknown_open_rl_mode &&
              (now - last_timeout_warn_).seconds() > 1.0)
     {
         RCLCPP_WARN(
@@ -920,6 +945,18 @@ void MujocoSimBridge::updateControlInput(rclcpp::Time now)
             "Unknown open_rl mode %.2f in sim bridge, fallback to hold behavior.",
             static_cast<double>(open_rl_value));
         last_timeout_warn_ = now;
+    }
+
+    const bool idle_hold_position = idle_no_command && (no_command_behavior_ == "hold_position");
+    const bool idle_zero_torque = idle_no_command && (no_command_behavior_ == "zero_torque");
+    if (idle_hold_position && !use_position_actuator_control_ && !warned_idle_position_fallback_)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "no_command_behavior=hold_position requested, but actuator mode is torque. "
+            "fallback to torque PD hold_last. For strict position-hold, use position actuators "
+            "or set actuator_control_mode:=position and ensure model supports it.");
+        warned_idle_position_fallback_ = true;
     }
 
     for (size_t i = 0; i < kJointCount; ++i)
@@ -942,12 +979,25 @@ void MujocoSimBridge::updateControlInput(rclcpp::Time now)
         double q_des = static_cast<double>(last_target_q_[i]);
         double dq_des = 0.0;
         double tau_ff = 0.0;
-        if (mode_policy || mode_command_csp || mode_test_r1)
+        if (rl_master::modeUsesPositionTargets(runtime_mode.mode))
         {
             q_des = static_cast<double>(command.command.joint_target_q[i]);
-            dq_des = static_cast<double>(command.command.joint_target_dq[i]);
-            tau_ff = static_cast<double>(command.command.joint_target_tau[i]);
+            if (rl_master::modeUsesVelocityTargets(runtime_mode.mode))
+            {
+                dq_des = static_cast<double>(command.command.joint_target_dq[i]);
+            }
+            if (rl_master::modeUsesTorqueFeedForward(runtime_mode.mode))
+            {
+                tau_ff = static_cast<double>(command.command.joint_target_tau[i]);
+            }
             last_target_q_[i] = static_cast<float>(q_des);
+        }
+
+        if (idle_zero_torque)
+        {
+            data_->ctrl[actuator_id] = 0.0;
+            applied_tau_[i] = 0.0f;
+            continue;
         }
 
         if (use_position_actuator_control_)

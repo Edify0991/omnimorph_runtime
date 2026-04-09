@@ -40,6 +40,8 @@ Controller policy selection is now mode-profile driven:
   - `src/humanoid_rl_controller/joint_motor_test/docs/joint_motor_test_guide.md`
 - BeyondMimic/AMP adaptation:
   - `src/humanoid_rl_controller/rl_master/docs/beyondmimic_sim2real_adaptation.md`
+- EngineAI Gym policy deploy flow (sim2sim + sim2real):
+  - `src/humanoid_rl_controller/rl_master/docs/engineai_gym_policy_deploy_guide.md`
 - Architecture-adaptive build (ARM/x86_64):
   - `src/humanoid_rl_controller/rl_master/docs/architecture_adaptive_build_guide.md`
 - Script runtime notes:

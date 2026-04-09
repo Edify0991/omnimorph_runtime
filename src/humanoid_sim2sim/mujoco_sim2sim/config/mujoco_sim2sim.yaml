@@ -45,6 +45,8 @@ mujoco_sim_bridge:
     command_timeout_sec: 0.1
     open_rl_enable_threshold: 1.0
     pause_when_no_command: false
+    # hold_position / hold_last / zero_torque
+    no_command_behavior: "hold_position"
     fix_base: false
     # Keep negative to preserve model initial height.
     fixed_base_height: -1.0

@@ -2,11 +2,55 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cstddef>
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
+
+namespace
+{
+std::string trimCopy(const std::string &input)
+{
+    size_t begin = 0;
+    while (begin < input.size() &&
+           (input[begin] == ' ' || input[begin] == '\t' || input[begin] == '\n' || input[begin] == '\r'))
+    {
+        ++begin;
+    }
+    size_t end = input.size();
+    while (end > begin &&
+           (input[end - 1] == ' ' || input[end - 1] == '\t' || input[end - 1] == '\n' || input[end - 1] == '\r'))
+    {
+        --end;
+    }
+    return input.substr(begin, end - begin);
+}
+
+bool parseInt64Value(const std::string &text, int64_t *out)
+{
+    if (!out)
+    {
+        return false;
+    }
+    const std::string normalized = trimCopy(text);
+    if (normalized.empty())
+    {
+        return false;
+    }
+    errno = 0;
+    char *end_ptr = nullptr;
+    const long long value = std::strtoll(normalized.c_str(), &end_ptr, 10);
+    if (end_ptr == normalized.c_str() || *end_ptr != '\0' || errno != 0)
+    {
+        return false;
+    }
+    *out = static_cast<int64_t>(value);
+    return true;
+}
+} // namespace
 
 OnnxPolicyRunner::OnnxPolicyRunner(
     Ort::Env &env,
@@ -180,6 +224,7 @@ void OnnxPolicyRunner::init()
         std::cerr << "[" << policy_tag_ << "] fill unspecified inputs with zeros: " << oss.str() << std::endl;
     }
 
+    validateModelMetadata();
     reset();
     std::cout << summary() << std::endl;
 }
@@ -302,6 +347,177 @@ PolicyInferenceResult OnnxPolicyRunner::forward(const std::vector<float> &observ
         ++time_step_;
     }
     return result;
+}
+
+void OnnxPolicyRunner::validateModelMetadata()
+{
+    if (!cfg_.enable_metadata_check)
+    {
+        return;
+    }
+    if (!session_)
+    {
+        throw std::runtime_error("[" + policy_tag_ + "] metadata check called before init()");
+    }
+
+    const bool strict = cfg_.metadata_check_strict;
+    auto emitIssue = [&](const std::string &detail) {
+        const std::string message = "[" + policy_tag_ + "] ONNX metadata check: " + detail;
+        if (strict)
+        {
+            throw std::runtime_error(message);
+        }
+        std::cerr << message << std::endl;
+    };
+
+    std::unordered_map<std::string, std::string> custom_metadata;
+    std::string producer;
+    std::string graph_name;
+    std::string domain;
+    std::string description;
+    int64_t version = 0;
+
+    try
+    {
+        Ort::AllocatorWithDefaultOptions allocator;
+        const auto metadata = session_->GetModelMetadata();
+        version = metadata.GetVersion();
+        {
+            auto value = metadata.GetProducerNameAllocated(allocator);
+            if (value)
+            {
+                producer = value.get();
+            }
+        }
+        {
+            auto value = metadata.GetGraphNameAllocated(allocator);
+            if (value)
+            {
+                graph_name = value.get();
+            }
+        }
+        {
+            auto value = metadata.GetDomainAllocated(allocator);
+            if (value)
+            {
+                domain = value.get();
+            }
+        }
+        {
+            auto value = metadata.GetDescriptionAllocated(allocator);
+            if (value)
+            {
+                description = value.get();
+            }
+        }
+        auto keys = metadata.GetCustomMetadataMapKeysAllocated(allocator);
+        for (const auto &key_ptr : keys)
+        {
+            if (!key_ptr)
+            {
+                continue;
+            }
+            const std::string key = key_ptr.get();
+            std::string value;
+            auto value_ptr = metadata.LookupCustomMetadataMapAllocated(key.c_str(), allocator);
+            if (value_ptr)
+            {
+                value = value_ptr.get();
+            }
+            custom_metadata[key] = value;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        emitIssue(std::string("failed to read metadata: ") + e.what());
+        return;
+    }
+
+    for (const auto &key : cfg_.required_metadata_keys)
+    {
+        if (key.empty())
+        {
+            continue;
+        }
+        if (custom_metadata.find(key) == custom_metadata.end())
+        {
+            emitIssue("missing required custom metadata key '" + key + "'");
+        }
+    }
+
+    for (const auto &entry : cfg_.expected_metadata)
+    {
+        const auto it = custom_metadata.find(entry.first);
+        if (it == custom_metadata.end())
+        {
+            emitIssue("missing expected custom metadata key '" + entry.first + "'");
+            continue;
+        }
+        const std::string actual = trimCopy(it->second);
+        const std::string expected = trimCopy(entry.second);
+        if (actual != expected)
+        {
+            emitIssue("custom metadata mismatch for key '" + entry.first +
+                      "': expected '" + expected + "', got '" + actual + "'");
+        }
+    }
+
+    auto validateIntFieldIfPresent = [&](const std::string &key, int64_t expected) {
+        const auto it = custom_metadata.find(key);
+        if (it == custom_metadata.end())
+        {
+            return;
+        }
+        int64_t parsed = 0;
+        if (!parseInt64Value(it->second, &parsed))
+        {
+            emitIssue("custom metadata key '" + key + "' value '" + it->second + "' is not an integer");
+            return;
+        }
+        if (parsed != expected)
+        {
+            emitIssue("custom metadata key '" + key + "' mismatch: expected " +
+                      std::to_string(expected) + ", got " + std::to_string(parsed));
+        }
+    };
+
+    auto validateStringFieldIfPresent = [&](const std::string &key, const std::string &expected) {
+        const auto it = custom_metadata.find(key);
+        if (it == custom_metadata.end())
+        {
+            return;
+        }
+        if (trimCopy(it->second) != trimCopy(expected))
+        {
+            emitIssue("custom metadata key '" + key + "' mismatch: expected '" +
+                      expected + "', got '" + it->second + "'");
+        }
+    };
+
+    if (cfg_.obs_dim > 0)
+    {
+        validateIntFieldIfPresent("obs_dim", static_cast<int64_t>(cfg_.obs_dim));
+    }
+    if (cfg_.action_dim > 0)
+    {
+        validateIntFieldIfPresent("action_dim", static_cast<int64_t>(cfg_.action_dim));
+    }
+    if (cfg_.obs_stack_N > 0)
+    {
+        validateIntFieldIfPresent("obs_stack_n", static_cast<int64_t>(cfg_.obs_stack_N));
+        validateIntFieldIfPresent("obs_stack_N", static_cast<int64_t>(cfg_.obs_stack_N));
+    }
+    validateStringFieldIfPresent("obs_input_name", cfg_.obs_input_name);
+    validateStringFieldIfPresent("action_output_name", cfg_.action_output_name);
+
+    std::cout << "[" << policy_tag_ << "] ONNX metadata check passed."
+              << " custom_keys=" << custom_metadata.size()
+              << ", strict=" << (strict ? "true" : "false")
+              << ", version=" << version
+              << ", producer='" << producer
+              << "', graph='" << graph_name
+              << "', domain='" << domain
+              << "', description='" << description << "'" << std::endl;
 }
 
 std::string OnnxPolicyRunner::summary() const

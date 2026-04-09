@@ -48,6 +48,7 @@ private:
     std::vector<float> flattenFloatTensor(const Ort::Value &tensor) const;
     std::vector<int64_t> normalizedShape(const std::vector<int64_t> &shape) const;
     static size_t elementCountFromShape(const std::vector<int64_t> &shape);
+    void validateModelMetadata();
 
     Ort::Env &env_;
     std::string model_path_;

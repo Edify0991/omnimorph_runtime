@@ -11,6 +11,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "rl_master/command_runtime_mode.h"
 #include "rl_master/rl_protocol.h"
 
 namespace rl_master::solver
@@ -283,11 +284,7 @@ void RobotSolver::getRLCmd()
         return;
     }
 
-    const bool policy_mode = rl_master::isOpenRlPolicyEnabled(dds_cmd.open_rl);
-    const bool command_stream_mode = rl_master::isOpenRlCommandStream(dds_cmd.open_rl);
-    const bool test_csp_mode = rl_master::isOpenRlTestCspStream(dds_cmd.open_rl);
-    const bool test_cst_mode = rl_master::isOpenRlTestCstStream(dds_cmd.open_rl);
-    const bool test_r1_mode = rl_master::isOpenRlTestR1Stream(dds_cmd.open_rl);
+    const auto runtime_mode = rl_master::resolveCommandRuntimeMode(latest_cmd_fresh_, dds_cmd.open_rl);
 
     auto tauLimitAt = [this](size_t i) -> float {
         if (i < sim2real_cfg_.tau_limit.size())
@@ -297,7 +294,15 @@ void RobotSolver::getRLCmd()
         return 300.0f;
     };
 
-    if (policy_mode)
+    if (runtime_mode.unknown_open_rl_mode &&
+        (now_s - last_stale_warn_time_s_) > 1.0)
+    {
+        std::cerr << "[RL_solver] unknown open_rl mode=" << dds_cmd.open_rl
+                  << ", fallback to hold mode." << std::endl;
+        last_stale_warn_time_s_ = now_s;
+    }
+
+    if (runtime_mode.mode == rl_master::CommandRuntimeMode::kPolicy)
     {
         std::vector<float> target_q(kInstalledMotorCount, 0.0f);
         std::vector<float> target_dq(kInstalledMotorCount, 0.0f);
@@ -323,7 +328,8 @@ void RobotSolver::getRLCmd()
             }
         }
     }
-    else if (command_stream_mode || test_csp_mode)
+    else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kCommandStream ||
+             runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCsp)
     {
         // Position stream: keep joints in CSP and track commanded positions.
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
@@ -334,7 +340,7 @@ void RobotSolver::getRLCmd()
             joint_cmd_[i].mode = RUN_MODE_CSP;
         }
     }
-    else if (test_cst_mode)
+    else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCst)
     {
         // Torque stream: use commanded joint torques directly in CST mode.
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
@@ -346,7 +352,7 @@ void RobotSolver::getRLCmd()
             joint_cmd_[i].mode = RUN_MODE_CST;
         }
     }
-    else if (test_r1_mode)
+    else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1)
     {
         // Mixed stream: forward target q/dq/tau with R1 run mode.
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
@@ -563,16 +569,18 @@ void RobotSolver::run()
             dds_bridge_.spinOnce();
 
             getRLCmd();
-            const bool policy_mode_active = rl_master::isOpenRlPolicyEnabled(static_cast<float>(open_rl_));
-            const bool any_active_mode = rl_master::isOpenRlAnyEnabled(static_cast<float>(open_rl_));
+            const auto open_rl_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(open_rl_));
+            const bool any_active_mode = open_rl_mode.open_rl_active;
             if (any_active_mode && !latest_cmd_fresh_)
             {
                 open_rl_ = static_cast<int>(rl_master::kOpenRlDisabled);
             }
 
-            const bool last_policy_mode_active = rl_master::isOpenRlPolicyEnabled(static_cast<float>(last_open_rl_));
-            const bool current_policy_mode_active = rl_master::isOpenRlPolicyEnabled(static_cast<float>(open_rl_));
-            const bool current_any_active_mode = rl_master::isOpenRlAnyEnabled(static_cast<float>(open_rl_));
+            const auto last_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(last_open_rl_));
+            const auto current_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(open_rl_));
+            const bool last_policy_mode_active = (last_mode.mode == rl_master::CommandRuntimeMode::kPolicy);
+            const bool current_policy_mode_active = (current_mode.mode == rl_master::CommandRuntimeMode::kPolicy);
+            const bool current_any_active_mode = current_mode.open_rl_active;
 
             if (current_policy_mode_active && !last_policy_mode_active)
             {
