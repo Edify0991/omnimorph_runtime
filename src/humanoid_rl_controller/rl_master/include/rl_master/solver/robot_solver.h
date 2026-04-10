@@ -92,8 +92,8 @@ private:
     SolverDdsBridge dds_bridge_;
     MotorShmIo motor_shm_io_;
 
+    std::string active_config_section_ = "sim2real";
     Sim2realCfg sim2real_cfg_;
-    Sim2realCfg stand_sim2real_cfg_;
 
     std::array<rl_master::filters::MovingAverageFilter, kMotorCountMax> velocity_filters_{};
 

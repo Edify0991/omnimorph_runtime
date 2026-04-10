@@ -50,19 +50,13 @@ std::vector<double> toDoubleVector(const std::vector<float> &values)
 std::unique_ptr<RobotSolver> RobotSolver::create()
 {
     auto solver = std::unique_ptr<RobotSolver>(new RobotSolver());
-    if (!solver->sim2real_cfg_.loadFromYAML(RL_CFG_PATH, "sim2real"))
+    solver->active_config_section_ = resolveDefaultDeployConfigSectionFromYAML(RL_CFG_PATH, "sim2real");
+    if (!solver->sim2real_cfg_.loadFromYAML(RL_CFG_PATH, solver->active_config_section_))
     {
-        std::cerr << "Failed to load Sim2Real config!" << std::endl;
+        std::cerr << "Failed to load solver config section: " << solver->active_config_section_ << std::endl;
         return nullptr;
     }
-    std::cout << "Sim2Real config loaded successfully!" << std::endl;
-
-    if (!solver->stand_sim2real_cfg_.loadFromYAML(RL_CFG_PATH, "stand_sim2real"))
-    {
-        std::cerr << "Failed to load Stand Sim2Real config!" << std::endl;
-        return nullptr;
-    }
-    std::cout << "Stand Sim2Real config loaded successfully!" << std::endl;
+    std::cout << "Solver config loaded successfully from section: " << solver->active_config_section_ << std::endl;
     return solver;
 }
 

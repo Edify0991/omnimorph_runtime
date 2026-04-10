@@ -35,6 +35,8 @@ This keeps behavior consistent and reduces maintenance cost.
 - `joyLaunch.py`: joystick process orchestration and DDS command writer
 - `motor_test_suite.sh`: unified motor test runner (`smoke` / `zero` / `all`)
 - `run_joint_pos.sh`: legacy utility script (kept as-is for compatibility)
+- `sim2sim_engineai_python.sh`: one-command EngineAI policy sim2sim launch with python viewer backend (+ optional precheck)
+- `publish_walk_mode.sh`: one-command walk_mode DDS control word publisher (start/switch/stop/zero/estop)
 
 ## Runtime Checklist
 
@@ -80,6 +82,23 @@ sudo ./joint_test.sh
 sudo ./combined_test.sh
 sudo ./move_zero.sh
 sudo ./initial.sh
+```
+
+EngineAI policy sim2sim (python backend + viewer):
+
+```bash
+./sim2sim_engineai_python.sh \
+  --model-path /abs/path/to/robot.xml \
+  --mode-id 0 \
+  --auto-start-mode
+```
+
+Manual state/mode control word publish helper:
+
+```bash
+./publish_walk_mode.sh start --mode-id 0
+./publish_walk_mode.sh switch --mode-id 1
+./publish_walk_mode.sh stop
 ```
 
 Unified motor test suite:
@@ -207,4 +226,3 @@ sudo ./imu.sh --no-serial-reset
 Structured runtime logs (`*_metadata.json` + `*_records.jsonl`) and analysis flow are documented in:
 
 - `src/humanoid_rl_controller/rl_master/docs/runbooks/runtime_checklist.md`
-

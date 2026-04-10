@@ -1,6 +1,6 @@
 # RL Configuration File
 
-humanoid_rl_root_dir: "/home/nvidia/Documents/humanoid_jc/src/humanoid_rl_controller/rl_master"
+humanoid_rl_root_dir: "/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master"
 legged_gym_root_dir: "/path/to/legged_gym_root_dir"
 
 # walk_mode DDS control words (generic):
@@ -14,8 +14,8 @@ legged_gym_root_dir: "/path/to/legged_gym_root_dir"
 # without changing controller source code.
 deploy_mode_profiles:
   - mode_id: 0
-    config_section: sim2real
-    tag: walk
+    config_section: engineai_walk
+    tag: vel_walk
   - mode_id: 1
     config_section: stand_sim2real
     tag: stand
@@ -38,9 +38,9 @@ runtime_process:
     use_fifo: true
     fifo_priority: 90
 
-sim2real:
-  policy_name: "2026-01-11_01-27-10"
-  policy_family: "amp"  # amp / beyondmimic / custom
+engineai_walk:
+  policy_name: "2026-04-09_15-00-05v2"
+  policy_family: "velloco"  # amp / beyondmimic / custom
   obs_stack_N: 15
   # cycle_time: 1.05
   cycle_time: 1.0
@@ -249,9 +249,8 @@ sim2real:
     height_measurements: 5.0
 
 stand_sim2real:
-  # policy_name: "2026-01-05_18-10-12v1"
-  policy_name: "2025-12-18_10-01-13v1"
-  policy_family: "amp"
+  policy_name: "2026-04-09_15-00-05v2"
+  policy_family: "velloco"
   obs_stack_N: 15
   cycle_time: 0.95
 
@@ -282,7 +281,7 @@ stand_sim2real:
     - right_ankle_pitch
     - right_ankle_roll
     - left_hip_roll
-    - left_hip_yaw_joint
+    - left_hip_yaw
     - left_hip_pitch
     - left_knee_pitch
     - left_ankle_pitch

@@ -798,7 +798,7 @@ std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsF
     // Generic fallback used only when deploy_mode_profiles is missing.
     // Runtime behavior should be data-driven from deploy_mode_profiles.
     std::vector<ModeProfileSpec> specs = {
-        {rl_master::kModeCodeMin, "sim2real", "mode_0"},
+        {rl_master::kModeCodeMin, "engineai_walk", "vel_walk"},
     };
 
     YAML::Node root;

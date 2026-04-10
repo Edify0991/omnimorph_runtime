@@ -25,11 +25,14 @@ void handleSignal(int signal_number)
 int main()
 {
     Sim2realCfg startup_cfg;
-    if (!startup_cfg.loadFromYAML(RL_CFG_PATH, "sim2real"))
+    const std::string startup_section = resolveDefaultDeployConfigSectionFromYAML(RL_CFG_PATH, "sim2real");
+    if (!startup_cfg.loadFromYAML(RL_CFG_PATH, startup_section))
     {
-        std::cerr << "Failed to load startup Sim2Real config for realtime setup." << std::endl;
+        std::cerr << "Failed to load startup config section '" << startup_section
+                  << "' for realtime setup." << std::endl;
         return -1;
     }
+    std::cout << "[RL_solver] startup config section: " << startup_section << std::endl;
     rl_master::runtime::RealtimeConfig runtime_rt = startup_cfg.realtime;
     (void)loadProcessRealtimeConfigFromYAML(RL_CFG_PATH, "solver", &runtime_rt);
     runtime_rt = rl_master::runtime::overrideRealtimeConfigFromEnv(runtime_rt, "RL_MASTER_SOLVER_RT_");

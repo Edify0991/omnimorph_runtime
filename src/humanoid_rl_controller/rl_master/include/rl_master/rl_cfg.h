@@ -102,6 +102,33 @@ inline bool loadProcessRealtimeConfigFromYAML(
     }
 }
 
+inline std::string resolveDefaultDeployConfigSectionFromYAML(
+    const std::string &yaml_file,
+    const std::string &fallback_section = "sim2real")
+{
+    try
+    {
+        const YAML::Node root = YAML::LoadFile(yaml_file);
+        const YAML::Node profiles = root["deploy_mode_profiles"];
+        if (profiles && profiles.IsSequence() && profiles.size() > 0)
+        {
+            const YAML::Node first = profiles[0];
+            if (first["config_section"])
+            {
+                const std::string section = first["config_section"].as<std::string>();
+                if (!section.empty())
+                {
+                    return section;
+                }
+            }
+        }
+    }
+    catch (const std::exception &)
+    {
+    }
+    return fallback_section;
+}
+
 #define RL_CFG_PATH RL_MASTER_ROOT_DIR "/config/rl_cfg.yaml"
 #define OBS_MANIFEST_PATH RL_MASTER_ROOT_DIR "/config/observation_manifest.yaml"
 
@@ -270,7 +297,35 @@ public:
             external_observations.clear();
             amp_discriminator = AmpDiscriminatorCfg{};
 
-            humanoid_rl_root_dir = config["humanoid_rl_root_dir"].as<std::string>();
+            const std::string configured_root_raw = yamlReadOr<std::string>(config, "humanoid_rl_root_dir", "");
+            const std::filesystem::path cfg_parent_dir = std::filesystem::path(yaml_file).parent_path();
+            const std::filesystem::path default_root_path = std::filesystem::path(RL_MASTER_ROOT_DIR);
+            std::filesystem::path resolved_root_path = default_root_path;
+            if (!configured_root_raw.empty())
+            {
+                std::filesystem::path candidate = std::filesystem::path(configured_root_raw);
+                if (candidate.is_relative())
+                {
+                    candidate = cfg_parent_dir / candidate;
+                }
+                if (std::filesystem::exists(candidate))
+                {
+                    resolved_root_path = candidate;
+                }
+                else
+                {
+                    std::cerr << "[Sim2realCfg] warning: configured humanoid_rl_root_dir does not exist: "
+                              << candidate
+                              << ", fallback to RL_MASTER_ROOT_DIR: "
+                              << default_root_path << std::endl;
+                }
+            }
+            else
+            {
+                std::cerr << "[Sim2realCfg] warning: missing humanoid_rl_root_dir, fallback to RL_MASTER_ROOT_DIR: "
+                          << default_root_path << std::endl;
+            }
+            humanoid_rl_root_dir = resolved_root_path.string();
             const YAML::Node cfg = config[config_type];
 
             auto resolvePath = [&](const std::string &raw) -> std::string {
@@ -580,7 +635,5 @@ public:
         std::cout << "=============================" << std::endl;
     }
 };
-
-using StandSim2RealCfg = Sim2realCfg;
 
 #endif // RL_CFG_H

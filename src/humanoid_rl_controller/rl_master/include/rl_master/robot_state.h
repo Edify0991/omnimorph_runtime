@@ -39,7 +39,7 @@ public:
     std::vector<float> default_angle;
 
     Sim2realCfg sim2realCfg;
-    StandSim2RealCfg standSim2RealCfg;
+    Sim2realCfg standSim2RealCfg;
 
     float open_rl = rl_master::kOpenRlDisabled;
 

@@ -154,20 +154,48 @@ The validator checks:
 
 ## 6. Sim2Sim Deployment Flow
 
+Recommended quick start (python interactive backend + viewer):
+
+```bash
+./script/sim2sim_engineai_python.sh \
+  --model-path /abs/path/to/robot.xml \
+  --mode-id 0 \
+  --auto-start-mode
+```
+
+This wrapper will:
+
+- source ROS/workspace
+- run deploy precheck (`validate_deploy_config.py --mode-id <id>`)
+- launch `mujoco_sim2sim` with `backend:=python_interactive` and `enable_viewer:=true`
+- optionally publish START control word (`1000 + mode_id`)
+
+Manual launch (equivalent):
+
 Launch MuJoCo bridge + controller:
 
 ```bash
 ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
   model_path:=/abs/path/to/robot.xml \
   start_rl_controller:=true \
+  backend:=python_interactive \
+  enable_viewer:=true \
   control_hz:=100.0 \
   fixed_base:=false
 ```
+
+If you want to verify the exact same C++ runtime mode resolver used by `RL_solver`, use `backend:=cpp` for one cross-check run.
 
 If policy does not auto-start, publish control word:
 
 ```bash
 ros2 topic pub --once /humanoid/rl/walk_mode std_msgs/msg/Int32 "{data: 1002}"
+```
+
+Or use helper script:
+
+```bash
+./script/publish_walk_mode.sh start --mode-id 2
 ```
 
 Above example means `mode_id=2` and `START_POLICY` (`1000 + mode_id`).
@@ -244,4 +272,3 @@ python3 src/humanoid_rl_controller/rl_master/tools/analysis/analyze_structured_l
    - metadata check enabled but keys/values do not match profile.
 5. External observation false confidence:
    - `required: true` is currently not hard-enforced; missing external features are zero-padded.
-

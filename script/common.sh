@@ -69,6 +69,12 @@ source_ros_workspace() {
   local ros_setup
   ros_setup="$(_detect_ros_setup)" || die "ROS2 setup.bash not found under /opt/ros"
 
+  local restore_nounset=0
+  if [[ -o nounset ]]; then
+    restore_nounset=1
+    set +u
+  fi
+
   # shellcheck disable=SC1090
   source "${ros_setup}"
 
@@ -77,6 +83,10 @@ source_ros_workspace() {
 
   # shellcheck disable=SC1090
   source "${ws_setup}"
+
+  if [[ "${restore_nounset}" -eq 1 ]]; then
+    set -u
+  fi
 }
 
 build_ros_package() {
@@ -118,4 +128,3 @@ reset_serial_port() {
   stty -F "${device}" "${baudrate}" raw -echo -crtscts -ixon >/dev/null 2>&1 || \
     log_warn "Failed to reset serial device ${device}"
 }
-
