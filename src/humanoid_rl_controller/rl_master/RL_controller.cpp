@@ -801,40 +801,22 @@ std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsF
         {rl_master::kModeCodeMin, "engineai_walk", "vel_walk"},
     };
 
-    YAML::Node root;
-    try
-    {
-        root = YAML::LoadFile(RL_CFG_PATH);
-    }
-    catch (const std::exception &e)
-    {
-        std::cerr << "[RL_controller] failed to parse RL cfg for mode profile map: " << e.what()
-                  << ". Use default mode profile mapping." << std::endl;
-        return specs;
-    }
-
-    const YAML::Node profile_nodes = root["deploy_mode_profiles"];
-    if (!profile_nodes || !profile_nodes.IsSequence() || profile_nodes.size() == 0)
+    const auto parsed_specs = loadDeployModeProfilesFromYAML(RL_CFG_PATH);
+    if (parsed_specs.empty())
     {
         std::cerr << "[RL_controller] deploy_mode_profiles not found, fallback to single default profile." << std::endl;
         return specs;
     }
 
     std::vector<ModeProfileSpec> parsed;
-    for (size_t i = 0; i < profile_nodes.size(); ++i)
+    parsed.reserve(parsed_specs.size());
+    for (const auto &spec : parsed_specs)
     {
-        const YAML::Node node = profile_nodes[i];
-        if (!node["mode_id"] || !node["config_section"])
-        {
-            throw std::runtime_error(
-                "deploy_mode_profiles[" + std::to_string(i) + "] requires mode_id and config_section");
-        }
-
-        ModeProfileSpec spec;
-        spec.mode_id = node["mode_id"].as<int>();
-        spec.config_section = node["config_section"].as<std::string>();
-        spec.tag = yamlReadOr<std::string>(node, "tag", spec.config_section);
-        parsed.push_back(spec);
+        ModeProfileSpec node_spec;
+        node_spec.mode_id = spec.mode_id;
+        node_spec.config_section = spec.config_section;
+        node_spec.tag = spec.tag.empty() ? spec.config_section : spec.tag;
+        parsed.push_back(std::move(node_spec));
     }
 
     return parsed;

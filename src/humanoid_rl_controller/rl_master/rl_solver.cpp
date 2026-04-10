@@ -3,6 +3,7 @@
 #include <csignal>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <thread>
 
 #include "rl_master/rl_cfg.h"
@@ -20,25 +21,69 @@ void handleSignal(int signal_number)
         g_stop_requested = 1;
     }
 }
+
+int parseStartupModeId(int argc, char **argv)
+{
+    int mode_id = readDeployModeIdFromEnv("RL_MASTER_DEPLOY_MODE_ID", 0);
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string arg = argv[i] ? argv[i] : "";
+        if (arg == "--mode-id" && (i + 1) < argc)
+        {
+            try
+            {
+                mode_id = std::stoi(argv[i + 1]);
+            }
+            catch (const std::exception &)
+            {
+                std::cerr << "[RL_solver] invalid --mode-id value: " << argv[i + 1]
+                          << ", fallback to " << mode_id << std::endl;
+            }
+            ++i;
+            continue;
+        }
+        const std::string prefix = "--mode-id=";
+        if (arg.rfind(prefix, 0) == 0)
+        {
+            try
+            {
+                mode_id = std::stoi(arg.substr(prefix.size()));
+            }
+            catch (const std::exception &)
+            {
+                std::cerr << "[RL_solver] invalid --mode-id value: " << arg
+                          << ", fallback to " << mode_id << std::endl;
+            }
+        }
+    }
+    return mode_id;
+}
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
+    const int startup_mode_id = parseStartupModeId(argc, argv);
+
     Sim2realCfg startup_cfg;
-    const std::string startup_section = resolveDefaultDeployConfigSectionFromYAML(RL_CFG_PATH, "sim2real");
+    const std::string startup_section = resolveDeployConfigSectionForModeFromYAML(
+        RL_CFG_PATH,
+        startup_mode_id,
+        "sim2real");
     if (!startup_cfg.loadFromYAML(RL_CFG_PATH, startup_section))
     {
         std::cerr << "Failed to load startup config section '" << startup_section
                   << "' for realtime setup." << std::endl;
         return -1;
     }
-    std::cout << "[RL_solver] startup config section: " << startup_section << std::endl;
+    std::cout << "[RL_solver] startup mode_id=" << startup_mode_id
+              << ", config section=" << startup_section << std::endl;
     rl_master::runtime::RealtimeConfig runtime_rt = startup_cfg.realtime;
     (void)loadProcessRealtimeConfigFromYAML(RL_CFG_PATH, "solver", &runtime_rt);
     runtime_rt = rl_master::runtime::overrideRealtimeConfigFromEnv(runtime_rt, "RL_MASTER_SOLVER_RT_");
     rl_master::runtime::configureRealtime(runtime_rt, "RL_solver");
 
-    std::unique_ptr<rl_master::solver::RobotSolver> solver = rl_master::solver::RobotSolver::create();
+    std::unique_ptr<rl_master::solver::RobotSolver> solver =
+        rl_master::solver::RobotSolver::create(startup_mode_id);
     if (!solver)
     {
         std::cerr << "Failed to create RobotSolver." << std::endl;

@@ -2,6 +2,7 @@
 #define RL_CFG_H
 
 #include <cstdint>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
@@ -127,6 +128,93 @@ inline std::string resolveDefaultDeployConfigSectionFromYAML(
     {
     }
     return fallback_section;
+}
+
+struct DeployModeProfileSpec
+{
+    int mode_id = 0;
+    std::string config_section;
+    std::string tag;
+};
+
+inline std::vector<DeployModeProfileSpec> loadDeployModeProfilesFromYAML(
+    const std::string &yaml_file)
+{
+    std::vector<DeployModeProfileSpec> specs;
+    const YAML::Node root = YAML::LoadFile(yaml_file);
+    const YAML::Node profiles = root["deploy_mode_profiles"];
+    if (!profiles || !profiles.IsSequence())
+    {
+        return specs;
+    }
+
+    specs.reserve(profiles.size());
+    for (size_t i = 0; i < profiles.size(); ++i)
+    {
+        const YAML::Node node = profiles[i];
+        if (!node["mode_id"] || !node["config_section"])
+        {
+            throw std::runtime_error(
+                "deploy_mode_profiles[" + std::to_string(i) + "] requires mode_id and config_section");
+        }
+        DeployModeProfileSpec spec;
+        spec.mode_id = node["mode_id"].as<int>();
+        spec.config_section = node["config_section"].as<std::string>();
+        spec.tag = yamlReadOr<std::string>(node, "tag", spec.config_section);
+        specs.push_back(spec);
+    }
+    return specs;
+}
+
+inline std::string resolveDeployConfigSectionForModeFromYAML(
+    const std::string &yaml_file,
+    int mode_id,
+    const std::string &fallback_section = "sim2real")
+{
+    std::vector<DeployModeProfileSpec> specs;
+    try
+    {
+        specs = loadDeployModeProfilesFromYAML(yaml_file);
+    }
+    catch (const std::exception &)
+    {
+        specs.clear();
+    }
+    for (const auto &spec : specs)
+    {
+        if (spec.mode_id == mode_id && !spec.config_section.empty())
+        {
+            return spec.config_section;
+        }
+    }
+    if (!specs.empty() && !specs.front().config_section.empty())
+    {
+        return specs.front().config_section;
+    }
+    return fallback_section;
+}
+
+inline int readDeployModeIdFromEnv(
+    const char *env_key,
+    int fallback_mode_id)
+{
+    if (!env_key)
+    {
+        return fallback_mode_id;
+    }
+    const char *raw = std::getenv(env_key);
+    if (!raw || raw[0] == '\0')
+    {
+        return fallback_mode_id;
+    }
+    try
+    {
+        return std::stoi(std::string(raw));
+    }
+    catch (const std::exception &)
+    {
+        return fallback_mode_id;
+    }
 }
 
 #define RL_CFG_PATH RL_MASTER_ROOT_DIR "/config/rl_cfg.yaml"

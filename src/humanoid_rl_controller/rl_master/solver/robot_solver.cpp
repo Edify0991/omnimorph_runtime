@@ -19,6 +19,9 @@ namespace rl_master::solver
 namespace
 {
 constexpr long kControlPeriodNs = 2'000'000; // 500 Hz
+constexpr int kCtrlWordStartModeBase = 1000;
+constexpr int kCtrlWordSetModeBase = 2000;
+constexpr int kCtrlWordModeRange = 1000;
 
 const std::vector<float> kHomePositions = {
     0.0f,
@@ -45,19 +48,111 @@ std::vector<double> toDoubleVector(const std::vector<float> &values)
     return out;
 }
 
+int decodeLocomotionModeFromControlWord(int control_word, int fallback_mode)
+{
+    if (control_word >= kCtrlWordStartModeBase &&
+        control_word < (kCtrlWordStartModeBase + kCtrlWordModeRange))
+    {
+        return control_word - kCtrlWordStartModeBase;
+    }
+    if (control_word >= kCtrlWordSetModeBase &&
+        control_word < (kCtrlWordSetModeBase + kCtrlWordModeRange))
+    {
+        return control_word - kCtrlWordSetModeBase;
+    }
+    return fallback_mode;
+}
+
 } // namespace
 
-std::unique_ptr<RobotSolver> RobotSolver::create()
+std::unique_ptr<RobotSolver> RobotSolver::create(int startup_mode_id)
 {
     auto solver = std::unique_ptr<RobotSolver>(new RobotSolver());
-    solver->active_config_section_ = resolveDefaultDeployConfigSectionFromYAML(RL_CFG_PATH, "sim2real");
-    if (!solver->sim2real_cfg_.loadFromYAML(RL_CFG_PATH, solver->active_config_section_))
+    solver->initModeProfileMap();
+    if (!solver->switchToModeConfig(startup_mode_id, true))
     {
-        std::cerr << "Failed to load solver config section: " << solver->active_config_section_ << std::endl;
+        std::cerr << "Failed to load solver config section for mode_id=" << startup_mode_id << std::endl;
         return nullptr;
     }
-    std::cout << "Solver config loaded successfully from section: " << solver->active_config_section_ << std::endl;
+    std::cout << "Solver config loaded successfully: mode_id=" << solver->active_mode_id_
+              << ", section=" << solver->active_config_section_ << std::endl;
     return solver;
+}
+
+void RobotSolver::initModeProfileMap()
+{
+    mode_profile_specs_.clear();
+    try
+    {
+        mode_profile_specs_ = loadDeployModeProfilesFromYAML(RL_CFG_PATH);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "[RL_solver] failed to parse deploy_mode_profiles: " << e.what()
+                  << ". fallback to default section resolution." << std::endl;
+    }
+    mode_to_config_section_.clear();
+    for (const auto &spec : mode_profile_specs_)
+    {
+        if (spec.config_section.empty())
+        {
+            continue;
+        }
+        mode_to_config_section_[spec.mode_id] = spec.config_section;
+    }
+}
+
+bool RobotSolver::switchToModeConfig(int mode_id, bool allow_fallback_to_default)
+{
+    std::string section;
+    int resolved_mode_id = mode_id;
+    auto it = mode_to_config_section_.find(mode_id);
+    if (it != mode_to_config_section_.end())
+    {
+        section = it->second;
+    }
+    else if (allow_fallback_to_default)
+    {
+        section = resolveDeployConfigSectionForModeFromYAML(RL_CFG_PATH, mode_id, "sim2real");
+        if (!mode_profile_specs_.empty())
+        {
+            resolved_mode_id = mode_profile_specs_.front().mode_id;
+        }
+    }
+    else
+    {
+        return false;
+    }
+
+    if (section.empty())
+    {
+        return false;
+    }
+
+    Sim2realCfg loaded;
+    if (!loaded.loadFromYAML(RL_CFG_PATH, section))
+    {
+        return false;
+    }
+
+    sim2real_cfg_ = loaded;
+    active_config_section_ = section;
+    active_mode_id_ = resolved_mode_id;
+    applyControlGainsFromCfg();
+
+    std::cout << "[RL_solver] mode config active: mode_id=" << active_mode_id_
+              << ", section=" << active_config_section_
+              << ", policy=" << sim2real_cfg_.policy_name << std::endl;
+    if (data_logging_enabled_ && data_logger_.isOpen())
+    {
+        data_logger_.writeEvent(
+            rl_master::monotonicTimeSec(),
+            "solver_mode_config_switched",
+            {{"mode_id", std::to_string(active_mode_id_)},
+             {"config_section", active_config_section_},
+             {"policy_name", sim2real_cfg_.policy_name}});
+    }
+    return true;
 }
 
 bool RobotSolver::initialize()
@@ -116,13 +211,25 @@ void RobotSolver::initializeBuffers()
     hold_target_q_ = std::vector<float>(kInstalledMotorCount, 0.0f);
     hold_target_latched_ = false;
 
+    applyControlGainsFromCfg();
+}
+
+void RobotSolver::applyControlGainsFromCfg()
+{
+    if (joint_cmd_.size() < kInstalledMotorCount ||
+        joint_state_.size() < kInstalledMotorCount)
+    {
+        return;
+    }
+
     for (size_t i = 0; i < kInstalledMotorCount; ++i)
     {
-        joint_cmd_[i].kp = sim2real_cfg_.kps[i];
-        joint_cmd_[i].kd = sim2real_cfg_.kds[i];
-        joint_state_[i].kp = sim2real_cfg_.kps[i];
-        joint_state_[i].kd = sim2real_cfg_.kds[i];
-        std::cout << "jointstate kp [" << i << "]: " << static_cast<int>(joint_state_[i].kp) << std::endl;
+        const float kp = (i < sim2real_cfg_.kps.size()) ? sim2real_cfg_.kps[i] : 0.0f;
+        const float kd = (i < sim2real_cfg_.kds.size()) ? sim2real_cfg_.kds[i] : 0.0f;
+        joint_cmd_[i].kp = kp;
+        joint_cmd_[i].kd = kd;
+        joint_state_[i].kp = kp;
+        joint_state_[i].kd = kd;
     }
 }
 
@@ -561,6 +668,33 @@ void RobotSolver::run()
         {
             const auto loop_begin = std::chrono::steady_clock::now();
             dds_bridge_.spinOnce();
+
+            int walk_mode_control_word = 0;
+            if (dds_bridge_.readLatestWalkModeControlWord(&walk_mode_control_word))
+            {
+                const int requested_mode_id = decodeLocomotionModeFromControlWord(
+                    walk_mode_control_word,
+                    active_mode_id_);
+                if (requested_mode_id != active_mode_id_)
+                {
+                    if (!switchToModeConfig(requested_mode_id, false))
+                    {
+                        if (last_mode_reload_failure_id_ != requested_mode_id)
+                        {
+                            std::cerr << "[RL_solver] failed to switch mode config for mode_id="
+                                      << requested_mode_id
+                                      << ", keep current mode_id=" << active_mode_id_
+                                      << ", section=" << active_config_section_ << std::endl;
+                            last_mode_reload_failure_id_ = requested_mode_id;
+                        }
+                    }
+                    else
+                    {
+                        last_mode_reload_failure_id_ = std::numeric_limits<int>::min();
+                        hold_target_latched_ = false;
+                    }
+                }
+            }
 
             getRLCmd();
             const auto open_rl_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(open_rl_));

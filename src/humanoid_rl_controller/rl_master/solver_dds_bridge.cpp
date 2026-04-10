@@ -43,6 +43,15 @@ void SolverDdsBridge::connect()
             has_command_ = true;
         });
 
+    walk_mode_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
+        rl_master::dds::kTopicWalkMode,
+        rclcpp::QoS(rclcpp::KeepLast(20)).reliable(),
+        [this](const std_msgs::msg::Int32::SharedPtr msg) {
+            std::lock_guard<std::mutex> lock(walk_mode_mutex_);
+            latest_walk_mode_control_word_ = msg->data;
+            has_walk_mode_control_word_ = true;
+        });
+
     imu_sub_ = node_->create_subscription<sensor_msgs::msg::Imu>(
         "/imu/yesense",
         rclcpp::QoS(rclcpp::KeepLast(30)).best_effort(),
@@ -120,6 +129,21 @@ bool SolverDdsBridge::readLatestPolicyCommand(
     {
         *stamp_sec = latest_command_stamp_sec_;
     }
+    return true;
+}
+
+bool SolverDdsBridge::readLatestWalkModeControlWord(int *control_word)
+{
+    if (!control_word)
+    {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(walk_mode_mutex_);
+    if (!has_walk_mode_control_word_)
+    {
+        return false;
+    }
+    *control_word = latest_walk_mode_control_word_;
     return true;
 }
 

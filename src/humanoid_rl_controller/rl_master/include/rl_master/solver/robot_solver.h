@@ -7,7 +7,9 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <limits>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "rl_master/KinConv.h"
@@ -23,7 +25,7 @@ namespace rl_master::solver
 class RobotSolver
 {
 public:
-    static std::unique_ptr<RobotSolver> create();
+    static std::unique_ptr<RobotSolver> create(int startup_mode_id = 0);
 
     bool initialize();
     void run();
@@ -53,6 +55,9 @@ private:
 
     void moveToPosition(const std::vector<float> &target_positions);
     void holdCurrentPose();
+    void applyControlGainsFromCfg();
+    void initModeProfileMap();
+    bool switchToModeConfig(int mode_id, bool allow_fallback_to_default);
 
     std::atomic<bool> run_flag_{true};
 
@@ -94,6 +99,10 @@ private:
 
     std::string active_config_section_ = "sim2real";
     Sim2realCfg sim2real_cfg_;
+    int active_mode_id_ = 0;
+    std::unordered_map<int, std::string> mode_to_config_section_;
+    std::vector<DeployModeProfileSpec> mode_profile_specs_;
+    int last_mode_reload_failure_id_ = std::numeric_limits<int>::min();
 
     std::array<rl_master::filters::MovingAverageFilter, kMotorCountMax> velocity_filters_{};
 

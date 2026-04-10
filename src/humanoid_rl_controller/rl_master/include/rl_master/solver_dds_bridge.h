@@ -8,6 +8,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 
 #include "dds_protocol.h"
@@ -30,6 +31,7 @@ public:
         rl_master::RobotCommandData *command,
         uint32_t *sequence,
         double *stamp_sec);
+    bool readLatestWalkModeControlWord(int *control_word);
 
     void publishRobotState(const std::vector<JointData> &joint_state);
 
@@ -39,6 +41,7 @@ private:
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr state_pub_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr command_sub_;
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr walk_mode_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
 
     std::mutex command_mutex_;
@@ -46,6 +49,10 @@ private:
     uint32_t latest_command_seq_ = 0;
     double latest_command_stamp_sec_ = 0.0;
     bool has_command_ = false;
+
+    std::mutex walk_mode_mutex_;
+    int latest_walk_mode_control_word_ = 0;
+    bool has_walk_mode_control_word_ = false;
 
     std::mutex imu_mutex_;
     std::array<float, 3> imu_ang_vel_{0.0f, 0.0f, 0.0f};
