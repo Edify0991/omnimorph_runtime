@@ -6,7 +6,15 @@
 
 namespace rl_master
 {
-constexpr int kLegJointCount = 12;
+// Legacy fixed-size joint count (v1 payload width).
+constexpr int kLegacyJointCount = 12;
+// Backward-compatible alias kept for current runtime.
+constexpr int kLegJointCount = kLegacyJointCount;
+
+// Protocol versions.
+constexpr int kProtocolVersionLegacy = 1;
+constexpr int kProtocolVersionDynamicJointsV2 = 2;
+
 constexpr int kJointStateValueCount = kLegJointCount * 3; // q, dq, tau
 constexpr int kJointCmdLegacyCount = kJointStateValueCount + 1; // + open_rl
 constexpr int kJointCmdSeqIndex = kJointCmdLegacyCount;

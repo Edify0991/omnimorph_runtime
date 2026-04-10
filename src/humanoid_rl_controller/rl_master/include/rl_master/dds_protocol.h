@@ -17,7 +17,13 @@ constexpr const char *kTopicRobotState = "/humanoid/rl/state";
 constexpr const char *kTopicTeleopCommand = "/humanoid/rl/teleop";
 constexpr const char *kTopicWalkMode = "/humanoid/rl/walk_mode";
 
+// Legacy v1 fixed-size payload width.
 constexpr size_t kRobotStateValueCount = kJointStateValueCount + 3 + 4 + 3;
+
+// Protocol v2 dynamic joint payload markers.
+constexpr int kProtocolV2Magic = 240426;
+constexpr int kProtocolV2PayloadPolicyCommand = 1;
+constexpr int kProtocolV2PayloadRobotState = 2;
 
 std_msgs::msg::Float32MultiArray encodePolicyCommand(
     const RobotCommandData &command,
