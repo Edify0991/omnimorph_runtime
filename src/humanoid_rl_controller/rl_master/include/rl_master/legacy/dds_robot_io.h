@@ -1,5 +1,5 @@
-#ifndef RL_MASTER_DDS_ROBOT_IO_H
-#define RL_MASTER_DDS_ROBOT_IO_H
+#ifndef RL_MASTER_LEGACY_DDS_ROBOT_IO_H
+#define RL_MASTER_LEGACY_DDS_ROBOT_IO_H
 
 #include <array>
 #include <cstdint>
@@ -11,9 +11,14 @@
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/int32.hpp>
 
-#include "dds_protocol.h"
-#include "robot_io.h"
+#include "rl_master/dds_protocol.h"
+#include "rl_master/robot_io.h"
 
+// Legacy standalone RobotIO implementation used only by the old
+// two-process controller path:
+//   RL_controller (process A) <-> DDS <-> simulator/solver (process B)
+//
+// The fused runtime path does not depend on this class anymore.
 class DdsRobotIO final : public RobotIO
 {
 public:
@@ -57,4 +62,4 @@ private:
     uint32_t cmd_sequence_ = 0;
 };
 
-#endif // RL_MASTER_DDS_ROBOT_IO_H
+#endif // RL_MASTER_LEGACY_DDS_ROBOT_IO_H

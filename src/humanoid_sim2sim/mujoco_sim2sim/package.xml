@@ -12,6 +12,7 @@
   <depend>rclcpp</depend>
   <exec_depend>rclpy</exec_depend>
   <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
   <depend>rl_master</depend>
 
   <exec_depend>launch</exec_depend>

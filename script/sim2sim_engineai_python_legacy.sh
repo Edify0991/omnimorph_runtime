@@ -8,19 +8,20 @@ source "${SCRIPT_DIR}/common.sh"
 usage() {
   cat <<'USAGE'
 Usage:
-  sim2sim_engineai_python.sh --model-path <robot.xml> [options]
+  sim2sim_engineai_python_legacy.sh --model-path <robot.xml> [options]
 
-Recommended Python GUI path:
-  C++ fused backend (physics + controller) -> ROS2 frame stream -> Python MuJoCo viewer frontend
+Legacy but supported path:
+  RL_controller (standalone legacy process) <-> DDS <-> python_interactive MuJoCo backend
 
 Options:
   --model-path <path>             MuJoCo XML/MJB model path (required)
-  --mode-id <int>                 startup deploy mode_id for precheck/optional auto-start (default: 0)
+  --mode-id <int>                 deploy mode_id for precheck/optional auto-start (default: 0)
   --control-hz <float>            control_hz launch arg (default: 100.0)
   --fixed-base <true|false>       fixed_base launch arg (default: false)
+  --start-rl-controller <bool>    whether to start legacy standalone RL_controller (default: true)
   --enable-viewer <bool>          enable_viewer launch arg (default: true)
-  --show-left-ui <bool>           python viewer left panel (default: true)
-  --show-right-ui <bool>          python viewer right panel (default: true)
+  --show-left-ui <bool>           python backend viewer left panel (default: true)
+  --show-right-ui <bool>          python backend viewer right panel (default: true)
   --pause-when-no-command <bool>  pause_when_no_command launch arg (default: false)
   --no-command-behavior <value>   hold_position|hold_last|zero_torque (default: hold_position)
   --actuator-control-mode <value> auto|torque|position (default: auto)
@@ -38,6 +39,7 @@ MODEL_PATH=""
 MODE_ID=0
 CONTROL_HZ="100.0"
 FIXED_BASE="false"
+START_RL_CONTROLLER="true"
 ENABLE_VIEWER="true"
 SHOW_LEFT_UI="true"
 SHOW_RIGHT_UI="true"
@@ -67,6 +69,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --fixed-base)
       FIXED_BASE="${2:-}"
+      shift 2
+      ;;
+    --start-rl-controller)
+      START_RL_CONTROLLER="${2:-}"
       shift 2
       ;;
     --enable-viewer)
@@ -131,9 +137,9 @@ done
 [[ "${MODE_ID}" =~ ^[0-9]+$ ]] || die "--mode-id must be a non-negative integer"
 [[ -f "${MODEL_PATH}" ]] || log_warn "model file not found yet: ${MODEL_PATH} (launch may fail if path is wrong)"
 
-print_banner "EngineAI Sim2Sim (Python GUI Frontend)"
-log_info "This path keeps the friendly Python MuJoCo GUI, while the fused C++ backend owns both physics and policy/control loop."
-log_info "If you need the old split runtime, use ./script/sim2sim_engineai_python_legacy.sh."
+print_banner "EngineAI Sim2Sim (Python Interactive Legacy Path)"
+log_warn "This path keeps the friendly Python MuJoCo GUI, but control and simulation remain split across two processes over DDS."
+log_warn "If you want the fused runtime path, use ./script/sim2sim_engineai.sh instead."
 
 CURRENT_PYTHON="$(command -v python3 || true)"
 [[ -n "${CURRENT_PYTHON}" ]] || die "python3 not found in PATH"
@@ -178,7 +184,7 @@ source_ros_workspace
 export ROS_LOG_DIR="${ROS_LOG_DIR:-${WORKSPACE_DIR}/log/ros2}"
 mkdir -p "${ROS_LOG_DIR}" >/dev/null 2>&1 || true
 
-if [[ "${AUTO_START_MODE}" == "true" ]]; then
+if [[ "${AUTO_START_MODE}" == "true" && "${START_RL_CONTROLLER}" == "true" ]]; then
   (
     sleep "${AUTO_START_DELAY}"
     ros2 topic pub --once /humanoid/rl/walk_mode std_msgs/msg/Int32 \
@@ -190,8 +196,8 @@ fi
 LAUNCH_CMD=(
   ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py
   "model_path:=${MODEL_PATH}"
-  "backend:=python_frontend"
-  "start_rl_controller:=false"
+  "backend:=python_interactive"
+  "start_rl_controller:=${START_RL_CONTROLLER}"
   "mode_id:=${MODE_ID}"
   "control_hz:=${CONTROL_HZ}"
   "fixed_base:=${FIXED_BASE}"
@@ -206,6 +212,6 @@ if [[ -n "${BRIDGE_CONFIG}" ]]; then
   LAUNCH_CMD+=("bridge_config:=${BRIDGE_CONFIG}")
 fi
 
-log_info "Launching python_frontend sim2sim path ..."
+log_info "Launching python_interactive sim2sim path ..."
 log_info "${LAUNCH_CMD[*]}"
 exec "${LAUNCH_CMD[@]}"

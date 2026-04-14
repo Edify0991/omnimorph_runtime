@@ -137,9 +137,8 @@ if(_rl_master_runtime_rpath_dirs)
   string(JOIN ":" RL_MASTER_RPATH ${_rl_master_runtime_rpath_dirs})
 endif()
 
-add_executable(RL_controller
+add_library(rl_master_runtime SHARED
   dds_protocol.cpp
-  dds_robot_io.cpp
   deploy_state_machine.cpp
   external_observation_provider.cpp
   logging/structured_logger.cpp
@@ -147,18 +146,52 @@ add_executable(RL_controller
   onnx_policy_runner.cpp
   observation_builder.cpp
   reference_motion_provider.cpp
+  runtime/integrated_controller_runtime.cpp
   runtime/realtime_utils.cpp
   robot_state.cpp
-  sim2real_rl_controller.cpp
   math_tool.cpp
 )
 
-target_include_directories(RL_controller PUBLIC
+target_include_directories(rl_master_runtime PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
-target_include_directories(RL_controller PRIVATE
+target_compile_definitions(rl_master_runtime PUBLIC
+  RL_MASTER_ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+)
+target_include_directories(rl_master_runtime PRIVATE
   ${ONNXRUNTIME_INCLUDE_DIR}
+)
+ament_target_dependencies(rl_master_runtime PUBLIC
+  rclcpp
+  std_msgs
+  sensor_msgs
+  geometry_msgs
+)
+target_link_libraries(rl_master_runtime PRIVATE
+  onnxruntime::onnxruntime
+  Threads::Threads
+  yaml-cpp
+)
+target_link_libraries(rl_master_runtime PRIVATE
+  rl_master_arch_flags
+)
+target_compile_features(rl_master_runtime PUBLIC cxx_std_17)
+
+if(RL_MASTER_RPATH)
+  set_target_properties(rl_master_runtime PROPERTIES
+    BUILD_RPATH "${RL_MASTER_RPATH}"
+    INSTALL_RPATH "${RL_MASTER_RPATH}"
+  )
+endif()
+
+add_executable(RL_controller
+  legacy/dds_robot_io.cpp
+  legacy/sim2real_rl_controller_main.cpp
+)
+target_include_directories(RL_controller PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(RL_controller
   rclcpp
@@ -167,10 +200,8 @@ ament_target_dependencies(RL_controller
   geometry_msgs
 )
 target_link_libraries(RL_controller
-  onnxruntime::onnxruntime
-  Threads::Threads
+  rl_master_runtime
   yaml-cpp
-  rl_master_arch_flags
 )
 target_compile_features(RL_controller PRIVATE cxx_std_17)
 
@@ -206,17 +237,13 @@ target_include_directories(KinConv PUBLIC
 target_link_libraries(KinConv rl_master_arch_flags)
 
 add_executable(RL_solver
-  dds_protocol.cpp
   filters/moving_average_filter.cpp
-  logging/structured_logger.cpp
   rl_solver.cpp
-  runtime/realtime_utils.cpp
   solver/motor_shm_io.cpp
   solver/robot_solver.cpp
   solver_dds_bridge.cpp
   Knee_Kinematics.cpp
   Ankle_Kinematics.cpp
-  math_tool.cpp
   KinConv.cpp
 )
 target_include_directories(RL_solver PUBLIC
@@ -224,13 +251,19 @@ target_include_directories(RL_solver PUBLIC
   $<INSTALL_INTERFACE:include>
   /usr/include/eigen3
 )
+target_include_directories(RL_solver PRIVATE
+  ${ONNXRUNTIME_INCLUDE_DIR}
+)
 ament_target_dependencies(RL_solver
   rclcpp
   std_msgs
   sensor_msgs
+  geometry_msgs
   SharedMemory
 )
 target_link_libraries(RL_solver
+  rl_master_runtime
+  onnxruntime::onnxruntime
   ${RL_MASTER_SYMENGINE_TARGET}
   Threads::Threads
   SharedMemory::SharedMemory
@@ -238,6 +271,20 @@ target_link_libraries(RL_solver
   rl_master_arch_flags
 )
 target_compile_features(RL_solver PRIVATE cxx_std_17)
+
+if(RL_MASTER_RPATH)
+  set_target_properties(RL_solver PROPERTIES
+    BUILD_RPATH "${RL_MASTER_RPATH}"
+    INSTALL_RPATH "${RL_MASTER_RPATH}"
+  )
+endif()
+
+install(TARGETS
+  rl_master_arch_flags
+  rl_master_runtime
+  EXPORT export_rl_master
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 install(TARGETS
   RL_controller
@@ -255,6 +302,12 @@ install(DIRECTORY config docs
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(EXPORT export_rl_master
+  DESTINATION share/${PROJECT_NAME}/cmake
+)
+
 ament_export_include_directories(include)
+ament_export_dependencies(rclcpp std_msgs sensor_msgs geometry_msgs SharedMemory)
+ament_export_targets(export_rl_master HAS_LIBRARY_TARGET)
 
 ament_package()

@@ -8,20 +8,15 @@ source "${SCRIPT_DIR}/common.sh"
 usage() {
   cat <<'USAGE'
 Usage:
-  sim2sim_engineai_python.sh --model-path <robot.xml> [options]
-
-Recommended Python GUI path:
-  C++ fused backend (physics + controller) -> ROS2 frame stream -> Python MuJoCo viewer frontend
+  sim2sim_engineai.sh --model-path <robot.xml> [options]
 
 Options:
   --model-path <path>             MuJoCo XML/MJB model path (required)
-  --mode-id <int>                 startup deploy mode_id for precheck/optional auto-start (default: 0)
+  --mode-id <int>                 startup deploy mode_id (default: 0)
   --control-hz <float>            control_hz launch arg (default: 100.0)
   --fixed-base <true|false>       fixed_base launch arg (default: false)
   --enable-viewer <bool>          enable_viewer launch arg (default: true)
-  --show-left-ui <bool>           python viewer left panel (default: true)
-  --show-right-ui <bool>          python viewer right panel (default: true)
-  --pause-when-no-command <bool>  pause_when_no_command launch arg (default: false)
+  --pause-when-no-command <bool>  pause stepping when controller output is inactive (default: false)
   --no-command-behavior <value>   hold_position|hold_last|zero_torque (default: hold_position)
   --actuator-control-mode <value> auto|torque|position (default: auto)
   --bridge-config <path>          override bridge yaml path
@@ -39,8 +34,6 @@ MODE_ID=0
 CONTROL_HZ="100.0"
 FIXED_BASE="false"
 ENABLE_VIEWER="true"
-SHOW_LEFT_UI="true"
-SHOW_RIGHT_UI="true"
 PAUSE_WHEN_NO_COMMAND="false"
 NO_COMMAND_BEHAVIOR="hold_position"
 ACTUATOR_CONTROL_MODE="auto"
@@ -71,14 +64,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --enable-viewer)
       ENABLE_VIEWER="${2:-}"
-      shift 2
-      ;;
-    --show-left-ui)
-      SHOW_LEFT_UI="${2:-}"
-      shift 2
-      ;;
-    --show-right-ui)
-      SHOW_RIGHT_UI="${2:-}"
       shift 2
       ;;
     --pause-when-no-command)
@@ -131,9 +116,7 @@ done
 [[ "${MODE_ID}" =~ ^[0-9]+$ ]] || die "--mode-id must be a non-negative integer"
 [[ -f "${MODEL_PATH}" ]] || log_warn "model file not found yet: ${MODEL_PATH} (launch may fail if path is wrong)"
 
-print_banner "EngineAI Sim2Sim (Python GUI Frontend)"
-log_info "This path keeps the friendly Python MuJoCo GUI, while the fused C++ backend owns both physics and policy/control loop."
-log_info "If you need the old split runtime, use ./script/sim2sim_engineai_python_legacy.sh."
+print_banner "EngineAI Sim2Sim (Single-Process Fused Runtime)"
 
 CURRENT_PYTHON="$(command -v python3 || true)"
 [[ -n "${CURRENT_PYTHON}" ]] || die "python3 not found in PATH"
@@ -146,13 +129,7 @@ if [[ -z "${PRECHECK_PYTHON}" ]]; then
     PRECHECK_PYTHON="${CURRENT_PYTHON}"
   fi
 elif [[ "${PRECHECK_PYTHON}" != */* ]]; then
-  RESOLVED_PRECHECK_PYTHON="$(command -v "${PRECHECK_PYTHON}" || true)"
-  if [[ "${PRECHECK_PYTHON}" == "python3" ]] && [[ "${RESOLVED_PRECHECK_PYTHON}" == *"/anaconda"* || "${RESOLVED_PRECHECK_PYTHON}" == *"/miniconda"* || "${RESOLVED_PRECHECK_PYTHON}" == *"/mambaforge"* ]] && [[ -x "/usr/bin/python3" ]]; then
-    PRECHECK_PYTHON="/usr/bin/python3"
-    log_warn "Requested precheck python3 resolves to conda: ${RESOLVED_PRECHECK_PYTHON}. Fallback to /usr/bin/python3."
-  else
-    PRECHECK_PYTHON="${RESOLVED_PRECHECK_PYTHON}"
-  fi
+  PRECHECK_PYTHON="$(command -v "${PRECHECK_PYTHON}" || true)"
 fi
 [[ -n "${PRECHECK_PYTHON}" && -x "${PRECHECK_PYTHON}" ]] || die "invalid --precheck-python: ${PRECHECK_PYTHON}"
 log_info "Precheck python: ${PRECHECK_PYTHON}"
@@ -166,12 +143,6 @@ if [[ "${SKIP_PRECHECK}" != "true" ]]; then
   fi
   log_info "Running deploy precheck for mode_id=${MODE_ID} ..."
   "${CHECK_CMD[@]}"
-fi
-
-if [[ "${CURRENT_PYTHON}" == *"/anaconda"* || "${CURRENT_PYTHON}" == *"/miniconda"* || "${CURRENT_PYTHON}" == *"/mambaforge"* ]]; then
-  log_warn "Detected conda python: ${CURRENT_PYTHON}. Switching to system python for ROS launch."
-  export PATH="/usr/bin:/bin:${PATH}"
-  hash -r
 fi
 
 source_ros_workspace
@@ -190,14 +161,12 @@ fi
 LAUNCH_CMD=(
   ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py
   "model_path:=${MODEL_PATH}"
-  "backend:=python_frontend"
+  "backend:=cpp"
   "start_rl_controller:=false"
   "mode_id:=${MODE_ID}"
   "control_hz:=${CONTROL_HZ}"
   "fixed_base:=${FIXED_BASE}"
   "enable_viewer:=${ENABLE_VIEWER}"
-  "show_left_ui:=${SHOW_LEFT_UI}"
-  "show_right_ui:=${SHOW_RIGHT_UI}"
   "pause_when_no_command:=${PAUSE_WHEN_NO_COMMAND}"
   "no_command_behavior:=${NO_COMMAND_BEHAVIOR}"
   "actuator_control_mode:=${ACTUATOR_CONTROL_MODE}"
@@ -206,6 +175,6 @@ if [[ -n "${BRIDGE_CONFIG}" ]]; then
   LAUNCH_CMD+=("bridge_config:=${BRIDGE_CONFIG}")
 fi
 
-log_info "Launching python_frontend sim2sim path ..."
+log_info "Launching fused sim2sim runtime ..."
 log_info "${LAUNCH_CMD[*]}"
 exec "${LAUNCH_CMD[@]}"

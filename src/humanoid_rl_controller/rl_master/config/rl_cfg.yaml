@@ -109,7 +109,7 @@ engineai_walk:
   #   - right_ankle_pitch
   #   - right_ankle_roll
   # obs_joint_order can use the same left-first list as action_joint_order.
-  observation_manifest_file: "observation_manifest_amp.yaml"
+  observation_manifest_file: "observation_manifest_velloco.yaml"
   # beyondmimic example:
   # policy_family: "beyondmimic"
   # observation_manifest_file: "observation_manifest_beyondmimic.yaml"

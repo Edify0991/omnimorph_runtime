@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 from __future__ import annotations
 
 import math
@@ -40,6 +40,9 @@ K_OPEN_RL_COMMAND_STREAM = 20.0
 K_OPEN_RL_TEST_CSP = 30.0
 K_OPEN_RL_TEST_CST = 40.0
 K_OPEN_RL_TEST_R1 = 50.0
+K_PROTOCOL_V2_MAGIC = 240426
+K_PROTOCOL_V2_VERSION = 2
+K_PROTOCOL_V2_PAYLOAD_POLICY_COMMAND = 1
 
 TOPIC_POLICY_COMMAND = "/humanoid/rl/command"
 TOPIC_ROBOT_STATE = "/humanoid/rl/state"
@@ -124,6 +127,8 @@ class CommandCache:
     dq: np.ndarray = field(default_factory=lambda: np.zeros(K_JOINT_COUNT, dtype=np.float32))
     tau: np.ndarray = field(default_factory=lambda: np.zeros(K_JOINT_COUNT, dtype=np.float32))
     open_rl: float = K_OPEN_RL_DISABLED
+    protocol_version: int = 1
+    active_joint_count: int = K_JOINT_COUNT
     sequence: int = 0
     remote_stamp_sec: float = 0.0
     recv_time_sec: float = 0.0
@@ -185,6 +190,8 @@ class MujocoInteractiveBackend(Node):
         self.declare_parameter("base_free_joint_name", "")
         self.declare_parameter("joint_names", default_joint_names())
         self.declare_parameter("actuator_names", default_joint_names())
+        self.declare_parameter("hold_joint_names", [])
+        self.declare_parameter("hold_actuator_names", [])
         self.declare_parameter("control_hz", 100.0)
         self.declare_parameter("sim_dt", 0.001)
         self.declare_parameter("command_timeout_sec", 0.1)
@@ -205,6 +212,10 @@ class MujocoInteractiveBackend(Node):
         self.declare_parameter("kp", [80.0])
         self.declare_parameter("kd", [2.0])
         self.declare_parameter("torque_limit", [120.0])
+        self.declare_parameter("hold_joint_target_q", [])
+        self.declare_parameter("hold_kp", [80.0])
+        self.declare_parameter("hold_kd", [2.0])
+        self.declare_parameter("hold_torque_limit", [120.0])
 
     def _load_parameters(self) -> None:
         self.model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -233,6 +244,15 @@ class MujocoInteractiveBackend(Node):
         names_act = self.get_parameter("actuator_names").get_parameter_value().string_array_value
         self.joint_names = normalize_name_vector(list(names_joint), default_joint_names(), K_JOINT_COUNT)
         self.actuator_names = normalize_name_vector(list(names_act), self.joint_names, K_JOINT_COUNT)
+        hold_joint_names_raw = list(self.get_parameter("hold_joint_names").get_parameter_value().string_array_value)
+        hold_actuator_names_raw = list(self.get_parameter("hold_actuator_names").get_parameter_value().string_array_value)
+        self.hold_joint_names = hold_joint_names_raw
+        if hold_actuator_names_raw:
+            if len(hold_actuator_names_raw) != len(self.hold_joint_names):
+                raise RuntimeError("hold_actuator_names size must match hold_joint_names")
+            self.hold_actuator_names = hold_actuator_names_raw
+        else:
+            self.hold_actuator_names = list(self.hold_joint_names)
 
         kp_raw = list(self.get_parameter("kp").get_parameter_value().double_array_value)
         kd_raw = list(self.get_parameter("kd").get_parameter_value().double_array_value)
@@ -240,6 +260,25 @@ class MujocoInteractiveBackend(Node):
         self.kp = np.array(normalize_numeric_vector(kp_raw, 80.0, K_JOINT_COUNT), dtype=np.float64)
         self.kd = np.array(normalize_numeric_vector(kd_raw, 2.0, K_JOINT_COUNT), dtype=np.float64)
         self.torque_limit = np.array(normalize_numeric_vector(tau_raw, 120.0, K_JOINT_COUNT), dtype=np.float64)
+        hold_count = len(self.hold_joint_names)
+        hold_kp_raw = list(self.get_parameter("hold_kp").get_parameter_value().double_array_value)
+        hold_kd_raw = list(self.get_parameter("hold_kd").get_parameter_value().double_array_value)
+        hold_tau_raw = list(self.get_parameter("hold_torque_limit").get_parameter_value().double_array_value)
+        self.hold_kp = np.array(normalize_numeric_vector(hold_kp_raw, 80.0, hold_count), dtype=np.float64)
+        self.hold_kd = np.array(normalize_numeric_vector(hold_kd_raw, 2.0, hold_count), dtype=np.float64)
+        self.hold_torque_limit = np.array(normalize_numeric_vector(hold_tau_raw, 120.0, hold_count), dtype=np.float64)
+        hold_target_raw = list(self.get_parameter("hold_joint_target_q").get_parameter_value().double_array_value)
+        if not hold_target_raw:
+            self.hold_target_q = np.zeros(hold_count, dtype=np.float64)
+            self._hold_target_q_provided = False
+        elif len(hold_target_raw) == 1 and hold_count > 0:
+            self.hold_target_q = np.full(hold_count, float(hold_target_raw[0]), dtype=np.float64)
+            self._hold_target_q_provided = True
+        elif len(hold_target_raw) == hold_count:
+            self.hold_target_q = np.array([float(v) for v in hold_target_raw], dtype=np.float64)
+            self._hold_target_q_provided = True
+        else:
+            raise RuntimeError("hold_joint_target_q size must be 1 or match hold_joint_names")
 
         if not self.model_path:
             raise RuntimeError("parameter 'model_path' is empty")
@@ -254,6 +293,11 @@ class MujocoInteractiveBackend(Node):
         self.qpos_addrs = np.full(K_JOINT_COUNT, -1, dtype=np.int32)
         self.qvel_addrs = np.full(K_JOINT_COUNT, -1, dtype=np.int32)
         self.actuator_ids = np.full(K_JOINT_COUNT, -1, dtype=np.int32)
+        self.hold_joint_ids: List[int] = [-1 for _ in self.hold_joint_names]
+        self.hold_qpos_addrs: List[int] = [-1 for _ in self.hold_joint_names]
+        self.hold_qvel_addrs: List[int] = [-1 for _ in self.hold_joint_names]
+        self.hold_actuator_ids: List[int] = [-1 for _ in self.hold_joint_names]
+        self.hold_applied_tau = np.zeros(len(self.hold_joint_names), dtype=np.float32)
 
         position_like_count = 0
         for i, name in enumerate(self.joint_names):
@@ -281,6 +325,26 @@ class MujocoInteractiveBackend(Node):
 
             if int(self.model.actuator_biastype[aid]) != int(mujoco.mjtBias.mjBIAS_NONE):
                 position_like_count += 1
+
+        for i, name in enumerate(self.hold_joint_names):
+            if name in self.joint_names:
+                self.get_logger().warn(
+                    f"hold_joint_names[{i}]={name} overlaps policy-controlled joint, skip extra-hold mapping"
+                )
+                continue
+            jid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, name)
+            if jid < 0:
+                raise RuntimeError(f"hold joint not found: {name}")
+            jtype = int(self.model.jnt_type[jid])
+            if jtype not in (int(mujoco.mjtJoint.mjJNT_HINGE), int(mujoco.mjtJoint.mjJNT_SLIDE)):
+                raise RuntimeError(f"hold joint type not supported (need hinge/slide): {name}")
+            aid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, self.hold_actuator_names[i])
+            if aid < 0:
+                raise RuntimeError(f"hold actuator not found: {self.hold_actuator_names[i]}")
+            self.hold_joint_ids[i] = jid
+            self.hold_qpos_addrs[i] = int(self.model.jnt_qposadr[jid])
+            self.hold_qvel_addrs[i] = int(self.model.jnt_dofadr[jid])
+            self.hold_actuator_ids[i] = aid
 
         if self.actuator_control_mode == "position":
             self.use_position_actuator_control = True
@@ -321,6 +385,14 @@ class MujocoInteractiveBackend(Node):
             if 0 <= adr < int(self.model.nq):
                 self.last_target_q[i] = float(self.data.qpos[adr])
 
+        if (not self._hold_target_q_provided) and len(self.hold_joint_names) > 0:
+            for i, qadr in enumerate(self.hold_qpos_addrs):
+                if 0 <= qadr < int(self.model.nq):
+                    self.hold_target_q[i] = float(self.data.qpos[qadr])
+            self.get_logger().info(
+                f"hold_joint_target_q not provided, latch {len(self.hold_joint_names)} hold joints from model initial qpos"
+            )
+
     def _log_startup_diagnostics(self) -> None:
         eps = 1e-4
         near_limit_count = 0
@@ -329,7 +401,8 @@ class MujocoInteractiveBackend(Node):
             f"control_hz={self.control_hz:.1f} sim_dt={self.sim_dt:.6f} "
             f"substeps={self.substeps_per_control} pause_when_no_command={self.pause_when_no_command} "
             f"actuator_mode={'position' if self.use_position_actuator_control else 'torque'} "
-            f"no_command_behavior={self.no_command_behavior}"
+            f"no_command_behavior={self.no_command_behavior} "
+            f"hold_extra_joints={len(self.hold_joint_names)}"
         )
 
         for i in range(K_JOINT_COUNT):
@@ -443,19 +516,43 @@ class MujocoInteractiveBackend(Node):
             self.data.qvel[self.base_free_qvel_adr + i] = 0.0
 
     def _on_command(self, msg: Float32MultiArray) -> None:
-        if len(msg.data) < K_JOINT_CMD_VALUE_COUNT:
-            return
-
         cache = CommandCache()
-        for i in range(K_JOINT_COUNT):
-            off = i * 3
-            cache.q[i] = msg.data[off + 0]
-            cache.dq[i] = msg.data[off + 1]
-            cache.tau[i] = msg.data[off + 2]
+        is_v2 = (
+            len(msg.data) >= 7
+            and int(round(float(msg.data[0]))) == K_PROTOCOL_V2_MAGIC
+            and int(round(float(msg.data[1]))) == K_PROTOCOL_V2_VERSION
+            and int(round(float(msg.data[2]))) == K_PROTOCOL_V2_PAYLOAD_POLICY_COMMAND
+        )
 
-        cache.open_rl = float(msg.data[K_JOINT_STATE_VALUE_COUNT])
-        cache.sequence = int(max(0.0, float(msg.data[K_JOINT_STATE_VALUE_COUNT + 1])))
-        cache.remote_stamp_sec = float(msg.data[K_JOINT_STATE_VALUE_COUNT + 2])
+        if is_v2:
+            joint_count = int(max(0, int(round(float(msg.data[3])))))
+            expected = 7 + 3 * joint_count
+            if len(msg.data) < expected:
+                return
+            cache.protocol_version = K_PROTOCOL_V2_VERSION
+            cache.active_joint_count = joint_count
+            for i in range(min(K_JOINT_COUNT, joint_count)):
+                off = 7 + i * 3
+                cache.q[i] = msg.data[off + 0]
+                cache.dq[i] = msg.data[off + 1]
+                cache.tau[i] = msg.data[off + 2]
+            cache.open_rl = float(msg.data[4])
+            cache.sequence = int(max(0.0, float(msg.data[5])))
+            cache.remote_stamp_sec = float(msg.data[6])
+        else:
+            if len(msg.data) < K_JOINT_CMD_VALUE_COUNT:
+                return
+            for i in range(K_JOINT_COUNT):
+                off = i * 3
+                cache.q[i] = msg.data[off + 0]
+                cache.dq[i] = msg.data[off + 1]
+                cache.tau[i] = msg.data[off + 2]
+
+            cache.open_rl = float(msg.data[K_JOINT_STATE_VALUE_COUNT])
+            cache.sequence = int(max(0.0, float(msg.data[K_JOINT_STATE_VALUE_COUNT + 1])))
+            cache.remote_stamp_sec = float(msg.data[K_JOINT_STATE_VALUE_COUNT + 2])
+            cache.protocol_version = 1
+            cache.active_joint_count = K_JOINT_COUNT
         cache.recv_time_sec = time.monotonic()
         cache.valid = True
 
@@ -545,6 +642,30 @@ class MujocoInteractiveBackend(Node):
                 tau = float(np.clip(tau, -limit, limit))
                 self.data.ctrl[aid] = tau
                 self.applied_tau[i] = tau
+
+        # Non-policy joints: keep configured fixed targets.
+        for i in range(len(self.hold_joint_names)):
+            qadr = int(self.hold_qpos_addrs[i])
+            vadr = int(self.hold_qvel_addrs[i])
+            aid = int(self.hold_actuator_ids[i])
+            if qadr < 0 or vadr < 0 or aid < 0:
+                continue
+            if qadr >= int(self.model.nq) or vadr >= int(self.model.nv) or aid >= int(self.model.nu):
+                continue
+
+            q = float(self.data.qpos[qadr])
+            dq = float(self.data.qvel[vadr])
+            q_des = float(self.hold_target_q[i]) if i < len(self.hold_target_q) else q
+
+            if self.use_position_actuator_control:
+                self.data.ctrl[aid] = q_des
+                self.hold_applied_tau[i] = 0.0
+            else:
+                tau = float(self.hold_kp[i] * (q_des - q) - self.hold_kd[i] * dq)
+                limit = max(1e-6, abs(float(self.hold_torque_limit[i])))
+                tau = float(np.clip(tau, -limit, limit))
+                self.data.ctrl[aid] = tau
+                self.hold_applied_tau[i] = tau
 
     def _publish_robot_state(self) -> None:
         msg = Float32MultiArray()

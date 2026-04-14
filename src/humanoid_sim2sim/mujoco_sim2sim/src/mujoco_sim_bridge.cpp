@@ -5,7 +5,9 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -19,10 +21,15 @@
 
 #include "rl_master/dds_protocol.h"
 #include "rl_master/command_runtime_mode.h"
+#include "rl_master/deploy_state_machine.h"
 #include "rl_master/rl_protocol.h"
 
 namespace
 {
+constexpr const char *kDefaultViewerFrameTopic = "/humanoid/sim2sim/mujoco_viewer_frame";
+constexpr float kViewerFrameMagic = 260413.0f;
+constexpr float kViewerFrameVersion = 1.0f;
+
 std::vector<std::string> defaultJointNames()
 {
     return {
@@ -138,25 +145,32 @@ MujocoSimBridge::MujocoSimBridge()
     loadModel();
     resolveModelMappings();
     initializeState();
+    controller_runtime_.initialize(startup_mode_id_);
+    mode_command_cache_ = rl_master::kCtrlWordSetModeBase + startup_mode_id_;
     initializeViewer();
     setupRosInterfaces();
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim bridge ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, viewer=%s, no_command_behavior=%s",
+        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
         substeps_per_control_,
+        startup_mode_id_,
         enable_viewer_ ? "on" : "off",
+        enable_python_viewer_stream_ ? viewer_frame_topic_.c_str() : "off",
+        enable_python_viewer_inspector_ ? viewer_inspector_topic_.c_str() : "off",
         no_command_behavior_.c_str());
 }
 
 MujocoSimBridge::~MujocoSimBridge()
 {
     control_timer_.reset();
-    command_sub_.reset();
+    walk_mode_sub_.reset();
+    teleop_sub_.reset();
     state_pub_.reset();
+    controller_runtime_.estop();
     shutdownViewer();
 
     if (data_)
@@ -179,10 +193,11 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::string>("base_free_joint_name", "");
     this->declare_parameter<std::vector<std::string>>("joint_names", canonical_names);
     this->declare_parameter<std::vector<std::string>>("actuator_names", canonical_names);
+    this->declare_parameter<std::vector<std::string>>("hold_joint_names", std::vector<std::string>{});
+    this->declare_parameter<std::vector<std::string>>("hold_actuator_names", std::vector<std::string>{});
+    this->declare_parameter<int>("startup_mode_id", rl_master::kModeCodeMin);
     this->declare_parameter<double>("control_hz", 100.0);
     this->declare_parameter<double>("sim_dt", 0.001);
-    this->declare_parameter<double>("command_timeout_sec", 0.1);
-    this->declare_parameter<double>("open_rl_enable_threshold", 1.0);
     this->declare_parameter<bool>("use_command_torque_ff", false);
     this->declare_parameter<bool>("pause_when_no_command", false);
     this->declare_parameter<std::string>("no_command_behavior", "hold_position");
@@ -190,6 +205,10 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<double>("fixed_base_height", -1.0);
     this->declare_parameter<std::string>("actuator_control_mode", "auto");
     this->declare_parameter<bool>("enable_viewer", false);
+    this->declare_parameter<bool>("enable_python_viewer_stream", false);
+    this->declare_parameter<std::string>("viewer_frame_topic", kDefaultViewerFrameTopic);
+    this->declare_parameter<bool>("enable_python_viewer_inspector", false);
+    this->declare_parameter<std::string>("viewer_inspector_topic", "/humanoid/sim2sim/mujoco_viewer_inspector");
     this->declare_parameter<double>("viewer_fps", 60.0);
     this->declare_parameter<int>("viewer_width", 1280);
     this->declare_parameter<int>("viewer_height", 720);
@@ -197,14 +216,17 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::vector<double>>("kp", std::vector<double>(kJointCount, 80.0));
     this->declare_parameter<std::vector<double>>("kd", std::vector<double>(kJointCount, 2.0));
     this->declare_parameter<std::vector<double>>("torque_limit", std::vector<double>(kJointCount, 120.0));
+    this->declare_parameter<std::vector<double>>("hold_kp", std::vector<double>{80.0});
+    this->declare_parameter<std::vector<double>>("hold_kd", std::vector<double>{2.0});
+    this->declare_parameter<std::vector<double>>("hold_torque_limit", std::vector<double>{120.0});
+    this->declare_parameter<std::vector<double>>("hold_joint_target_q", std::vector<double>{});
 
     model_path_ = this->get_parameter("model_path").as_string();
     base_body_name_ = this->get_parameter("base_body_name").as_string();
     base_free_joint_name_ = this->get_parameter("base_free_joint_name").as_string();
+    startup_mode_id_ = static_cast<int>(this->get_parameter("startup_mode_id").as_int());
     control_hz_ = std::max(1.0, this->get_parameter("control_hz").as_double());
     sim_dt_ = std::max(1e-5, this->get_parameter("sim_dt").as_double());
-    command_timeout_sec_ = std::max(0.01, this->get_parameter("command_timeout_sec").as_double());
-    open_rl_enable_threshold_ = this->get_parameter("open_rl_enable_threshold").as_double();
     use_command_torque_ff_ = this->get_parameter("use_command_torque_ff").as_bool();
     pause_when_no_command_ = this->get_parameter("pause_when_no_command").as_bool();
     no_command_behavior_ = normalizeNoCommandBehavior(this->get_parameter("no_command_behavior").as_string());
@@ -212,6 +234,18 @@ void MujocoSimBridge::loadParameters()
     fixed_base_height_ = this->get_parameter("fixed_base_height").as_double();
     actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
     enable_viewer_ = this->get_parameter("enable_viewer").as_bool();
+    enable_python_viewer_stream_ = this->get_parameter("enable_python_viewer_stream").as_bool();
+    viewer_frame_topic_ = this->get_parameter("viewer_frame_topic").as_string();
+    if (viewer_frame_topic_.empty())
+    {
+        viewer_frame_topic_ = kDefaultViewerFrameTopic;
+    }
+    enable_python_viewer_inspector_ = this->get_parameter("enable_python_viewer_inspector").as_bool();
+    viewer_inspector_topic_ = this->get_parameter("viewer_inspector_topic").as_string();
+    if (viewer_inspector_topic_.empty())
+    {
+        viewer_inspector_topic_ = "/humanoid/sim2sim/mujoco_viewer_inspector";
+    }
     viewer_fps_ = std::max(1.0, this->get_parameter("viewer_fps").as_double());
     const int64_t viewer_width_param = this->get_parameter("viewer_width").as_int();
     const int64_t viewer_height_param = this->get_parameter("viewer_height").as_int();
@@ -219,18 +253,68 @@ void MujocoSimBridge::loadParameters()
     viewer_height_ = static_cast<int>(std::clamp<int64_t>(viewer_height_param, 240, 8192));
     viewer_title_ = this->get_parameter("viewer_title").as_string();
 
-    joint_names_ = normalizeNameParam(
-        this->get_parameter("joint_names").as_string_array(),
-        canonical_names,
-        kJointCount);
-    actuator_names_ = normalizeNameParam(
-        this->get_parameter("actuator_names").as_string_array(),
-        joint_names_,
-        kJointCount);
+    std::vector<std::string> joint_names_param = canonical_names;
+    const auto joint_names_param_obj = this->get_parameter("joint_names");
+    if (joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
+    {
+        joint_names_param = joint_names_param_obj.as_string_array();
+    }
+    joint_names_ = normalizeNameParam(joint_names_param, canonical_names, kJointCount);
+
+    std::vector<std::string> actuator_names_param = joint_names_;
+    const auto actuator_names_param_obj = this->get_parameter("actuator_names");
+    if (actuator_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
+    {
+        actuator_names_param = actuator_names_param_obj.as_string_array();
+    }
+    actuator_names_ = normalizeNameParam(actuator_names_param, joint_names_, kJointCount);
+
+    hold_joint_names_.clear();
+    const auto hold_joint_names_param_obj = this->get_parameter("hold_joint_names");
+    if (hold_joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
+    {
+        hold_joint_names_ = hold_joint_names_param_obj.as_string_array();
+    }
+    hold_actuator_names_.clear();
+    const auto hold_actuator_names_param_obj = this->get_parameter("hold_actuator_names");
+    if (hold_actuator_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
+    {
+        hold_actuator_names_ = hold_actuator_names_param_obj.as_string_array();
+    }
+    if (hold_actuator_names_.empty())
+    {
+        hold_actuator_names_ = hold_joint_names_;
+    }
+    if (!hold_actuator_names_.empty() && hold_actuator_names_.size() != hold_joint_names_.size())
+    {
+        throw std::runtime_error("hold_actuator_names size must match hold_joint_names");
+    }
 
     kp_ = normalizeGainParam(this->get_parameter("kp").as_double_array(), 80.0, kJointCount);
     kd_ = normalizeGainParam(this->get_parameter("kd").as_double_array(), 2.0, kJointCount);
     torque_limit_ = normalizeGainParam(this->get_parameter("torque_limit").as_double_array(), 120.0, kJointCount);
+
+    const size_t hold_count = hold_joint_names_.size();
+    hold_kp_ = normalizeGainParam(this->get_parameter("hold_kp").as_double_array(), 80.0, hold_count);
+    hold_kd_ = normalizeGainParam(this->get_parameter("hold_kd").as_double_array(), 2.0, hold_count);
+    hold_torque_limit_ = normalizeGainParam(this->get_parameter("hold_torque_limit").as_double_array(), 120.0, hold_count);
+    const auto hold_target_raw = this->get_parameter("hold_joint_target_q").as_double_array();
+    hold_target_q_.clear();
+    if (!hold_target_raw.empty())
+    {
+        if (hold_target_raw.size() == 1 && hold_count > 0)
+        {
+            hold_target_q_.assign(hold_count, hold_target_raw.front());
+        }
+        else if (hold_target_raw.size() == hold_count)
+        {
+            hold_target_q_ = hold_target_raw;
+        }
+        else
+        {
+            throw std::runtime_error("hold_joint_target_q size must be 1 or match hold_joint_names");
+        }
+    }
 
     if (model_path_.empty())
     {
@@ -332,6 +416,55 @@ void MujocoSimBridge::resolveModelMappings()
         }
     }
 
+    hold_joint_ids_.assign(hold_joint_names_.size(), -1);
+    hold_qpos_addrs_.assign(hold_joint_names_.size(), -1);
+    hold_qvel_addrs_.assign(hold_joint_names_.size(), -1);
+    hold_actuator_ids_.assign(hold_joint_names_.size(), -1);
+    hold_applied_tau_.assign(hold_joint_names_.size(), 0.0f);
+
+    for (size_t i = 0; i < hold_joint_names_.size(); ++i)
+    {
+        const auto existing_it = std::find(joint_names_.begin(), joint_names_.end(), hold_joint_names_[i]);
+        if (existing_it != joint_names_.end())
+        {
+            const size_t existing_idx = static_cast<size_t>(std::distance(joint_names_.begin(), existing_it));
+            RCLCPP_WARN(
+                this->get_logger(),
+                "hold_joint_names[%zu]='%s' overlaps policy-controlled joint index %zu, skip extra-hold mapping.",
+                i,
+                hold_joint_names_[i].c_str(),
+                existing_idx);
+            continue;
+        }
+
+        const int joint_id = mj_name2id(model_, mjOBJ_JOINT, hold_joint_names_[i].c_str());
+        if (joint_id < 0)
+        {
+            throw std::runtime_error("hold joint name not found in MuJoCo model: " + hold_joint_names_[i]);
+        }
+
+        const int joint_type = model_->jnt_type[joint_id];
+        if (joint_type != mjJNT_HINGE && joint_type != mjJNT_SLIDE)
+        {
+            throw std::runtime_error("hold controlled joint must be hinge or slide: " + hold_joint_names_[i]);
+        }
+
+        hold_joint_ids_[i] = joint_id;
+        hold_qpos_addrs_[i] = model_->jnt_qposadr[joint_id];
+        hold_qvel_addrs_[i] = model_->jnt_dofadr[joint_id];
+
+        int actuator_id = mj_name2id(model_, mjOBJ_ACTUATOR, hold_actuator_names_[i].c_str());
+        if (actuator_id < 0)
+        {
+            throw std::runtime_error("hold actuator name not found in MuJoCo model: " + hold_actuator_names_[i]);
+        }
+        if (actuator_id < 0 || actuator_id >= model_->nu)
+        {
+            throw std::runtime_error("resolved hold actuator index out of range for " + hold_actuator_names_[i]);
+        }
+        hold_actuator_ids_[i] = actuator_id;
+    }
+
     const std::string mode_lower = [&]() {
         std::string out = actuator_control_mode_;
         std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
@@ -353,10 +486,11 @@ void MujocoSimBridge::resolveModelMappings()
     }
     RCLCPP_INFO(
         this->get_logger(),
-        "Actuator control mode: %s (position_like=%d/%zu)",
+        "Actuator control mode: %s (position_like=%d/%zu), hold_extra_joints=%zu",
         use_position_actuator_control_ ? "position" : "torque",
         position_like_actuator_count,
-        kJointCount);
+        kJointCount,
+        hold_joint_names_.size());
 
     base_body_id_ = mj_name2id(model_, mjOBJ_BODY, base_body_name_.c_str());
     if (base_body_id_ < 0)
@@ -404,11 +538,31 @@ void MujocoSimBridge::setupRosInterfaces()
         rl_master::dds::kTopicRobotState,
         rclcpp::QoS(rclcpp::KeepLast(10)).best_effort());
 
-    command_sub_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
-        rl_master::dds::kTopicPolicyCommand,
-        rclcpp::QoS(rclcpp::KeepLast(10)).reliable(),
-        [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
-            this->commandCallback(msg);
+    if (enable_python_viewer_stream_)
+    {
+        viewer_frame_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(
+            viewer_frame_topic_,
+            rclcpp::QoS(rclcpp::KeepLast(2)).best_effort());
+    }
+    if (enable_python_viewer_inspector_)
+    {
+        viewer_inspector_pub_ = this->create_publisher<std_msgs::msg::String>(
+            viewer_inspector_topic_,
+            rclcpp::QoS(rclcpp::KeepLast(5)).best_effort());
+    }
+
+    teleop_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+        rl_master::dds::kTopicTeleopCommand,
+        rclcpp::QoS(rclcpp::KeepLast(20)).best_effort(),
+        [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
+            this->teleopCallback(msg);
+        });
+
+    walk_mode_sub_ = this->create_subscription<std_msgs::msg::Int32>(
+        rl_master::dds::kTopicWalkMode,
+        rclcpp::QoS(rclcpp::KeepLast(20)).reliable(),
+        [this](const std_msgs::msg::Int32::SharedPtr msg) {
+            this->walkModeCallback(msg);
         });
 
     const auto period = std::chrono::duration<double>(1.0 / control_hz_);
@@ -426,6 +580,23 @@ void MujocoSimBridge::initializeState()
         {
             last_target_q_[i] = static_cast<float>(data_->qpos[qpos_adr]);
         }
+    }
+
+    if (hold_target_q_.empty() && !hold_qpos_addrs_.empty())
+    {
+        hold_target_q_.assign(hold_qpos_addrs_.size(), 0.0);
+        for (size_t i = 0; i < hold_qpos_addrs_.size(); ++i)
+        {
+            const int qpos_adr = hold_qpos_addrs_[i];
+            if (qpos_adr >= 0 && qpos_adr < model_->nq)
+            {
+                hold_target_q_[i] = data_->qpos[qpos_adr];
+            }
+        }
+        RCLCPP_INFO(
+            this->get_logger(),
+            "hold_joint_target_q not configured, latch %zu hold joints from model initial qpos.",
+            hold_target_q_.size());
     }
 
     if (fix_base_ && base_free_qpos_adr_ >= 0 && (base_free_qpos_adr_ + 6) < model_->nq)
@@ -843,42 +1014,72 @@ void MujocoSimBridge::enforceBaseLock()
     }
 }
 
-void MujocoSimBridge::commandCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg)
+void MujocoSimBridge::teleopCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-    if (!msg || msg->data.size() < rl_master::kJointCmdValueCount)
+    if (!msg)
     {
         return;
     }
+    latest_teleop_command_.vx = static_cast<float>(msg->linear.x);
+    latest_teleop_command_.vy = static_cast<float>(msg->linear.y);
+    latest_teleop_command_.dyaw = static_cast<float>(msg->angular.z);
+}
 
-    CommandCache cache;
-    for (size_t i = 0; i < kJointCount; ++i)
+void MujocoSimBridge::walkModeCallback(const std_msgs::msg::Int32::SharedPtr msg)
+{
+    if (!msg)
     {
-        const size_t offset = i * 3;
-        cache.command.joint_target_q[i] = msg->data[offset + 0];
-        cache.command.joint_target_dq[i] = msg->data[offset + 1];
-        cache.command.joint_target_tau[i] = msg->data[offset + 2];
+        return;
     }
-    cache.command.open_rl = msg->data[rl_master::kJointStateValueCount];
-    cache.sequence = static_cast<uint32_t>(std::max(0.0f, msg->data[rl_master::kJointCmdSeqIndex]));
-    cache.remote_stamp_sec = static_cast<double>(msg->data[rl_master::kJointCmdStampIndex]);
-    cache.receive_time = this->now();
-    cache.valid = true;
-
-    std::lock_guard<std::mutex> lock(command_mutex_);
-    latest_command_ = cache;
+    if (!rl_master::DeployStateMachine::isValidControlWord(msg->data))
+    {
+        if ((this->now() - last_mode_warn_).seconds() > 1.0)
+        {
+            RCLCPP_WARN(this->get_logger(), "Ignore invalid walk_mode control word: %d", msg->data);
+            last_mode_warn_ = this->now();
+        }
+        return;
+    }
+    mode_command_cache_ = msg->data;
 }
 
 void MujocoSimBridge::controlLoopTick()
 {
     const rclcpp::Time now = this->now();
-    const bool has_fresh_command = commandFresh(now);
     const bool should_step = !viewer_paused_ || viewer_step_once_;
     const int speed_substeps = std::max(1, static_cast<int>(std::lround(substeps_per_control_ * sim_speed_scale_)));
 
-    enforceBaseLock();
-    updateControlInput(now);
+    const rl_master::RobotStateData state = buildRobotState();
+    const rl_master::RobotCommandData command =
+        controller_runtime_.step(state, latest_teleop_command_, mode_command_cache_);
+    const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
+    const bool control_active = runtime_mode.open_rl_active;
 
-    if (should_step && (has_fresh_command || !pause_when_no_command_))
+    if (!control_active)
+    {
+        if (!hold_target_latched_)
+        {
+            for (size_t i = 0; i < kJointCount; ++i)
+            {
+                const int qpos_adr = qpos_addrs_[i];
+                if (qpos_adr >= 0 && qpos_adr < model_->nq)
+                {
+                    last_target_q_[i] = static_cast<float>(data_->qpos[qpos_adr]);
+                }
+            }
+            hold_target_latched_ = true;
+            RCLCPP_INFO(this->get_logger(), "Controller inactive, latch current pose for hold behavior.");
+        }
+    }
+    else
+    {
+        hold_target_latched_ = false;
+    }
+
+    enforceBaseLock();
+    updateControlInput(command, control_active, now);
+
+    if (should_step && (control_active || !pause_when_no_command_))
     {
         for (int i = 0; i < speed_substeps; ++i)
         {
@@ -895,146 +1096,14 @@ void MujocoSimBridge::controlLoopTick()
         mj_forward(model_, data_);
     }
 
-    publishRobotState();
+    const rl_master::RobotStateData post_state = buildRobotState();
+    publishRobotState(post_state);
+    publishViewerFrame();
+    publishViewerInspector(post_state, command, runtime_mode);
     renderViewerFrame();
 }
 
-bool MujocoSimBridge::commandFresh(rclcpp::Time now) const
-{
-    std::lock_guard<std::mutex> lock(command_mutex_);
-    if (!latest_command_.valid)
-    {
-        return false;
-    }
-    return (now - latest_command_.receive_time).seconds() <= command_timeout_sec_;
-}
-
-void MujocoSimBridge::updateControlInput(rclcpp::Time now)
-{
-    CommandCache command;
-    {
-        std::lock_guard<std::mutex> lock(command_mutex_);
-        command = latest_command_;
-    }
-
-    const bool is_fresh = command.valid &&
-                          ((now - command.receive_time).seconds() <= command_timeout_sec_);
-    const bool idle_no_command = !is_fresh;
-    const float open_rl_value = command.command.open_rl;
-    const auto runtime_mode = rl_master::resolveCommandRuntimeMode(
-        is_fresh,
-        open_rl_value,
-        static_cast<float>(open_rl_enable_threshold_));
-    const bool mode_policy = runtime_mode.mode == rl_master::CommandRuntimeMode::kPolicy;
-    const bool mode_test_cst = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCst;
-    const bool mode_test_r1 = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1;
-
-    if (!is_fresh)
-    {
-        if ((now - last_timeout_warn_).seconds() > 1.0)
-        {
-            RCLCPP_WARN(this->get_logger(), "Policy command timed out. Entering hold behavior.");
-            last_timeout_warn_ = now;
-        }
-    }
-    else if (runtime_mode.unknown_open_rl_mode &&
-             (now - last_timeout_warn_).seconds() > 1.0)
-    {
-        RCLCPP_WARN(
-            this->get_logger(),
-            "Unknown open_rl mode %.2f in sim bridge, fallback to hold behavior.",
-            static_cast<double>(open_rl_value));
-        last_timeout_warn_ = now;
-    }
-
-    const bool idle_hold_position = idle_no_command && (no_command_behavior_ == "hold_position");
-    const bool idle_zero_torque = idle_no_command && (no_command_behavior_ == "zero_torque");
-    if (idle_hold_position && !use_position_actuator_control_ && !warned_idle_position_fallback_)
-    {
-        RCLCPP_WARN(
-            this->get_logger(),
-            "no_command_behavior=hold_position requested, but actuator mode is torque. "
-            "fallback to torque PD hold_last. For strict position-hold, use position actuators "
-            "or set actuator_control_mode:=position and ensure model supports it.");
-        warned_idle_position_fallback_ = true;
-    }
-
-    for (size_t i = 0; i < kJointCount; ++i)
-    {
-        const int qpos_adr = qpos_addrs_[i];
-        const int qvel_adr = qvel_addrs_[i];
-        const int actuator_id = actuator_ids_[i];
-        if (qpos_adr < 0 || qvel_adr < 0 || actuator_id < 0)
-        {
-            continue;
-        }
-        if (qpos_adr >= model_->nq || qvel_adr >= model_->nv || actuator_id >= model_->nu)
-        {
-            continue;
-        }
-
-        const double q = data_->qpos[qpos_adr];
-        const double dq = data_->qvel[qvel_adr];
-
-        double q_des = static_cast<double>(last_target_q_[i]);
-        double dq_des = 0.0;
-        double tau_ff = 0.0;
-        if (rl_master::modeUsesPositionTargets(runtime_mode.mode))
-        {
-            q_des = static_cast<double>(command.command.joint_target_q[i]);
-            if (rl_master::modeUsesVelocityTargets(runtime_mode.mode))
-            {
-                dq_des = static_cast<double>(command.command.joint_target_dq[i]);
-            }
-            if (rl_master::modeUsesTorqueFeedForward(runtime_mode.mode))
-            {
-                tau_ff = static_cast<double>(command.command.joint_target_tau[i]);
-            }
-            last_target_q_[i] = static_cast<float>(q_des);
-        }
-
-        if (idle_zero_torque)
-        {
-            data_->ctrl[actuator_id] = 0.0;
-            applied_tau_[i] = 0.0f;
-            continue;
-        }
-
-        if (use_position_actuator_control_)
-        {
-            if (mode_test_cst)
-            {
-                // Position actuators do not accept direct torque command; keep position hold behavior.
-                q_des = static_cast<double>(last_target_q_[i]);
-            }
-            data_->ctrl[actuator_id] = q_des;
-            applied_tau_[i] = 0.0f;
-        }
-        else
-        {
-            double tau = 0.0;
-            if (mode_test_cst)
-            {
-                tau = static_cast<double>(command.command.joint_target_tau[i]);
-            }
-            else
-            {
-                tau = kp_[i] * (q_des - q) + kd_[i] * (dq_des - dq);
-                if ((mode_policy || mode_test_r1) && use_command_torque_ff_)
-                {
-                    tau += tau_ff;
-                }
-            }
-            const double limit = std::max(1e-6, std::abs(torque_limit_[i]));
-            tau = std::clamp(tau, -limit, limit);
-
-            data_->ctrl[actuator_id] = tau;
-            applied_tau_[i] = static_cast<float>(tau);
-        }
-    }
-}
-
-void MujocoSimBridge::publishRobotState()
+rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
 {
     rl_master::RobotStateData state;
 
@@ -1090,31 +1159,273 @@ void MujocoSimBridge::publishRobotState()
 
     state.base_quat = base_quat_xyzw;
     state.base_rpy = quatXyzwToRpy(base_quat_xyzw);
+    state.syncDynamicFromLegacy();
+    return state;
+}
 
-    std_msgs::msg::Float32MultiArray msg;
-    msg.data.assign(rl_master::dds::kRobotStateValueCount, 0.0f);
+void MujocoSimBridge::updateControlInput(
+    const rl_master::RobotCommandData &command,
+    bool control_active,
+    rclcpp::Time now)
+{
+    const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
+    const bool mode_policy = runtime_mode.mode == rl_master::CommandRuntimeMode::kPolicy;
+    const bool mode_test_cst = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCst;
+    const bool mode_test_r1 = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1;
+
+    auto commandQAt = [&](size_t idx) -> double {
+        if (command.protocol_version >= rl_master::kProtocolVersionDynamicJointsV2 &&
+            idx < command.joint_target_q_full.size())
+        {
+            return static_cast<double>(command.joint_target_q_full[idx]);
+        }
+        return idx < command.joint_target_q.size() ? static_cast<double>(command.joint_target_q[idx]) : 0.0;
+    };
+    auto commandDqAt = [&](size_t idx) -> double {
+        if (command.protocol_version >= rl_master::kProtocolVersionDynamicJointsV2 &&
+            idx < command.joint_target_dq_full.size())
+        {
+            return static_cast<double>(command.joint_target_dq_full[idx]);
+        }
+        return idx < command.joint_target_dq.size() ? static_cast<double>(command.joint_target_dq[idx]) : 0.0;
+    };
+    auto commandTauAt = [&](size_t idx) -> double {
+        if (command.protocol_version >= rl_master::kProtocolVersionDynamicJointsV2 &&
+            idx < command.joint_target_tau_full.size())
+        {
+            return static_cast<double>(command.joint_target_tau_full[idx]);
+        }
+        return idx < command.joint_target_tau.size() ? static_cast<double>(command.joint_target_tau[idx]) : 0.0;
+    };
+
+    if (runtime_mode.unknown_open_rl_mode &&
+        (now - last_mode_warn_).seconds() > 1.0)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Unknown open_rl mode %.2f in fused sim bridge, fallback to inactive hold behavior.",
+            static_cast<double>(command.open_rl));
+        last_mode_warn_ = now;
+    }
+
+    const bool inactive_hold_position = !control_active && (no_command_behavior_ == "hold_position");
+    const bool inactive_zero_torque = !control_active && (no_command_behavior_ == "zero_torque");
+    if (inactive_hold_position && !use_position_actuator_control_ && !warned_idle_position_fallback_)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "inactive behavior hold_position requested, but actuator mode is torque. "
+            "fallback to torque PD hold-last.");
+        warned_idle_position_fallback_ = true;
+    }
+
     for (size_t i = 0; i < kJointCount; ++i)
     {
-        const size_t offset = i * 3;
-        msg.data[offset + 0] = state.joint_q[i];
-        msg.data[offset + 1] = state.joint_dq[i];
-        msg.data[offset + 2] = state.joint_tau[i];
+        const int qpos_adr = qpos_addrs_[i];
+        const int qvel_adr = qvel_addrs_[i];
+        const int actuator_id = actuator_ids_[i];
+        if (qpos_adr < 0 || qvel_adr < 0 || actuator_id < 0)
+        {
+            continue;
+        }
+        if (qpos_adr >= model_->nq || qvel_adr >= model_->nv || actuator_id >= model_->nu)
+        {
+            continue;
+        }
+
+        const double q = data_->qpos[qpos_adr];
+        const double dq = data_->qvel[qvel_adr];
+
+        double q_des = static_cast<double>(last_target_q_[i]);
+        double dq_des = 0.0;
+        double tau_ff = 0.0;
+        if (control_active && rl_master::modeUsesPositionTargets(runtime_mode.mode))
+        {
+            q_des = commandQAt(i);
+            if (rl_master::modeUsesVelocityTargets(runtime_mode.mode))
+            {
+                dq_des = commandDqAt(i);
+            }
+            if (rl_master::modeUsesTorqueFeedForward(runtime_mode.mode))
+            {
+                tau_ff = commandTauAt(i);
+            }
+            last_target_q_[i] = static_cast<float>(q_des);
+        }
+
+        if (inactive_zero_torque)
+        {
+            data_->ctrl[actuator_id] = 0.0;
+            applied_tau_[i] = 0.0f;
+            continue;
+        }
+
+        if (use_position_actuator_control_)
+        {
+            if (control_active && mode_test_cst)
+            {
+                q_des = static_cast<double>(last_target_q_[i]);
+            }
+            data_->ctrl[actuator_id] = q_des;
+            applied_tau_[i] = 0.0f;
+        }
+        else
+        {
+            double tau = 0.0;
+            if (control_active && mode_test_cst)
+            {
+                tau = commandTauAt(i);
+            }
+            else
+            {
+                tau = kp_[i] * (q_des - q) + kd_[i] * (dq_des - dq);
+                if (control_active && (mode_policy || mode_test_r1) && use_command_torque_ff_)
+                {
+                    tau += tau_ff;
+                }
+            }
+            const double limit = std::max(1e-6, std::abs(torque_limit_[i]));
+            tau = std::clamp(tau, -limit, limit);
+
+            data_->ctrl[actuator_id] = tau;
+            applied_tau_[i] = static_cast<float>(tau);
+        }
     }
 
-    size_t cursor = rl_master::kJointStateValueCount;
-    for (size_t i = 0; i < 3; ++i)
+    for (size_t i = 0; i < hold_qpos_addrs_.size(); ++i)
     {
-        msg.data[cursor++] = state.base_ang_vel[i];
+        const int qpos_adr = hold_qpos_addrs_[i];
+        const int qvel_adr = hold_qvel_addrs_[i];
+        const int actuator_id = hold_actuator_ids_[i];
+        if (qpos_adr < 0 || qvel_adr < 0 || actuator_id < 0)
+        {
+            continue;
+        }
+        if (qpos_adr >= model_->nq || qvel_adr >= model_->nv || actuator_id >= model_->nu)
+        {
+            continue;
+        }
+        if (i >= hold_target_q_.size())
+        {
+            continue;
+        }
+
+        const double q = data_->qpos[qpos_adr];
+        const double dq = data_->qvel[qvel_adr];
+        const double q_des = hold_target_q_[i];
+
+        if (use_position_actuator_control_)
+        {
+            data_->ctrl[actuator_id] = q_des;
+            if (i < hold_applied_tau_.size())
+            {
+                hold_applied_tau_[i] = 0.0f;
+            }
+        }
+        else
+        {
+            double tau = hold_kp_[i] * (q_des - q) + hold_kd_[i] * (-dq);
+            const double limit = std::max(1e-6, std::abs(hold_torque_limit_[i]));
+            tau = std::clamp(tau, -limit, limit);
+            data_->ctrl[actuator_id] = tau;
+            if (i < hold_applied_tau_.size())
+            {
+                hold_applied_tau_[i] = static_cast<float>(tau);
+            }
+        }
     }
-    for (size_t i = 0; i < 4; ++i)
+}
+
+void MujocoSimBridge::publishRobotState(const rl_master::RobotStateData &state)
+{
+    if (!state_pub_)
     {
-        msg.data[cursor++] = state.base_quat[i];
+        return;
     }
-    for (size_t i = 0; i < 3; ++i)
+    state_pub_->publish(rl_master::dds::encodeRobotState(state));
+}
+
+void MujocoSimBridge::publishViewerFrame()
+{
+    if (!enable_python_viewer_stream_ || !viewer_frame_pub_)
     {
-        msg.data[cursor++] = state.base_rpy[i];
+        return;
     }
-    state_pub_->publish(msg);
+
+    std_msgs::msg::Float32MultiArray msg;
+    msg.data.reserve(
+        8 + static_cast<size_t>(model_->nq) + static_cast<size_t>(model_->nv) + static_cast<size_t>(model_->nu));
+
+    msg.data.push_back(kViewerFrameMagic);
+    msg.data.push_back(kViewerFrameVersion);
+    msg.data.push_back(static_cast<float>(model_->nq));
+    msg.data.push_back(static_cast<float>(model_->nv));
+    msg.data.push_back(static_cast<float>(model_->nu));
+    msg.data.push_back(static_cast<float>(data_->time));
+    msg.data.push_back(control_hz_ > 0.0 ? static_cast<float>(1.0 / control_hz_) : 0.0f);
+    msg.data.push_back(fix_base_ ? 1.0f : 0.0f);
+
+    for (int i = 0; i < model_->nq; ++i)
+    {
+        msg.data.push_back(static_cast<float>(data_->qpos[i]));
+    }
+    for (int i = 0; i < model_->nv; ++i)
+    {
+        msg.data.push_back(static_cast<float>(data_->qvel[i]));
+    }
+    for (int i = 0; i < model_->nu; ++i)
+    {
+        msg.data.push_back(static_cast<float>(data_->ctrl[i]));
+    }
+
+    viewer_frame_pub_->publish(std::move(msg));
+}
+
+void MujocoSimBridge::publishViewerInspector(
+    const rl_master::RobotStateData &state,
+    const rl_master::RobotCommandData &command,
+    const rl_master::CommandRuntimeDecision &runtime_mode)
+{
+    if (!enable_python_viewer_inspector_ || !viewer_inspector_pub_)
+    {
+        return;
+    }
+
+    double mean_abs_joint_error = 0.0;
+    double max_abs_joint_error = 0.0;
+    for (size_t i = 0; i < kJointCount; ++i)
+    {
+        const double err = std::abs(static_cast<double>(last_target_q_[i]) - static_cast<double>(state.joint_q[i]));
+        mean_abs_joint_error += err;
+        max_abs_joint_error = std::max(max_abs_joint_error, err);
+    }
+    if (kJointCount > 0)
+    {
+        mean_abs_joint_error /= static_cast<double>(kJointCount);
+    }
+
+    std_msgs::msg::String msg;
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3)
+        << "mode_id=" << controller_runtime_.activeModeId()
+        << " section=" << controller_runtime_.activeConfigSection()
+        << " runtime=" << rl_master::commandRuntimeModeName(runtime_mode.mode)
+        << " active=" << (runtime_mode.open_rl_active ? "1" : "0")
+        << " open_rl=" << static_cast<double>(command.open_rl)
+        << " sim_t=" << static_cast<double>(data_->time)
+        << " teleop=("
+        << static_cast<double>(latest_teleop_command_.vx) << ","
+        << static_cast<double>(latest_teleop_command_.vy) << ","
+        << static_cast<double>(latest_teleop_command_.dyaw) << ")"
+        << " base_rpy=("
+        << static_cast<double>(state.base_rpy[0]) << ","
+        << static_cast<double>(state.base_rpy[1]) << ","
+        << static_cast<double>(state.base_rpy[2]) << ")"
+        << " qerr_mean=" << mean_abs_joint_error
+        << " qerr_max=" << max_abs_joint_error
+        << " paused=" << (viewer_paused_ ? "1" : "0");
+    msg.data = oss.str();
+    viewer_inspector_pub_->publish(std::move(msg));
 }
 
 std::array<float, 3> MujocoSimBridge::quatXyzwToRpy(const std::array<float, 4> &quat_xyzw)

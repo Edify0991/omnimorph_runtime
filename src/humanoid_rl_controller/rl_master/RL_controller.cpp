@@ -653,7 +653,7 @@ void RL_controller::refreshPolicyMode(int requested_mode, bool sanitize_invalid_
     const size_t profile_index = profileIndexForMode(requested_mode, sanitize_invalid_mode);
     active_profile_index_ = profile_index;
     active_mode_id_ = mode_profiles_[profile_index].mode_id;
-    robot->default_angle = mode_profiles_[profile_index].default_angle;
+    syncCompatibilityAliasesFromActiveProfile();
 }
 
 void RL_controller::handlePolicySwitch()
@@ -715,7 +715,17 @@ void RL_controller::handlePolicySwitch()
 
 const Sim2realCfg &RL_controller::runtimeCfg() const
 {
-    return runtimeModeProfile().cfg;
+    return activeModeProfile().cfg;
+}
+
+int RL_controller::activeModeId() const
+{
+    return active_mode_id_;
+}
+
+const std::string &RL_controller::activeConfigSection() const
+{
+    return activeModeProfile().config_section;
 }
 
 RL_controller::ModeProfile &RL_controller::activeModeProfile()
@@ -736,18 +746,22 @@ const RL_controller::ModeProfile &RL_controller::activeModeProfile() const
     return mode_profiles_[active_profile_index_];
 }
 
-const RL_controller::ModeProfile &RL_controller::runtimeModeProfile() const
+void RL_controller::syncCompatibilityAliasesFromActiveProfile()
 {
-    if (mode_profiles_.empty())
+    if (!robot)
     {
-        throw std::runtime_error("Runtime mode profile is unavailable");
+        return;
     }
-    const auto it = mode_to_profile_index_.find(default_mode_id_);
-    if (it != mode_to_profile_index_.end())
+    if (mode_profiles_.empty() || active_profile_index_ >= mode_profiles_.size())
     {
-        return mode_profiles_[it->second];
+        return;
     }
-    return mode_profiles_.front();
+    const auto &profile = mode_profiles_[active_profile_index_];
+    robot->sim2realCfg = profile.cfg;
+    robot->standSim2RealCfg = profile.cfg;
+    robot->default_angle_walk = profile.default_angle;
+    robot->default_angle_stand = profile.default_angle;
+    robot->default_angle = profile.default_angle;
 }
 
 size_t RL_controller::profileIndexForMode(int mode_id, bool sanitize_invalid_mode) const
@@ -895,13 +909,7 @@ void RL_controller::initModeProfiles()
     active_mode_id_ = default_mode_id_;
     active_profile_index_ = profileIndexForMode(default_mode_id_, true);
 
-    // Keep compatibility fields as aliases of the currently active profile.
-    // Mode dispatch itself is fully driven by deploy_mode_profiles.
-    robot->sim2realCfg = mode_profiles_[active_profile_index_].cfg;
-    robot->default_angle_walk = mode_profiles_[active_profile_index_].default_angle;
-    robot->default_angle = mode_profiles_[active_profile_index_].default_angle;
-    robot->standSim2RealCfg = mode_profiles_[active_profile_index_].cfg;
-    robot->default_angle_stand = mode_profiles_[active_profile_index_].default_angle;
+    syncCompatibilityAliasesFromActiveProfile();
 
     std::cout << "[RL_controller] mode profiles loaded: " << mode_profiles_.size() << std::endl;
     for (const auto &profile : mode_profiles_)
@@ -1374,7 +1382,7 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
 
 void RL_controller::initDataLogger()
 {
-    const auto &runtime_cfg = runtimeModeProfile().cfg;
+    const auto &runtime_cfg = activeModeProfile().cfg;
     if (!runtime_cfg.save_data_flag)
     {
         return;
@@ -1507,7 +1515,7 @@ void RL_controller::logStepRecord(
     data_logger_->writeRecord(rl_master::monotonicTimeSec(), "controller_step", scalars, vectors);
 }
 
-void RL_controller::RL_controller_Init()
+void RL_controller::RL_controller_Init(int startup_mode_id)
 {
     robot->initialize_buffers();
     cmd.vx = 0.0f;
@@ -1516,7 +1524,19 @@ void RL_controller::RL_controller_Init()
 
     initModeProfiles();
 
-    refreshPolicyMode(default_mode_id_, true);
+    int initial_mode_id = startup_mode_id;
+    if (mode_to_profile_index_.find(initial_mode_id) == mode_to_profile_index_.end())
+    {
+        if (initial_mode_id != default_mode_id_)
+        {
+            std::cerr << "[RL_controller] startup mode_id " << initial_mode_id
+                      << " not found in deploy_mode_profiles, fallback to default mode_id "
+                      << default_mode_id_ << std::endl;
+        }
+        initial_mode_id = default_mode_id_;
+    }
+
+    refreshPolicyMode(initial_mode_id, true);
     handlePolicySwitch();
     deploy_state_machine_initialized_ = false;
     last_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
@@ -1540,7 +1560,6 @@ rl_master::RobotCommandData RL_controller::step(
 
     if (!deploy_state_machine_initialized_)
     {
-        refreshPolicyMode(default_mode_id_, true);
         handlePolicySwitch();
         deploy_state_machine_.configure(activePolicyCfg());
         deploy_state_machine_.initialize(robot->joint_q, activeZeroPose(), active_mode_id_);

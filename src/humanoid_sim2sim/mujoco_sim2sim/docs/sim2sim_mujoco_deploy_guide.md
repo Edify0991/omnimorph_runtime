@@ -1,161 +1,136 @@
-# MuJoCo Sim2Sim Deploy Guide
+# MuJoCo Sim2Sim Deploy Guide (Fused Runtime)
 
-## 1. 目标
+## 1. Standard Architecture
 
-在不破坏现有 `sim2real` 部署链路的前提下，新增一条 `sim2sim` 路径：
+The standard sim2sim path is now:
 
-- `sim2real` 保持原样：`RL_controller` -> DDS -> `RL_solver` -> SHM -> 电机
-- `sim2sim` 新增：`RL_controller` -> DDS -> `mujoco_sim_bridge` -> MuJoCo
-
-这样可以复用同一套策略部署代码（观测构建、状态机、多模型推理、日志等），只替换部署对象。
-
-从 2026-04 的重构开始，`sim2sim` 与 `sim2real` 的 `open_rl` 模式解析也统一到同一份共享代码里，避免两端模式判定漂移。
-
-## 2. 架构设计（对齐主流做法）
-
-`mujoco_sim2sim` 采用“控制器与仿真器解耦”模式：
-
-- `RL_controller` 不改，继续发布/订阅原有 DDS topic。
-- `mujoco_sim_bridge` 作为适配层：
-  - 订阅 `/humanoid/rl/command`
-  - 在 MuJoCo 中按关节映射执行控制
-  - 发布 `/humanoid/rl/state`
-
-这和很多主流项目的 sim2sim 组织方式一致：策略运行与物理仿真通过统一中间件接口耦合。
-
-## 3. 新增包位置
-
-- `src/humanoid_sim2sim/mujoco_sim2sim`
-
-关键文件：
-
-- `src/mujoco_sim_bridge.cpp`
-- `include/mujoco_sim2sim/mujoco_sim_bridge.h`
-- `launch/sim2sim_mujoco.launch.py`
-- `config/mujoco_sim2sim.yaml`
-
-## 4. 依赖与编译
-
-## 4.1 MuJoCo 库路径
-
-`mujoco_sim2sim` 通过 CMake 自动查找：
-
-- 头文件：`mujoco/mujoco.h`
-- 动态库：`libmujoco.so`（或对应平台库名）
-
-推荐设置：
-
-```bash
-export MUJOCO_ROOT=/path/to/mujoco
+```text
+mujoco_sim_bridge (single process)
+  |- MuJoCo state read
+  |- IntegratedControllerRuntime
+  |    |- RL_controller::step(...)
+  |- MuJoCo actuator command write
+  |- optional DDS state publish
 ```
 
-其中应包含：
+This replaces the old standard path:
 
-- `$MUJOCO_ROOT/include/mujoco/mujoco.h`
-- `$MUJOCO_ROOT/lib/libmujoco.so`
-
-若未找到 MuJoCo，包会被安装但不会生成 `mujoco_sim_bridge` 可执行文件。
-
-## 4.2 编译命令
-
-在工作空间根目录执行：
-
-```bash
-colcon build --symlink-install --packages-up-to rl_master mujoco_sim2sim
-source install/setup.bash
+```text
+RL_controller -> DDS -> mujoco_sim_bridge
 ```
 
-编译顺序说明：
-
-- `mujoco_sim2sim` 依赖 `rl_master` 的协议头文件。
-- 用 `--packages-up-to rl_master mujoco_sim2sim` 即可自动满足顺序。
-
-## 5. 运行
-
-## 5.1 一键启动（推荐）
+## 2. Standard Startup
 
 ```bash
-ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  model_path:=/abs/path/to/robot.xml
+./script/sim2sim_engineai.sh \
+  --model-path /abs/path/to/robot.xml \
+  --mode-id 0 \
+  --enable-viewer true \
+  --auto-start-mode
 ```
 
-默认会同时拉起：
-
-- `rl_master/RL_controller`
-- `mujoco_sim2sim/mujoco_sim_bridge`
-
-建议在做“与 sim2real 逻辑一致性”验证时使用 `backend:=cpp`，这样会直接走 C++ 共享模式解析内核。
-
-## 5.2 只启仿真桥（你自己手动起控制器）
+Equivalent raw launch command:
 
 ```bash
 ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
   model_path:=/abs/path/to/robot.xml \
-  start_rl_controller:=false
+  backend:=cpp \
+  start_rl_controller:=false \
+  mode_id:=0 \
+  control_hz:=100.0 \
+  enable_viewer:=true
 ```
 
-## 5.3 参数文件
+## 3. Launch Arguments
 
-默认参数文件：
+### Required
 
-- `src/humanoid_sim2sim/mujoco_sim2sim/config/mujoco_sim2sim.yaml`
+- `model_path`: MuJoCo XML / MJB path
 
-可通过 launch 参数覆盖：
+### Important
+
+- `backend:=cpp`: standard fused runtime backend
+- `mode_id`: startup deploy mode id used by the embedded controller runtime
+- `pause_when_no_command`: pause stepping when controller output is inactive
+- `no_command_behavior`: inactive behavior for actuators
+- `actuator_control_mode`: `auto | torque | position`
+
+### Compatibility argument
+
+- `start_rl_controller`: legacy argument kept only for the old Python interactive backend path
+
+## 4. External Topics Still Used
+
+- `/humanoid/rl/teleop`
+- `/humanoid/rl/walk_mode`
+- `/humanoid/rl/state` (debug / monitoring)
+
+The bridge does not need `/humanoid/rl/command` anymore in the standard C++ path.
+
+## 5. Internal Function Chain
+
+1. `main()` in `mujoco_sim2sim/src/main.cpp`
+2. `MujocoSimBridge::MujocoSimBridge()`
+3. `loadParameters()`
+4. `loadModel()`
+5. `resolveModelMappings()`
+6. `initializeState()`
+7. `IntegratedControllerRuntime::initialize(startup_mode_id)`
+8. ROS subscriptions + timer setup
+9. each timer tick -> `controlLoopTick()`
+10. `buildRobotState()` from MuJoCo `qpos/qvel`
+11. `IntegratedControllerRuntime::step(...)`
+12. `RL_controller::step(...)`
+13. `updateControlInput(...)`
+14. `mj_step(...)`
+15. `publishRobotState(...)`
+
+## 6. Inactive Behavior
+
+When the embedded controller is not in policy / command-stream mode:
+
+- controlled joints latch current pose and hold it
+- extra non-policy joints listed in `hold_joint_names` hold their configured target
+- if `no_command_behavior=zero_torque`, controlled joints output zero torque instead
+
+This matches the intent used on the real-robot path: when policy is not actively running, the robot should stay safely held instead of drifting under a stale torque stream.
+
+## 7. Validation Notes
+
+In local sandbox validation, the fused runtime successfully reached:
+
+- MuJoCo model load
+- ONNX policy load
+- mode-profile load
+- embedded controller initialization
+- fused runtime startup
+
+If you see DDS socket errors such as `TRANSPORT_UDP Error` inside a restricted sandbox, that is an environment permission issue rather than a logic issue in the fused runtime.
+
+## 8. Python GUI Frontend
+
+If you need the friendlier Python MuJoCo GUI, use:
 
 ```bash
-ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  model_path:=/abs/path/to/robot.xml \
-  bridge_config:=/abs/path/to/your_sim2sim.yaml
+./script/sim2sim_engineai_python.sh \
+  --model-path /abs/path/to/robot.xml \
+  --mode-id 0 \
+  --auto-start-mode
 ```
 
-## 6. 参数说明（核心）
+Current topology:
 
-- `model_path`：MuJoCo 模型路径（必填）
-- `joint_names`：RL 12 关节顺序到 MuJoCo 关节名映射
-- `actuator_names`：MuJoCo actuator 映射（默认与 `joint_names` 同名）
-- `control_hz`：桥接控制频率（通常与 `RL_control_f` 对齐）
-- `sim_dt`：MuJoCo 内部积分步长
-- `kp/kd/torque_limit`：仿真侧关节控制参数
-- `command_timeout_sec`：策略命令超时保护
-- `use_command_torque_ff`：是否叠加策略下发扭矩前馈
-- `base_body_name/base_free_joint_name`：基座姿态/角速度提取配置
+```text
+C++ fused backend (physics + controller) -> ROS2 frame stream -> Python MuJoCo viewer frontend
+```
 
-## 7. Topic 协议（与现有系统保持一致）
+So this path keeps the friendly Python viewer while still reusing the same fused control/runtime logic as the C++ sim2sim backend.
 
-- 订阅：
-  - `/humanoid/rl/command` (`Float32MultiArray`)
-- 发布：
-  - `/humanoid/rl/state` (`Float32MultiArray`)
+If you explicitly need the old split runtime for comparison, use:
 
-数据布局完全沿用 `rl_master/dds_protocol.h`，不引入新协议，保证复用性。
-
-## 8. 与 sim2real 的边界
-
-`mujoco_sim2sim` 不会修改或替换以下路径：
-
-- `RL_solver` 电机闭环共享内存逻辑
-- `sendMotorCmd()` / `getMotorState()`
-- 现有 real deploy 启动流程
-
-你可以把它理解为“新增一个仿真侧 `RobotIO` 对端”。
-
-### 8.1 共同逻辑与适配层划分（关键）
-
-- 共同逻辑（`sim2sim` 与 `sim2real` 共用）：
-  - `rl_master/include/rl_master/command_runtime_mode.h`
-  - 负责 `open_rl + command freshness` 到运行模式的统一解析：
-    - `hold / policy / command_stream / test_csp / test_cst / test_r1`
-- 环境适配层（各自实现）：
-  - `sim2sim`：`mujoco_sim_bridge.cpp` 把统一模式映射到 MuJoCo actuator 控制输入。
-  - `sim2real`：`solver/robot_solver.cpp` 把统一模式映射到电机 `CSP/CST/R1` 下发。
-
-这意味着你在 sim2sim 里可以提前检查大部分部署逻辑（模式切换、命令超时、hold 行为、策略命令语义），差异主要只剩“物理对象 I/O”。
-
-## 9. 调试建议
-
-1. 先确认 MuJoCo 模型能被正确加载（启动日志会打印 `nq/nv/nu`）。
-2. 再确认关节/执行器映射（命名不匹配会直接报错退出）。
-3. 观察 topic：
-   - `ros2 topic hz /humanoid/rl/state`
-   - `ros2 topic echo /humanoid/rl/command --once`
-4. 若策略不启动，检查 `rl_cfg.yaml` 中 `auto_start_policy` 是否开启，或发送状态机控制字。
+```bash
+./script/sim2sim_engineai_python_legacy.sh \
+  --model-path /abs/path/to/robot.xml \
+  --mode-id 0 \
+  --auto-start-mode
+```

@@ -16,6 +16,7 @@
 #include "rl_master/filters/moving_average_filter.h"
 #include "rl_master/logging/structured_logger.h"
 #include "rl_master/rl_cfg.h"
+#include "rl_master/runtime/integrated_controller_runtime.h"
 #include "rl_master/solver/motor_shm_io.h"
 #include "rl_master/solver_dds_bridge.h"
 
@@ -25,6 +26,7 @@ namespace rl_master::solver
 class RobotSolver
 {
 public:
+    ~RobotSolver();
     static std::unique_ptr<RobotSolver> create(int startup_mode_id = 0);
 
     bool initialize();
@@ -44,7 +46,9 @@ private:
     void getMotorState();
     void sendMotorCmd();
 
-    void getRLCmd();
+    void initializeController();
+    void syncRuntimeCfgFromController(bool force = false);
+    void applyRuntimeCommand(const rl_master::RobotCommandData &command, bool command_fresh);
     void sendRLState();
 
     std::map<std::string, std::vector<float>> getRobotStateBag() const;
@@ -104,7 +108,8 @@ private:
     std::vector<DeployModeProfileSpec> mode_profile_specs_;
     int last_mode_reload_failure_id_ = std::numeric_limits<int>::min();
 
-    std::array<rl_master::filters::MovingAverageFilter, kMotorCountMax> velocity_filters_{};
+    std::array<rl_master::filters::MovingAverageFilter, kMotorCountMax> velocity_filters_;
+    rl_master::runtime::IntegratedControllerRuntime controller_runtime_;
 
     rl_master::logging::StructuredLogger data_logger_;
     bool data_logging_enabled_ = false;

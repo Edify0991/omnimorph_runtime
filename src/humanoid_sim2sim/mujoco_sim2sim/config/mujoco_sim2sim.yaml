@@ -39,6 +39,23 @@ mujoco_sim_bridge:
       - "motor_left_ankle_pitch"
       - "motor_left_ankle_roll"
 
+    # Optional extra joints that are NOT controlled by RL policy outputs.
+    # These joints will hold a fixed target (typically robot initial pose).
+    # Example:
+    # hold_joint_names: ["waist_yaw", "left_shoulder_pitch", "right_shoulder_pitch"]
+    # hold_actuator_names: ["motor_waist_yaw", "motor_l_shoulder_pitch", "motor_r_shoulder_pitch"]
+    # Leave these keys unset when not used. In some ROS2 parameter parser
+    # combinations, explicit empty arrays may be treated as "not set" and
+    # fail during node construction before user code runs.
+    # hold_joint_names: ["waist_yaw", "left_shoulder_pitch", "right_shoulder_pitch"]
+    # hold_actuator_names: ["motor_waist_yaw", "motor_l_shoulder_pitch", "motor_r_shoulder_pitch"]
+    # If omitted, hold targets latch from model initial qpos at startup.
+    # hold_joint_target_q: [0.0, 0.0, 0.0]
+    # PD gains used only when actuator_control_mode resolves to torque.
+    hold_kp: [80.0]
+    hold_kd: [2.0]
+    hold_torque_limit: [120.0]
+
     # Control loop and sim integration.
     control_hz: 100.0
     sim_dt: 0.001
@@ -53,6 +70,15 @@ mujoco_sim_bridge:
     # auto / torque / position
     actuator_control_mode: "auto"
     enable_viewer: false
+    # When true, C++ fused backend publishes full MuJoCo frame snapshots for
+    # a separate Python viewer frontend. Use launch `backend:=python_frontend`
+    # instead of setting this manually in normal workflows.
+    enable_python_viewer_stream: false
+    viewer_frame_topic: "/humanoid/sim2sim/mujoco_viewer_frame"
+    # When true, C++ fused backend publishes a human-readable runtime summary
+    # for the Python frontend inspector.
+    enable_python_viewer_inspector: false
+    viewer_inspector_topic: "/humanoid/sim2sim/mujoco_viewer_inspector"
     viewer_fps: 60.0
     viewer_width: 1280
     viewer_height: 720

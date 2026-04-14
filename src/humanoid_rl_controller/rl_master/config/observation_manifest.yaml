@@ -1,6 +1,6 @@
 observation_manifest:
   schema_version: 3
-  profile: "default_amp"
+  profile: "default_velloco"
   # Total dimension: 47
   terms:
     - name: phase

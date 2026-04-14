@@ -68,7 +68,7 @@ int main(int argc, char **argv)
     const std::string startup_section = resolveDeployConfigSectionForModeFromYAML(
         RL_CFG_PATH,
         startup_mode_id,
-        "sim2real");
+        "engineai_walk");
     if (!startup_cfg.loadFromYAML(RL_CFG_PATH, startup_section))
     {
         std::cerr << "Failed to load startup config section '" << startup_section

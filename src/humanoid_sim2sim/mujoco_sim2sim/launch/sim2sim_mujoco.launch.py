@@ -21,7 +21,7 @@ def generate_launch_description():
     backend_arg = DeclareLaunchArgument(
         "backend",
         default_value="cpp",
-        description="sim2sim backend: cpp or python_interactive",
+        description="sim2sim backend: cpp | python_frontend | python_interactive",
     )
     bridge_cfg_arg = DeclareLaunchArgument(
         "bridge_config",
@@ -33,10 +33,15 @@ def generate_launch_description():
         default_value="100.0",
         description="Control frequency for the MuJoCo bridge.",
     )
+    mode_id_arg = DeclareLaunchArgument(
+        "mode_id",
+        default_value="0",
+        description="Startup deploy mode id used by the fused runtime.",
+    )
     pause_no_cmd_arg = DeclareLaunchArgument(
         "pause_when_no_command",
         default_value="false",
-        description="Pause stepping when no fresh command is available.",
+        description="Pause stepping when controller output is inactive.",
     )
     no_cmd_behavior_arg = DeclareLaunchArgument(
         "no_command_behavior",
@@ -96,7 +101,7 @@ def generate_launch_description():
     start_controller_arg = DeclareLaunchArgument(
         "start_rl_controller",
         default_value="false",
-        description="Whether to launch rl_master/RL_controller together.",
+        description="Legacy option for python_interactive backend only. C++ sim2sim now runs fused single-process.",
     )
     controller_rt_enabled_arg = DeclareLaunchArgument(
         "controller_rt_enabled",
@@ -134,7 +139,15 @@ def generate_launch_description():
         executable="RL_controller",
         name="rl_controller",
         output="screen",
-        condition=IfCondition(LaunchConfiguration("start_rl_controller")),
+        condition=IfCondition(
+            PythonExpression([
+                "'",
+                LaunchConfiguration("backend"),
+                "' == 'python_interactive' and '",
+                LaunchConfiguration("start_rl_controller"),
+                "' == 'true'",
+            ])
+        ),
         additional_env={
             "RL_MASTER_CONTROLLER_RT_ENABLED": LaunchConfiguration("controller_rt_enabled"),
             "RL_MASTER_CONTROLLER_RT_LOCK_MEMORY": LaunchConfiguration("controller_rt_lock_memory"),
@@ -150,6 +163,7 @@ def generate_launch_description():
         {
             "model_path": LaunchConfiguration("model_path"),
             "control_hz": ParameterValue(LaunchConfiguration("control_hz"), value_type=float),
+            "startup_mode_id": ParameterValue(LaunchConfiguration("mode_id"), value_type=int),
             "pause_when_no_command": ParameterValue(LaunchConfiguration("pause_when_no_command"), value_type=bool),
             "no_command_behavior": LaunchConfiguration("no_command_behavior"),
             "fix_base": ParameterValue(LaunchConfiguration("fixed_base"), value_type=bool),
@@ -170,6 +184,40 @@ def generate_launch_description():
         output="screen",
         condition=IfCondition(PythonExpression(["'", LaunchConfiguration("backend"), "' == 'cpp'"])),
         parameters=common_bridge_parameters,
+    )
+
+    python_frontend_bridge = Node(
+        package="mujoco_sim2sim",
+        executable="mujoco_sim_bridge",
+        name="mujoco_sim_bridge",
+        output="screen",
+        condition=IfCondition(PythonExpression(["'", LaunchConfiguration("backend"), "' == 'python_frontend'"])),
+        parameters=[
+            *common_bridge_parameters,
+            {
+                "enable_viewer": False,
+                "enable_python_viewer_stream": True,
+                "enable_python_viewer_inspector": True,
+            },
+        ],
+    )
+
+    python_frontend_viewer = Node(
+        package="mujoco_sim2sim",
+        executable="mujoco_sim_viewer_frontend.py",
+        name="mujoco_sim_viewer_frontend",
+        output="screen",
+        condition=IfCondition(PythonExpression(["'", LaunchConfiguration("backend"), "' == 'python_frontend'"])),
+        parameters=[
+            {
+                "model_path": LaunchConfiguration("model_path"),
+                "enable_viewer": ParameterValue(LaunchConfiguration("enable_viewer"), value_type=bool),
+                "viewer_fps": ParameterValue(LaunchConfiguration("viewer_fps"), value_type=float),
+                "viewer_title": LaunchConfiguration("viewer_title"),
+                "show_left_ui": ParameterValue(LaunchConfiguration("show_left_ui"), value_type=bool),
+                "show_right_ui": ParameterValue(LaunchConfiguration("show_right_ui"), value_type=bool),
+            },
+        ],
     )
 
     python_interactive_bridge = Node(
@@ -195,6 +243,7 @@ def generate_launch_description():
             backend_arg,
             bridge_cfg_arg,
             control_hz_arg,
+            mode_id_arg,
             pause_no_cmd_arg,
             no_cmd_behavior_arg,
             fixed_base_arg,
@@ -216,6 +265,8 @@ def generate_launch_description():
             controller_rt_fifo_priority_arg,
             rl_controller,
             cpp_bridge,
+            python_frontend_bridge,
+            python_frontend_viewer,
             python_interactive_bridge,
         ]
     )

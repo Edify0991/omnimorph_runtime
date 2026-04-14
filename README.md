@@ -1,50 +1,104 @@
-# Humanoid Sim2Real Deploy (DDS Upper Layer + Motor SHM Loop)
+# Humanoid Deploy Runtime
 
-This repository uses ROS2/CMake for build and process management.
-Runtime communication now follows a hybrid architecture:
+This repository now uses a single-process runtime for both real robot deployment and MuJoCo sim2sim.
 
-- DDS (ROS2 middleware) for upper-layer deploy dataflow:
-  - policy command/state
-  - teleop command
-  - walk/lifecycle mode
-  - IMU stream
-- Shared memory only for motor closed-loop in `RL_solver`:
-  - `sendMotorCmd()`
-  - `getMotorState()`
+## Runtime Architecture
 
-Controller policy selection is now mode-profile driven:
+### Sim2Real
 
-- `config/rl_cfg.yaml` -> `deploy_mode_profiles` maps `mode_id` to policy config sections.
-- DDS control words support generic mode switching (`1000+mode_id`, `2000+mode_id`) and lifecycle commands (`10/11/12/13`, legacy `3001/3002/3003/3004`).
+- `RL_solver` is the only real-time process you need to start.
+- Inside `RL_solver`, the following logic is fused into one process:
+  - motor shared-memory I/O
+  - IMU + teleop + `walk_mode` DDS input
+  - deploy state machine
+  - observation assembly
+  - ONNX policy inference
+  - command mapping and motor command writeback
 
-## Key Modules
+Dataflow:
 
-- `src/humanoid_rl_controller/rl_master/include/rl_master/robot_io.h`: unified RobotIO interface
-- `src/humanoid_rl_controller/rl_master/include/rl_master/dds_robot_io.h`: controller-side DDS RobotIO
-- `src/humanoid_rl_controller/rl_master/include/rl_master/solver_dds_bridge.h`: solver-side DDS bridge
-- `src/humanoid_rl_controller/rl_master/include/rl_master/solver/robot_solver.h`: modular solver main-loop interface
-- `src/humanoid_rl_controller/rl_master/include/rl_master/solver/motor_shm_io.h`: motor shared-memory I/O abstraction
-- `src/humanoid_rl_controller/rl_master/include/rl_master/deploy_state_machine.h`: deploy lifecycle state machine
-- `src/humanoid_rl_controller/rl_master/include/rl_master/logging/structured_logger.h`: structured runtime logging interface
-- `src/humanoid_rl_controller/rl_master/docs/dds_sim2real_deploy_guide.md`: full deploy guide and topic contract
-- `src/humanoid_rl_controller/rl_master/docs/sim2real_deploy_framework_upgrade.md`: framework upgrade summary
-- `src/humanoid_rl_controller/joint_motor_test`: offline joint/motor trajectory test package (file/sine, CSP/CST/R1)
+```text
+teleop / walk_mode / imu DDS
+          |
+          v
+     RL_solver
+       |- Motor SHM read
+       |- IntegratedControllerRuntime
+       |    |- RL_controller::step(...)
+       |    |- DeployStateMachine
+       |    |- ObservationBuilder
+       |    |- OnnxPolicyRunner
+       |- command apply
+       |- Motor SHM write
+       |- optional robot_state DDS publish (debug / tools)
+```
+
+### Sim2Sim
+
+- `mujoco_sim_bridge` is now the standard sim2sim runtime.
+- The C++ bridge embeds the same `IntegratedControllerRuntime` used by `RL_solver`.
+- MuJoCo state extraction and actuator writeback are the only environment-specific parts.
+
+Dataflow:
+
+```text
+teleop / walk_mode DDS
+        |
+        v
+mujoco_sim_bridge
+  |- build RobotStateData from MuJoCo
+  |- IntegratedControllerRuntime
+  |    |- RL_controller::step(...)
+  |- apply target to MuJoCo actuators
+  |- publish robot_state DDS (optional debug / tools)
+```
+
+## What Still Uses DDS
+
+DDS is still used for cross-process operator inputs and observability:
+
+- `/humanoid/rl/teleop`
+- `/humanoid/rl/walk_mode`
+- `/humanoid/rl/state`
+- `/imu/yesense` on real robot path
+
+What is no longer routed over DDS in the standard deploy path:
+
+- `RL_controller -> RL_solver` internal command transport
+- `RL_controller -> mujoco_sim_bridge` internal command transport
+
+## Standard Startup Entry Points
+
+### Real Robot
+
+```bash
+./script/sim2real_engineai.sh --mode-id 0
+```
+
+### MuJoCo Sim2Sim
+
+```bash
+./script/sim2sim_engineai.sh \
+  --model-path /abs/path/to/robot.xml \
+  --mode-id 0 \
+  --auto-start-mode
+```
+
+## Important Notes
+
+- `script/controller.sh` and the standalone `rl_master/RL_controller` executable are now explicitly legacy compatibility tools.
+- `sim2sim_mujoco.launch.py` keeps `start_rl_controller` only for the legacy Python interactive backend.
+- The standard sim2sim path is `backend:=cpp`; the Python interactive path remains supported but is still a split two-process topology.
 
 ## Docs
 
-- Main guide:
+- Real-robot deploy guide:
   - `src/humanoid_rl_controller/rl_master/docs/dds_sim2real_deploy_guide.md`
 - MuJoCo sim2sim guide:
   - `src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_mujoco_deploy_guide.md`
-- Joint/motor test guide:
-  - `src/humanoid_rl_controller/joint_motor_test/docs/joint_motor_test_guide.md`
-- BeyondMimic/AMP adaptation:
-  - `src/humanoid_rl_controller/rl_master/docs/beyondmimic_sim2real_adaptation.md`
-- EngineAI Gym policy deploy flow (sim2sim + sim2real):
+- EngineAI Gym policy deploy guide:
   - `src/humanoid_rl_controller/rl_master/docs/engineai_gym_policy_deploy_guide.md`
-- Architecture-adaptive build (ARM/x86_64):
-  - `src/humanoid_rl_controller/rl_master/docs/architecture_adaptive_build_guide.md`
-- Script runtime notes:
-  - `script/README.md`
-- Full runtime checklist and analysis workflow:
+- End-to-end function flow:
+  - `src/humanoid_rl_controller/rl_master/docs/runtime_end_to_end_function_flow.md`
+- Runtime checklist / runbook:
   - `src/humanoid_rl_controller/rl_master/docs/runbooks/runtime_checklist.md`

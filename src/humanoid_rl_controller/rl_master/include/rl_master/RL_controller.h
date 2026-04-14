@@ -34,7 +34,7 @@ public:
     ~RL_controller();
 
     static std::unique_ptr<RL_controller> create();
-    void RL_controller_Init();
+    void RL_controller_Init(int startup_mode_id = rl_master::kModeCodeMin);
     rl_master::RobotCommandData step(
         const rl_master::RobotStateData &state,
         const rl_master::TeleopCommand &command,
@@ -51,6 +51,8 @@ public:
     std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
     std::unique_ptr<RobotState> robot;
     const Sim2realCfg &runtimeCfg() const;
+    int activeModeId() const;
+    const std::string &activeConfigSection() const;
 
 private:
     struct PolicyRunnerNode
@@ -136,7 +138,7 @@ private:
     size_t profileIndexForMode(int mode_id, bool sanitize_invalid_mode) const;
     ModeProfile &activeModeProfile();
     const ModeProfile &activeModeProfile() const;
-    const ModeProfile &runtimeModeProfile() const;
+    void syncCompatibilityAliasesFromActiveProfile();
 
     Ort::Env onnx_env_;
     std::vector<ModeProfile> mode_profiles_;

@@ -43,6 +43,19 @@ void SolverDdsBridge::connect()
             has_command_ = true;
         });
 
+    teleop_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
+        rl_master::dds::kTopicTeleopCommand,
+        rclcpp::QoS(rclcpp::KeepLast(20)).best_effort(),
+        [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
+            rl_master::TeleopCommand cmd;
+            cmd.vx = static_cast<float>(msg->linear.x);
+            cmd.vy = static_cast<float>(msg->linear.y);
+            cmd.dyaw = static_cast<float>(msg->angular.z);
+            std::lock_guard<std::mutex> lock(teleop_mutex_);
+            latest_teleop_ = cmd;
+            has_teleop_ = true;
+        });
+
     walk_mode_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
         rl_master::dds::kTopicWalkMode,
         rclcpp::QoS(rclcpp::KeepLast(20)).reliable(),
@@ -132,6 +145,21 @@ bool SolverDdsBridge::readLatestPolicyCommand(
     return true;
 }
 
+bool SolverDdsBridge::readLatestTeleopCommand(rl_master::TeleopCommand *command)
+{
+    if (!command)
+    {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(teleop_mutex_);
+    if (!has_teleop_)
+    {
+        return false;
+    }
+    *command = latest_teleop_;
+    return true;
+}
+
 bool SolverDdsBridge::readLatestWalkModeControlWord(int *control_word)
 {
     if (!control_word)
@@ -147,27 +175,45 @@ bool SolverDdsBridge::readLatestWalkModeControlWord(int *control_word)
     return true;
 }
 
-void SolverDdsBridge::publishRobotState(const std::vector<JointData> &joint_state)
+void SolverDdsBridge::buildRobotStateData(
+    const std::vector<JointData> &joint_state,
+    rl_master::RobotStateData *state)
 {
-    if (!state_pub_)
+    if (!state)
     {
         return;
     }
 
-    rl_master::RobotStateData state{};
+    *state = rl_master::RobotStateData{};
     const size_t n = std::min(joint_state.size(), static_cast<size_t>(rl_master::kLegJointCount));
     for (size_t i = 0; i < n; ++i)
     {
-        state.joint_q[i] = joint_state[i].q;
-        state.joint_dq[i] = joint_state[i].dq;
-        state.joint_tau[i] = joint_state[i].tau;
+        state->joint_q[i] = joint_state[i].q;
+        state->joint_dq[i] = joint_state[i].dq;
+        state->joint_tau[i] = joint_state[i].tau;
     }
+    state->syncDynamicFromLegacy();
 
     {
         std::lock_guard<std::mutex> lock(imu_mutex_);
-        state.base_ang_vel = imu_ang_vel_;
-        state.base_quat = imu_quat_;
-        state.base_rpy = imu_rpy_;
+        state->base_ang_vel = imu_ang_vel_;
+        state->base_quat = imu_quat_;
+        state->base_rpy = imu_rpy_;
+    }
+}
+
+void SolverDdsBridge::publishRobotState(const std::vector<JointData> &joint_state)
+{
+    rl_master::RobotStateData state;
+    buildRobotStateData(joint_state, &state);
+    publishRobotState(state);
+}
+
+void SolverDdsBridge::publishRobotState(const rl_master::RobotStateData &state)
+{
+    if (!state_pub_)
+    {
+        return;
     }
 
     const auto msg = rl_master::dds::encodeRobotState(state);

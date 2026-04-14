@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <thread>
 
@@ -12,6 +13,7 @@
 #include <unistd.h>
 
 #include "rl_master/command_runtime_mode.h"
+#include "rl_master/deploy_state_machine.h"
 #include "rl_master/rl_protocol.h"
 
 namespace rl_master::solver
@@ -19,9 +21,6 @@ namespace rl_master::solver
 namespace
 {
 constexpr long kControlPeriodNs = 2'000'000; // 500 Hz
-constexpr int kCtrlWordStartModeBase = 1000;
-constexpr int kCtrlWordSetModeBase = 2000;
-constexpr int kCtrlWordModeRange = 1000;
 
 const std::vector<float> kHomePositions = {
     0.0f,
@@ -48,22 +47,9 @@ std::vector<double> toDoubleVector(const std::vector<float> &values)
     return out;
 }
 
-int decodeLocomotionModeFromControlWord(int control_word, int fallback_mode)
-{
-    if (control_word >= kCtrlWordStartModeBase &&
-        control_word < (kCtrlWordStartModeBase + kCtrlWordModeRange))
-    {
-        return control_word - kCtrlWordStartModeBase;
-    }
-    if (control_word >= kCtrlWordSetModeBase &&
-        control_word < (kCtrlWordSetModeBase + kCtrlWordModeRange))
-    {
-        return control_word - kCtrlWordSetModeBase;
-    }
-    return fallback_mode;
-}
-
 } // namespace
+
+RobotSolver::~RobotSolver() = default;
 
 std::unique_ptr<RobotSolver> RobotSolver::create(int startup_mode_id)
 {
@@ -163,6 +149,7 @@ bool RobotSolver::initialize()
     {
         motor_shm_io_.connect();
         dds_bridge_.connect();
+        initializeController();
     }
     catch (const std::exception &e)
     {
@@ -212,6 +199,47 @@ void RobotSolver::initializeBuffers()
     hold_target_latched_ = false;
 
     applyControlGainsFromCfg();
+}
+
+void RobotSolver::initializeController()
+{
+    controller_runtime_.initialize(active_mode_id_);
+    syncRuntimeCfgFromController(true);
+}
+
+void RobotSolver::syncRuntimeCfgFromController(bool force)
+{
+    if (!controller_runtime_.initialized())
+    {
+        return;
+    }
+
+    const int controller_mode_id = controller_runtime_.activeModeId();
+    const std::string controller_section = controller_runtime_.activeConfigSection();
+    if (!force &&
+        controller_mode_id == active_mode_id_ &&
+        controller_section == active_config_section_)
+    {
+        return;
+    }
+
+    sim2real_cfg_ = controller_runtime_.runtimeCfg();
+    active_mode_id_ = controller_mode_id;
+    active_config_section_ = controller_section;
+    applyControlGainsFromCfg();
+
+    std::cout << "[RL_solver] controller runtime synced: mode_id=" << active_mode_id_
+              << ", section=" << active_config_section_
+              << ", policy=" << sim2real_cfg_.policy_name << std::endl;
+    if (data_logging_enabled_ && data_logger_.isOpen())
+    {
+        data_logger_.writeEvent(
+            rl_master::monotonicTimeSec(),
+            "solver_mode_config_switched",
+            {{"mode_id", std::to_string(active_mode_id_)},
+             {"config_section", active_config_section_},
+             {"policy_name", sim2real_cfg_.policy_name}});
+    }
 }
 
 void RobotSolver::applyControlGainsFromCfg()
@@ -341,51 +369,15 @@ void RobotSolver::sendMotorCmd()
     motor_shm_io_.writeTarget(motor_target_all_);
 }
 
-void RobotSolver::getRLCmd()
+void RobotSolver::applyRuntimeCommand(
+    const rl_master::RobotCommandData &command,
+    bool command_fresh)
 {
-    rl_master::RobotCommandData dds_cmd{};
-    uint32_t cmd_seq = 0;
-    double cmd_stamp_s = 0.0;
-    if (!dds_bridge_.readLatestPolicyCommand(&dds_cmd, &cmd_seq, &cmd_stamp_s))
-    {
-        latest_cmd_fresh_ = false;
-        last_open_rl_ = open_rl_;
-        open_rl_ = static_cast<int>(rl_master::kOpenRlDisabled);
-        return;
-    }
-
+    latest_cmd_fresh_ = command_fresh;
     last_open_rl_ = open_rl_;
-    open_rl_ = static_cast<int>(std::lround(dds_cmd.open_rl));
+    open_rl_ = static_cast<int>(std::lround(command.open_rl));
 
-    const double now_s = rl_master::monotonicTimeSec();
-    latest_cmd_fresh_ = true;
-    if (sim2real_cfg_.enable_cmd_watchdog && cmd_stamp_s > 1e-6)
-    {
-        if (cmd_seq == last_cmd_seq_)
-        {
-            latest_cmd_fresh_ = false;
-        }
-        if ((now_s - cmd_stamp_s) > sim2real_cfg_.cmd_timeout_s)
-        {
-            latest_cmd_fresh_ = false;
-        }
-        if (!latest_cmd_fresh_ && (now_s - last_stale_warn_time_s_) > 1.0)
-        {
-            std::cerr << "[RL_solver] stale RL command detected. Switching to hold mode." << std::endl;
-            last_stale_warn_time_s_ = now_s;
-        }
-        if (latest_cmd_fresh_)
-        {
-            last_cmd_seq_ = cmd_seq;
-        }
-    }
-
-    if (!latest_cmd_fresh_)
-    {
-        return;
-    }
-
-    const auto runtime_mode = rl_master::resolveCommandRuntimeMode(latest_cmd_fresh_, dds_cmd.open_rl);
+    const auto runtime_mode = rl_master::resolveCommandRuntimeMode(command_fresh, command.open_rl);
 
     auto tauLimitAt = [this](size_t i) -> float {
         if (i < sim2real_cfg_.tau_limit.size())
@@ -395,10 +387,11 @@ void RobotSolver::getRLCmd()
         return 300.0f;
     };
 
+    const double now_s = rl_master::monotonicTimeSec();
     if (runtime_mode.unknown_open_rl_mode &&
         (now_s - last_stale_warn_time_s_) > 1.0)
     {
-        std::cerr << "[RL_solver] unknown open_rl mode=" << dds_cmd.open_rl
+        std::cerr << "[RL_solver] unknown open_rl mode=" << command.open_rl
                   << ", fallback to hold mode." << std::endl;
         last_stale_warn_time_s_ = now_s;
     }
@@ -409,9 +402,9 @@ void RobotSolver::getRLCmd()
         std::vector<float> target_dq(kInstalledMotorCount, 0.0f);
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
         {
-            joint_cmd_[i].q = dds_cmd.joint_target_q[i];
-            joint_cmd_[i].dq = dds_cmd.joint_target_dq[i];
-            joint_cmd_[i].tau = dds_cmd.joint_target_tau[i];
+            joint_cmd_[i].q = command.joint_target_q[i];
+            joint_cmd_[i].dq = command.joint_target_dq[i];
+            joint_cmd_[i].tau = command.joint_target_tau[i];
 
             target_q[i] = joint_cmd_[i].q;
             target_dq[i] = joint_cmd_[i].dq;
@@ -435,7 +428,7 @@ void RobotSolver::getRLCmd()
         // Position stream: keep joints in CSP and track commanded positions.
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
         {
-            joint_cmd_[i].q = dds_cmd.joint_target_q[i];
+            joint_cmd_[i].q = command.joint_target_q[i];
             joint_cmd_[i].dq = 0.0f;
             joint_cmd_[i].tau = 0.0f;
             joint_cmd_[i].mode = RUN_MODE_CSP;
@@ -449,7 +442,7 @@ void RobotSolver::getRLCmd()
             const float tau_limit = tauLimitAt(i);
             joint_cmd_[i].q = joint_state_[i].q;
             joint_cmd_[i].dq = 0.0f;
-            joint_cmd_[i].tau = std::clamp(dds_cmd.joint_target_tau[i], -tau_limit, tau_limit);
+            joint_cmd_[i].tau = std::clamp(command.joint_target_tau[i], -tau_limit, tau_limit);
             joint_cmd_[i].mode = RUN_MODE_CST;
         }
     }
@@ -459,9 +452,9 @@ void RobotSolver::getRLCmd()
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
         {
             const float tau_limit = tauLimitAt(i);
-            joint_cmd_[i].q = dds_cmd.joint_target_q[i];
-            joint_cmd_[i].dq = dds_cmd.joint_target_dq[i];
-            joint_cmd_[i].tau = std::clamp(dds_cmd.joint_target_tau[i], -tau_limit, tau_limit);
+            joint_cmd_[i].q = command.joint_target_q[i];
+            joint_cmd_[i].dq = command.joint_target_dq[i];
+            joint_cmd_[i].tau = std::clamp(command.joint_target_tau[i], -tau_limit, tau_limit);
             joint_cmd_[i].mode = RUN_MODE_R1;
         }
     }
@@ -669,40 +662,28 @@ void RobotSolver::run()
             const auto loop_begin = std::chrono::steady_clock::now();
             dds_bridge_.spinOnce();
 
-            int walk_mode_control_word = 0;
-            if (dds_bridge_.readLatestWalkModeControlWord(&walk_mode_control_word))
+            int walk_mode_value = 0;
+            std::optional<int> walk_mode_control_word;
+            if (dds_bridge_.readLatestWalkModeControlWord(&walk_mode_value))
             {
-                const int requested_mode_id = decodeLocomotionModeFromControlWord(
-                    walk_mode_control_word,
-                    active_mode_id_);
-                if (requested_mode_id != active_mode_id_)
-                {
-                    if (!switchToModeConfig(requested_mode_id, false))
-                    {
-                        if (last_mode_reload_failure_id_ != requested_mode_id)
-                        {
-                            std::cerr << "[RL_solver] failed to switch mode config for mode_id="
-                                      << requested_mode_id
-                                      << ", keep current mode_id=" << active_mode_id_
-                                      << ", section=" << active_config_section_ << std::endl;
-                            last_mode_reload_failure_id_ = requested_mode_id;
-                        }
-                    }
-                    else
-                    {
-                        last_mode_reload_failure_id_ = std::numeric_limits<int>::min();
-                        hold_target_latched_ = false;
-                    }
-                }
+                walk_mode_control_word = walk_mode_value;
             }
 
-            getRLCmd();
-            const auto open_rl_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(open_rl_));
-            const bool any_active_mode = open_rl_mode.open_rl_active;
-            if (any_active_mode && !latest_cmd_fresh_)
+            rl_master::TeleopCommand teleop_command{};
+            std::optional<rl_master::TeleopCommand> teleop_sample;
+            if (dds_bridge_.readLatestTeleopCommand(&teleop_command))
             {
-                open_rl_ = static_cast<int>(rl_master::kOpenRlDisabled);
+                teleop_sample = teleop_command;
             }
+
+            getMotorState();
+
+            rl_master::RobotStateData io_state;
+            dds_bridge_.buildRobotStateData(joint_state_, &io_state);
+            const rl_master::RobotCommandData controller_command =
+                controller_runtime_.step(io_state, teleop_sample, walk_mode_control_word);
+            syncRuntimeCfgFromController();
+            applyRuntimeCommand(controller_command, true);
 
             const auto last_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(last_open_rl_));
             const auto current_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(open_rl_));
@@ -718,14 +699,12 @@ void RobotSolver::run()
             if (current_any_active_mode)
             {
                 hold_target_latched_ = false;
-                getMotorState();
-                sendRLState();
+                dds_bridge_.publishRobotState(io_state);
                 sendMotorCmd();
                 logLoopData();
             }
             else
             {
-                getMotorState();
                 if (!hold_target_latched_)
                 {
                     std::cout << "[RL_solver] hold mode active" << std::endl;
@@ -744,7 +723,7 @@ void RobotSolver::run()
                     joint_cmd_[i].mode = RUN_MODE_CSP;
                 }
                 sendMotorCmd();
-                sendRLState();
+                dds_bridge_.publishRobotState(io_state);
             }
 
             const auto loop_end = std::chrono::steady_clock::now();

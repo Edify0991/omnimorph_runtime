@@ -1,209 +1,117 @@
-﻿# Runtime Checklist And Data Logging Runbook
+# Runtime Checklist
 
-## 1. Engineering Conventions
+## 1. Before You Run
 
-### 1.1 Module Layout
-
-The deploy stack is now grouped by functional ownership:
-
-- `include/rl_master/runtime/`: runtime/system helpers
-- `include/rl_master/filters/`: generic filters
-- `include/rl_master/logging/`: structured logging interfaces
-- `include/rl_master/solver/`: solver interfaces (DDS bridge integration + SHM motor I/O abstraction)
-- `runtime/`: implementations of runtime helpers
-- `filters/`: implementations of filter helpers
-- `logging/`: implementations of structured logging
-- `solver/`: solver implementations (`robot_solver.cpp`, `motor_shm_io.cpp`)
-- `tools/analysis/`: post-run analysis tools
-
-### 1.2 Naming Conventions
-
-- Type/class names: `PascalCase` (for example `StructuredLogger`)
-- Function names: `camelCase` (for example `setRealtimePriority`)
-- Variables: `snake_case` for local/global C++ data and config keys
-- Constants: `kUpperCamelCase` for compile-time constants
-
-### 1.3 Declaration vs Definition
-
-- Public interfaces are declared in headers under `include/rl_master/...`
-- Implementations are defined in matching `.cpp` modules
-- Avoid defining new utility classes directly inside large runtime files
-
-## 2. Build Checklist
-
-From workspace root:
+### Build
 
 ```bash
-colcon build --packages-select SharedMemory imu_communication_yesense rl_master joint_motor_test
+colcon build --packages-select rl_master mujoco_sim2sim
 ```
 
-For sim2sim (MuJoCo) add:
+### Validate the target mode
 
 ```bash
-colcon build --symlink-install --packages-up-to rl_master mujoco_sim2sim joint_motor_test
+python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py --mode-id 0
 ```
 
-Architecture-adaptive + portable ARM baseline build:
+Check that it passes for the exact mode you intend to start.
+
+## 2. Real-Robot Bringup Checklist
+
+1. motor driver is online
+2. IMU topic `/imu/yesense` is alive
+3. correct `mode_id` exists in `deploy_mode_profiles`
+4. ONNX file exists
+5. manifest path exists
+6. startup script runs:
 
 ```bash
-colcon build --symlink-install \
-  --packages-up-to rl_master mujoco_sim2sim joint_motor_test \
-  --cmake-args \
-    -DRL_MASTER_ENABLE_ARCH_TUNING=ON \
-    -DRL_MASTER_ENABLE_NATIVE_TUNING=OFF \
-    -DRL_MASTER_ARM_BASELINE=armv8-a \
-    -DMUJOCO_SIM2SIM_ENABLE_ARCH_TUNING=ON \
-    -DMUJOCO_SIM2SIM_ENABLE_NATIVE_TUNING=OFF \
-    -DMUJOCO_SIM2SIM_ARM_BASELINE=armv8-a
+./script/sim2real_engineai.sh --mode-id 0
 ```
 
-If first-time host setup:
+Optional auto-start:
 
 ```bash
-sudo apt update
-sudo apt install -y python3 python3-pip python3-evdev python3-requests
+./script/sim2real_engineai.sh --mode-id 0 --auto-start-mode
 ```
 
-## 3. Bringup Checklist
+## 3. Sim2Sim Bringup Checklist
 
-Recommended launch order:
-
-1. Motor driver stack (external repository / external process)
-2. IMU node
-3. `RL_solver`
-4. `RL_controller`
-5. `joyLaunch.py`
-6. DDS self-check
-
-Offline motor/joint test path (without `RL_controller`):
-
-1. Motor driver stack (real) or MuJoCo bridge (`fixed_base:=true`)
-2. `RL_solver` (real path only)
-3. `joint_motor_test_runner`
-4. Publish lifecycle/mode control word (`1000+test_mode_id` or `10`)
-
-Example:
+1. MuJoCo XML path is correct
+2. ONNX and manifest pass precheck
+3. fused bridge starts:
 
 ```bash
-cd script
-sudo ./driver.sh
-sudo ./imu.sh
-sudo ./solver.sh
-sudo ./controller.sh
-sudo python3 joyLaunch.py
-sudo ./dds_selfcheck.sh
+./script/sim2sim_engineai.sh \
+  --model-path /abs/path/to/robot.xml \
+  --mode-id 0 \
+  --enable-viewer true
 ```
 
-## 4. Data Logging Format (Structured)
-
-When `save_data_flag: true`, both solver and controller output:
-
-- `<session_base>_solver_metadata.json`
-- `<session_base>_solver_records.jsonl`
-- `<session_base>_controller_metadata.json`
-- `<session_base>_controller_records.jsonl`
-
-`<session_base>` is generated from config `data_path`.
-
-Sim2sim note:
-
-- `RL_controller` logging schema remains the same in MuJoCo runs.
-- This allows one-to-one analysis comparison between sim2real and sim2sim sessions.
-
-### 4.1 Metadata File
-
-JSON object includes:
-
-- `schema_version`
-- `created_time_unix_sec`
-- `string_fields` (policy path/name/family, manifest path, module)
-- `string_fields` also include reference-motion source/path/anchor and AMP discriminator path/input-source
-- `numeric_fields` (obs/action dims, control hz, watchdog timeout)
-- `numeric_fields` also include reference-motion configured/loaded dim/frame count and AMP discriminator enabled/warn threshold
-- `vector_fields` (kps/kds/tau limits)
-- `string_list_fields` (joint order mappings, sub-model names/paths, reference body name list)
-
-### 4.2 Records File (JSONL)
-
-Each line is one JSON object:
-
-- `record_type`
-- `monotonic_time_sec`
-- `scalars` (frame index, mode, state flags)
-- `vectors` (joint states, targets, observations, actions)
-
-When AMP discriminator is enabled, controller records may include:
-
-- scalar: `amp_discriminator_score_mean`
-- vector: `amp_discriminator_score`
-
-Solver records use `record_type=solver_loop`.
-Controller records use `record_type=controller_step`.
-
-## 5. Analysis Workflow
-
-Primary tool:
-
-- `tools/analysis/analyze_structured_logs.py`
-
-Example summary + CSV export:
+4. if needed, auto-start policy:
 
 ```bash
-python3 src/humanoid_rl_controller/rl_master/tools/analysis/analyze_structured_logs.py \
-  --records /path/to/session_solver_records.jsonl \
-  --vector-field motor_state_tau \
-  --csv-out /tmp/motor_state_tau.csv
+./script/sim2sim_engineai.sh \
+  --model-path /abs/path/to/robot.xml \
+  --mode-id 0 \
+  --auto-start-mode
 ```
 
-Plot selected indices:
+## 4. Runtime Smoke Checks
+
+### Operator topics
 
 ```bash
-python3 src/humanoid_rl_controller/rl_master/tools/analysis/analyze_structured_logs.py \
-  --records /path/to/session_solver_records.jsonl \
-  --vector-field motor_state_tau \
-  --plot --plot-indices 3,9
+ros2 topic echo /humanoid/rl/walk_mode --once
+ros2 topic echo /humanoid/rl/teleop --once
 ```
 
-Compatibility wrapper (legacy name):
+### State output
 
 ```bash
-python3 src/humanoid_rl_controller/rl_master/data_process.py \
-  --records /path/to/session_solver_records.jsonl \
-  --vector-field motor_state_tau
+ros2 topic echo /humanoid/rl/state --once
 ```
 
-Joint motor test records:
-
-- `<session_base>_joint_motor_test_metadata.json`
-- `<session_base>_joint_motor_test_records.jsonl`
-
-## 6. Validation Checklist After Changes
-
-- Preflight config/manifest/ONNX contract check:
+### Manual mode control
 
 ```bash
-python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py
+./script/publish_walk_mode.sh start --mode-id 0
+./script/publish_walk_mode.sh stop
+./script/publish_walk_mode.sh switch --mode-id 1
 ```
 
-- `ros2 topic echo /imu/yesense --once`
-- `ros2 topic echo /humanoid/rl/state --once`
-- `ros2 topic echo /humanoid/rl/command --once`
-- `script/dds_selfcheck.sh`
-- Confirm structured output files exist in `rl_master/data/`
+## 5. If the Policy Does Not Move
 
-## 7. Operational Notes
+Check in this order:
 
-- Motor closed loop remains shared-memory based in `RL_solver`:
-  - `getMotorState()`
-  - `sendMotorCmd()`
-- Upper-level transport remains DDS-based.
-- Realtime thread settings are configurable:
-  - YAML: `runtime_process.controller` / `runtime_process.solver` and per-profile `realtime`.
-  - Env override:
-    - `RL_MASTER_CONTROLLER_RT_ENABLED|LOCK_MEMORY|SET_AFFINITY|CPU_ID|USE_FIFO|FIFO_PRIORITY`
-    - `RL_MASTER_SOLVER_RT_ENABLED|LOCK_MEMORY|SET_AFFINITY|CPU_ID|USE_FIFO|FIFO_PRIORITY`
-- Controller mode switching is profile-driven:
-  - Configure `deploy_mode_profiles` in `config/rl_cfg.yaml`.
-  - Runtime control word channel supports `1000+mode_id`, `2000+mode_id` (mode switch),
-    and lifecycle words `10/11/12/13` (legacy `3001/3002/3003/3004`).
-- To compare different models/parameters reliably, use metadata files as the source of truth for run context.
+1. mode profile exists for that `mode_id`
+2. ONNX loads without I/O mismatch
+3. observation manifest matches expected dimension
+4. `walk_mode` start word was actually published
+5. sim2sim: actuator mapping and joint names are correct
+6. sim2real: IMU and motor feedback are alive
+
+## 6. Compatibility Reminder
+
+The standard runtime is now single-process in both paths:
+
+- real robot: `RL_solver`
+- MuJoCo sim: `mujoco_sim_bridge` with `backend:=cpp`
+
+`RL_controller` standalone remains only for compatibility and isolated debugging.
+
+## 7. Python GUI Compatibility Path
+
+If you specifically want the Python MuJoCo GUI, run:
+
+```bash
+./script/sim2sim_engineai_python.sh --model-path /abs/path/to/robot.xml --mode-id 0
+```
+
+This now runs the fused C++ runtime with a separate Python MuJoCo viewer frontend.
+
+If you need the historical split runtime for regression comparison, use:
+
+```bash
+./script/sim2sim_engineai_python_legacy.sh --model-path /abs/path/to/robot.xml --mode-id 0
+```

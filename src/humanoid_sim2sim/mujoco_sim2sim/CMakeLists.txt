@@ -47,6 +47,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(rl_master REQUIRED)
 
 find_path(MUJOCO_INCLUDE_DIR
@@ -100,10 +101,12 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
   ament_target_dependencies(mujoco_sim_bridge
     rclcpp
     std_msgs
+    geometry_msgs
     rl_master
   )
 
   target_link_libraries(mujoco_sim_bridge
+    rl_master::rl_master_runtime
     ${MUJOCO_LIBRARY}
     mujoco_sim2sim_arch_flags
   )
@@ -145,6 +148,7 @@ install(FILES README.md
 
 install(PROGRAMS
   scripts/mujoco_sim_interactive_backend.py
+  scripts/mujoco_sim_viewer_frontend.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

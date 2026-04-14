@@ -1,274 +1,150 @@
-# EngineAI Gym Policy Deploy Guide (Sim2Sim + Sim2Real)
+# EngineAI Gym Policy Deploy Guide
 
-This guide explains how to deploy a policy trained in an EngineAI Gym style RL stack into this repository for both:
+This guide describes how to take a policy trained in an EngineAI Gym-style RL framework and deploy it through this repository's fused runtime.
 
-- MuJoCo sim2sim (`RL_controller -> DDS -> mujoco_sim_bridge`)
-- real robot sim2real (`RL_controller -> DDS -> RL_solver -> motor SHM`)
+## 1. Target Runtime
 
-It also includes the new preflight validator and ONNX metadata checks.
+### Sim2Sim
 
-## 1. Prerequisites
-
-From workspace root:
+Use the fused C++ MuJoCo runtime:
 
 ```bash
-colcon build --symlink-install --packages-up-to rl_master mujoco_sim2sim
-source install/setup.bash
+./script/sim2sim_engineai.sh --model-path /abs/path/to/robot.xml --mode-id 0
 ```
 
-Runtime Python dependencies:
+### Sim2Real
+
+Use the fused real-robot runtime:
 
 ```bash
-python3 -m pip install pyyaml onnxruntime
+./script/sim2real_engineai.sh --mode-id 0
 ```
 
-Optional for editing ONNX metadata:
+## 2. Prepare the Policy
 
-```bash
-python3 -m pip install onnx
+Place the exported ONNX file under:
+
+```text
+src/humanoid_rl_controller/rl_master/policies/
 ```
 
-## 2. Export Policy From EngineAI Gym
+Example:
 
-When exporting ONNX, record these items from training/deploy code:
+```text
+src/humanoid_rl_controller/rl_master/policies/engineai_walk.onnx
+```
 
-- observation dimension after stacking: `obs_dim * obs_stack_N`
-- single-frame `obs_dim`
-- `obs_stack_N`
-- action dimension
-- observation term order
-- action joint order
-- ONNX input/output tensor names
+## 3. Prepare the Config
 
-Recommended ONNX metadata keys (custom metadata map):
+Edit `src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml`.
 
+For the target mode profile, confirm:
+
+- `policy_file` or `policy_path`
 - `obs_dim`
 - `action_dim`
-- `obs_stack_n`
-- `obs_input_name`
-- `action_output_name`
-- `policy_family`
-- `obs_joint_order`
 - `action_joint_order`
+- `obs_joint_order`
+- `observation_manifest_file` / `observation_manifest_path`
+- `policy_io.obs_input_name`
+- `policy_io.action_output_name`
+- any required `time_step` input settings
 
-Example metadata patch script:
+## 4. Prepare the Observation Manifest
 
-```python
-import onnx
+Create or update the manifest under:
 
-model = onnx.load("policy.onnx")
-props = {
-    "obs_dim": "47",
-    "action_dim": "12",
-    "obs_stack_n": "15",
-    "obs_input_name": "obs",
-    "action_output_name": "actions",
-    "policy_family": "amp",
-    "obs_joint_order": "right_hip_roll,right_hip_yaw,right_hip_pitch,right_knee_pitch,right_ankle_pitch,right_ankle_roll,left_hip_roll,left_hip_yaw,left_hip_pitch,left_knee_pitch,left_ankle_pitch,left_ankle_roll",
-    "action_joint_order": "right_hip_roll,right_hip_yaw,right_hip_pitch,right_knee_pitch,right_ankle_pitch,right_ankle_roll,left_hip_roll,left_hip_yaw,left_hip_pitch,left_knee_pitch,left_ankle_pitch,left_ankle_roll",
-}
-del model.metadata_props[:]
-for k, v in props.items():
-    p = model.metadata_props.add()
-    p.key = k
-    p.value = v
-onnx.save(model, "policy_with_metadata.onnx")
+```text
+src/humanoid_rl_controller/rl_master/config/
 ```
 
-## 3. Add A New Deploy Profile
+Typical pattern:
 
-In `config/rl_cfg.yaml`:
-
-1. Add a section for your new policy (for example `engineai_walk`).
-2. Add a `deploy_mode_profiles` entry mapping a new `mode_id` to that section.
-3. Set:
-   - `policy_path` (or `policy_file`)
-   - `obs_dim`, `obs_stack_N`, `action_dim`, `motor_N`
-   - `policy_io.obs_input_name`, `policy_io.action_output_name`
-   - `action_joint_order`, `obs_joint_order`
-   - `observation_manifest_file` or `observation_manifest_path`
-
-Recommended metadata-check block in `policy_io`:
-
-```yaml
-policy_io:
-  obs_input_name: "obs"
-  action_output_name: "actions"
-  enable_time_step_input: false
-  strict_model_io: true
-  enable_metadata_check: true
-  metadata_check_strict: true
-  required_metadata_keys: ["obs_dim", "action_dim", "obs_stack_n"]
-  expected_metadata:
-    obs_dim: "47"
-    action_dim: "12"
-    obs_stack_n: "15"
-    obs_input_name: "obs"
-    action_output_name: "actions"
+```text
+observation_manifest_engineai_walk.yaml
 ```
 
-## 4. Add/Select Observation Manifest
+Then point the mode config to that manifest.
 
-If your policy uses a new observation layout:
-
-1. Create a new manifest file under `config/`, for example:
-   - `observation_manifest_engineai_walk.yaml`
-2. Set `observation_manifest_file` (or `observation_manifest_path`) in your profile.
-3. Ensure the manifest total dimension equals `obs_dim`.
-
-Notes:
-
-- Term order in manifest = observation concatenation order.
-- `command.components` order = command feature order.
-- `joint_pos/joint_vel` are reordered by `obs_joint_order`.
-
-## 5. Run Offline Preflight Validation
-
-Before launching anything, run:
+## 5. Run the Offline Precheck
 
 ```bash
-python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py
+python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py --mode-id 0
 ```
 
-Validate a specific mode only:
+This checks at least:
+
+- profile selection
+- manifest parsing
+- observation dimension consistency
+- joint-order consistency
+- ONNX presence and basic I/O compatibility
+- optional metadata checks if enabled
+
+## 6. Sim2Sim Workflow
+
+1. confirm the XML model path
+2. run precheck for the mode
+3. launch fused sim2sim runtime
+4. publish `walk_mode` start word or use `--auto-start-mode`
+5. inspect viewer motion, joint behavior, and `/humanoid/rl/state`
+
+Example:
 
 ```bash
-python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py --mode-id 2
-```
-
-YAML/manifest only (skip ONNX load):
-
-```bash
-python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py --skip-onnx
-```
-
-The validator checks:
-
-- mode profile mapping
-- profile dimensions and joint orders
-- manifest legality and resolved dimension
-- ONNX IO contract (`strict_model_io` semantics)
-- unknown model inputs (zero-filled vs strict error)
-- action output static shape sanity
-- ONNX metadata checks (when enabled)
-
-## 6. Sim2Sim Deployment Flow
-
-Recommended quick start (python interactive backend + viewer):
-
-```bash
-./script/sim2sim_engineai_python.sh \
+./script/sim2sim_engineai.sh \
   --model-path /abs/path/to/robot.xml \
   --mode-id 0 \
+  --enable-viewer true \
   --auto-start-mode
 ```
 
-This wrapper will:
+## 7. Sim2Real Workflow
 
-- source ROS/workspace
-- run deploy precheck (`validate_deploy_config.py --mode-id <id>`)
-- launch `mujoco_sim2sim` with `backend:=python_interactive` and `enable_viewer:=true`
-- optionally publish START control word (`1000 + mode_id`)
+1. bring up motor driver
+2. bring up IMU DDS publisher
+3. run fused real runtime
+4. publish `walk_mode` start word
+5. use joystick / teleop DDS as needed
 
-Manual launch (equivalent):
-
-Launch MuJoCo bridge + controller:
-
-```bash
-ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  model_path:=/abs/path/to/robot.xml \
-  start_rl_controller:=true \
-  backend:=python_interactive \
-  enable_viewer:=true \
-  control_hz:=100.0 \
-  fixed_base:=false
-```
-
-If you want to verify the exact same C++ runtime mode resolver used by `RL_solver`, use `backend:=cpp` for one cross-check run.
-
-If policy does not auto-start, publish control word:
+Example:
 
 ```bash
-ros2 topic pub --once /humanoid/rl/walk_mode std_msgs/msg/Int32 "{data: 1002}"
+sudo ./script/driver.sh
+sudo ./script/imu.sh
+./script/sim2real_engineai.sh --mode-id 0 --auto-start-mode
+sudo python3 ./script/joyLaunch.py
 ```
 
-Or use helper script:
+## 8. How Sim2Sim and Sim2Real Stay Aligned
 
-```bash
-./script/publish_walk_mode.sh start --mode-id 2
+The two paths now share the same embedded controller runtime:
+
+- same `RL_controller::step(...)`
+- same deploy state machine
+- same observation manifest parsing
+- same policy switching logic
+- same ONNX inference stack
+
+The environment-specific part is only:
+
+- where state comes from
+- where commands are applied
+
+That means sim2sim is now a much closer validation target for the real deploy path.
+
+## 9. Choosing Between C++ and Python Sim2Sim Backends
+
+Use `sim2sim_engineai.sh` when you want the closest validation target to the real fused runtime.
+
+Use `sim2sim_engineai_python.sh` when you want the friendlier Python MuJoCo GUI while still keeping the fused C++ control/physics runtime:
+
+```text
+C++ fused backend (physics + controller) -> ROS2 frame stream -> Python MuJoCo viewer frontend
 ```
 
-Above example means `mode_id=2` and `START_POLICY` (`1000 + mode_id`).
+Use `sim2sim_engineai_python_legacy.sh` only when you need the historical split runtime for comparison:
 
-Optional command input:
-
-```bash
-ros2 topic pub --once /humanoid/rl/teleop geometry_msgs/msg/Twist \
-"{linear: {x: 0.2, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
+```text
+RL_controller (legacy standalone process) <-> DDS <-> python_interactive backend
 ```
-
-Runtime checks:
-
-```bash
-ros2 topic echo /humanoid/rl/state --once
-ros2 topic echo /humanoid/rl/command --once
-```
-
-## 7. Sim2Real Deployment Flow
-
-Recommended order:
-
-```bash
-cd script
-sudo ./driver.sh
-sudo ./imu.sh
-sudo ./solver.sh
-sudo ./controller.sh
-sudo python3 joyLaunch.py
-sudo ./dds_selfcheck.sh --publish-smoke
-```
-
-Mode switch/start examples:
-
-- switch and start mode 2: control word `1002`
-- switch mode only mode 2: control word `2002`
-- lifecycle only:
-  - `10`: START_POLICY
-  - `11`: STOP_POLICY (hold)
-  - `12`: ZEROING
-  - `13`: ESTOP
-
-Safety recommendation:
-
-- First run with conservative `action_scale`, `kps`, `kds`, `tau_limit`.
-- Verify hold behavior (`11`) and estop (`13`) before aggressive commands.
-
-## 8. Logs And Post-Run Analysis
-
-When `save_data_flag: true`, controller and solver output:
-
-- `*_controller_metadata.json`
-- `*_controller_records.jsonl`
-- `*_solver_metadata.json`
-- `*_solver_records.jsonl`
-
-Quick analysis:
-
-```bash
-python3 src/humanoid_rl_controller/rl_master/tools/analysis/analyze_structured_logs.py \
-  --records /path/to/session_controller_records.jsonl \
-  --vector-field policy_action
-```
-
-## 9. Typical Failure Modes
-
-1. Manifest dim mismatch:
-   - `obs_dim` does not equal resolved manifest dimension.
-2. Joint name mismatch:
-   - `action_joint_order` / `obs_joint_order` names differ from canonical names.
-3. ONNX IO mismatch:
-   - input/output names differ from profile `policy_io`.
-4. ONNX metadata mismatch:
-   - metadata check enabled but keys/values do not match profile.
-5. External observation false confidence:
-   - `required: true` is currently not hard-enforced; missing external features are zero-padded.

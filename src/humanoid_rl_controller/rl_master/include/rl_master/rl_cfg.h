@@ -103,33 +103,6 @@ inline bool loadProcessRealtimeConfigFromYAML(
     }
 }
 
-inline std::string resolveDefaultDeployConfigSectionFromYAML(
-    const std::string &yaml_file,
-    const std::string &fallback_section = "sim2real")
-{
-    try
-    {
-        const YAML::Node root = YAML::LoadFile(yaml_file);
-        const YAML::Node profiles = root["deploy_mode_profiles"];
-        if (profiles && profiles.IsSequence() && profiles.size() > 0)
-        {
-            const YAML::Node first = profiles[0];
-            if (first["config_section"])
-            {
-                const std::string section = first["config_section"].as<std::string>();
-                if (!section.empty())
-                {
-                    return section;
-                }
-            }
-        }
-    }
-    catch (const std::exception &)
-    {
-    }
-    return fallback_section;
-}
-
 struct DeployModeProfileSpec
 {
     int mode_id = 0;
@@ -169,7 +142,7 @@ inline std::vector<DeployModeProfileSpec> loadDeployModeProfilesFromYAML(
 inline std::string resolveDeployConfigSectionForModeFromYAML(
     const std::string &yaml_file,
     int mode_id,
-    const std::string &fallback_section = "sim2real")
+    const std::string &fallback_section = "engineai_walk")
 {
     std::vector<DeployModeProfileSpec> specs;
     try
@@ -368,7 +341,7 @@ public:
     RobotCfg robotCfg;
     Scales scales;
 
-    bool loadFromYAML(const std::string &yaml_file, const std::string &config_type = "sim2real")
+    bool loadFromYAML(const std::string &yaml_file, const std::string &config_type = "engineai_walk")
     {
         try
         {

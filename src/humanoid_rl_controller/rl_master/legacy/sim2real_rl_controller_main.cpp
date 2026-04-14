@@ -9,12 +9,17 @@
 #include <stdexcept>
 #include <thread>
 #include <time.h>
+
 #include "rl_master/RL_controller.h"
-#include "rl_master/dds_robot_io.h"
+#include "rl_master/legacy/dds_robot_io.h"
 #include "rl_master/robot_io.h"
 #include "rl_master/rl_cfg.h"
 #include "rl_master/rl_protocol.h"
 #include "rl_master/runtime/realtime_utils.h"
+
+// Legacy standalone controller process.
+// This path is kept only for compatibility with the Python interactive
+// sim2sim backend and for isolated debugging of the old DDS-only topology.
 
 static std::atomic<bool> g_run_flag(true);
 static RL_controller *g_rl_controller = nullptr;
@@ -56,7 +61,7 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
     rl_master::runtime::RealtimeConfig runtime_rt = controller->runtimeCfg().realtime;
     (void)loadProcessRealtimeConfigFromYAML(RL_CFG_PATH, "controller", &runtime_rt);
     runtime_rt = rl_master::runtime::overrideRealtimeConfigFromEnv(runtime_rt, "RL_MASTER_CONTROLLER_RT_");
-    rl_master::runtime::configureRealtime(runtime_rt, "RL_controller");
+    rl_master::runtime::configureRealtime(runtime_rt, "RL_controller_legacy");
 
     rl_master::RobotStateData io_state;
     rl_master::TeleopCommand teleop_cmd;
@@ -78,8 +83,8 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
     const auto phase_start = std::chrono::steady_clock::now();
     auto last_warn_time = std::chrono::steady_clock::now();
 
-    std::cout << "------- start RL controller --------" << std::endl;
-    std::cout << "[RL_controller] frequency=" << control_hz << " Hz, period=" << period_ns << " ns" << std::endl;
+    std::cout << "------- start legacy RL controller --------" << std::endl;
+    std::cout << "[RL_controller_legacy] frequency=" << control_hz << " Hz, period=" << period_ns << " ns" << std::endl;
 
     try
     {
@@ -92,7 +97,7 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
                 const auto now = std::chrono::steady_clock::now();
                 if ((now - last_warn_time) > std::chrono::seconds(1))
                 {
-                    std::cerr << "[sim2real] waiting robot state DDS stream..." << std::endl;
+                    std::cerr << "[legacy] waiting robot state DDS stream..." << std::endl;
                     last_warn_time = now;
                 }
 
@@ -110,7 +115,7 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
             if (!robot_io->write_command(command))
             {
                 robot_io->estop();
-                throw std::runtime_error("[sim2real] failed to write command through RobotIO");
+                throw std::runtime_error("[legacy] failed to write command through RobotIO");
             }
 
             const auto loop_end = std::chrono::steady_clock::now();
@@ -118,7 +123,7 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
             if (elapsed_us > controller->runtimeCfg().loop_overrun_warn_us &&
                 (loop_end - last_warn_time) > std::chrono::seconds(1))
             {
-                std::cerr << "[RL_controller] loop overrun: " << elapsed_us << " us" << std::endl;
+                std::cerr << "[RL_controller_legacy] loop overrun: " << elapsed_us << " us" << std::endl;
                 last_warn_time = loop_end;
             }
 
@@ -138,7 +143,7 @@ void run_sim2real_rl_controller(RL_controller *controller, RobotIO *robot_io)
     }
     catch (const std::exception &e)
     {
-        std::cerr << "[sim2real] exception in control loop: " << e.what() << std::endl;
+        std::cerr << "[legacy] exception in control loop: " << e.what() << std::endl;
     }
 
     controller->estop();
