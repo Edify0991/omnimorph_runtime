@@ -20,6 +20,7 @@
 #include "external_observation_provider.h"
 #include "logging/structured_logger.h"
 #include "math_tool.h"
+#include "mode_profile_registry.h"
 #include "onnx_policy_runner.h"
 #include "observation_builder.h"
 #include "reference_motion_provider.h"
@@ -31,9 +32,10 @@ class RL_controller
 {
 public:
     RL_controller();
+    explicit RL_controller(std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry);
     ~RL_controller();
 
-    static std::unique_ptr<RL_controller> create();
+    static std::unique_ptr<RL_controller> create(std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry = nullptr);
     void RL_controller_Init(int startup_mode_id = rl_master::kModeCodeMin);
     rl_master::RobotCommandData step(
         const rl_master::RobotStateData &state,
@@ -141,6 +143,7 @@ private:
     void syncCompatibilityAliasesFromActiveProfile();
 
     Ort::Env onnx_env_;
+    std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry_;
     std::vector<ModeProfile> mode_profiles_;
     std::unordered_map<int, size_t> mode_to_profile_index_;
     int default_mode_id_ = rl_master::kModeCodeMin;

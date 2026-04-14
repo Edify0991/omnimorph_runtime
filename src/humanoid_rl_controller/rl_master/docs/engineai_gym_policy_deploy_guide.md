@@ -131,6 +131,10 @@ The environment-specific part is only:
 - where state comes from
 - where commands are applied
 
+On the real-robot fused path, deploy-mode config is loaded once through a shared `ModeProfileRegistry`, then reused by both solver-side execution logic and controller-side policy logic.
+
+On the current MuJoCo fused path, the same mode/profile definitions are still used, but the registry is lazily created inside controller initialization if it was not injected earlier.
+
 That means sim2sim is now a much closer validation target for the real deploy path.
 
 ## 9. Choosing Between C++ and Python Sim2Sim Backends

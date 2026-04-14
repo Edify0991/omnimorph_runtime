@@ -75,15 +75,24 @@ The bridge does not need `/humanoid/rl/command` anymore in the standard C++ path
 4. `loadModel()`
 5. `resolveModelMappings()`
 6. `initializeState()`
-7. `IntegratedControllerRuntime::initialize(startup_mode_id)`
-8. ROS subscriptions + timer setup
-9. each timer tick -> `controlLoopTick()`
-10. `buildRobotState()` from MuJoCo `qpos/qvel`
-11. `IntegratedControllerRuntime::step(...)`
-12. `RL_controller::step(...)`
-13. `updateControlInput(...)`
-14. `mj_step(...)`
-15. `publishRobotState(...)`
+7. `IntegratedControllerRuntime::initialize(startup_mode_id_)`
+8. `RL_controller::RL_controller_Init(startup_mode_id_)`
+9. if no registry was injected, `RL_controller::initModeProfiles()` lazily creates `ModeProfileRegistry::loadFromYaml(...)`
+10. ROS subscriptions + timer setup
+11. each timer tick -> `controlLoopTick()`
+12. `buildRobotState()` from MuJoCo `qpos/qvel`
+13. `IntegratedControllerRuntime::step(...)`
+14. `RL_controller::step(...)`
+15. `updateControlInput(...)`
+16. `mj_step(...)`
+17. `publishRobotState(...)`
+
+Important detail:
+
+- sim2sim and sim2real now share the same controller/runtime logic
+- the current difference is only where the mode/profile registry is first created:
+- real runtime injects a shared registry from `main()`
+- MuJoCo runtime currently lets `RL_controller` lazily create one on initialization
 
 ## 6. Inactive Behavior
 
@@ -123,6 +132,11 @@ Current topology:
 ```text
 C++ fused backend (physics + controller) -> ROS2 frame stream -> Python MuJoCo viewer frontend
 ```
+
+If `enable_viewer:=false` and Python frontend is still enabled, the frontend falls back to inspector mode and listens to:
+
+- `/humanoid/sim2sim/mujoco_viewer_frame`
+- `/humanoid/sim2sim/mujoco_viewer_inspector`
 
 So this path keeps the friendly Python viewer while still reusing the same fused control/runtime logic as the C++ sim2sim backend.
 

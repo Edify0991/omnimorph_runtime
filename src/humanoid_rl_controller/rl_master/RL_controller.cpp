@@ -459,7 +459,13 @@ bool buildRobotBodyLocalFeatures(
 } // namespace
 
 RL_controller::RL_controller()
+    : RL_controller(nullptr)
+{
+}
+
+RL_controller::RL_controller(std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry)
     : onnx_env_(ORT_LOGGING_LEVEL_WARNING, "RL_controller")
+    , mode_registry_(std::move(mode_registry))
 {
     robot = RobotState::create();
     if (!robot)
@@ -476,9 +482,9 @@ RL_controller::~RL_controller()
     }
 }
 
-std::unique_ptr<RL_controller> RL_controller::create()
+std::unique_ptr<RL_controller> RL_controller::create(std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry)
 {
-    return std::make_unique<RL_controller>();
+    return std::make_unique<RL_controller>(std::move(mode_registry));
 }
 
 const std::array<std::string, rl_master::kLegJointCount> &RL_controller::canonicalJointOrder()
@@ -809,17 +815,16 @@ std::vector<float> RL_controller::buildDefaultAnglesFromCfg(const Sim2realCfg::R
 
 std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsFromYaml() const
 {
-    // Generic fallback used only when deploy_mode_profiles is missing.
-    // Runtime behavior should be data-driven from deploy_mode_profiles.
-    std::vector<ModeProfileSpec> specs = {
-        {rl_master::kModeCodeMin, "engineai_walk", "vel_walk"},
-    };
+    std::shared_ptr<const rl_master::ModeProfileRegistry> registry = mode_registry_;
+    if (!registry)
+    {
+        registry = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
+    }
 
-    const auto parsed_specs = loadDeployModeProfilesFromYAML(RL_CFG_PATH);
+    const auto &parsed_specs = registry->specs();
     if (parsed_specs.empty())
     {
-        std::cerr << "[RL_controller] deploy_mode_profiles not found, fallback to single default profile." << std::endl;
-        return specs;
+        throw std::runtime_error("mode registry is empty");
     }
 
     std::vector<ModeProfileSpec> parsed;
@@ -841,13 +846,17 @@ void RL_controller::initModeProfiles()
     mode_profiles_.clear();
     mode_to_profile_index_.clear();
 
+    if (!mode_registry_)
+    {
+        mode_registry_ = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
+    }
+
     const std::vector<ModeProfileSpec> specs = loadModeProfileSpecsFromYaml();
     if (specs.empty())
     {
         throw std::runtime_error("No deploy mode profile spec is configured");
     }
 
-    std::unordered_map<std::string, Sim2realCfg> cfg_cache;
     for (const auto &spec : specs)
     {
         if (mode_to_profile_index_.find(spec.mode_id) != mode_to_profile_index_.end())
@@ -865,20 +874,7 @@ void RL_controller::initModeProfiles()
                 std::to_string(spec.mode_id));
         }
 
-        Sim2realCfg cfg;
-        const auto cache_it = cfg_cache.find(spec.config_section);
-        if (cache_it != cfg_cache.end())
-        {
-            cfg = cache_it->second;
-        }
-        else
-        {
-            if (!cfg.loadFromYAML(RL_CFG_PATH, spec.config_section))
-            {
-                throw std::runtime_error("Failed to load config section: " + spec.config_section);
-            }
-            cfg_cache[spec.config_section] = cfg;
-        }
+        const auto &cfg = mode_registry_->cfgForSection(spec.config_section);
 
         ModeProfile profile;
         profile.mode_id = spec.mode_id;

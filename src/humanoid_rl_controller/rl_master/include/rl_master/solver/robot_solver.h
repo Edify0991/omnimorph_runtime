@@ -27,7 +27,9 @@ class RobotSolver
 {
 public:
     ~RobotSolver();
-    static std::unique_ptr<RobotSolver> create(int startup_mode_id = 0);
+    static std::unique_ptr<RobotSolver> create(
+        int startup_mode_id = 0,
+        std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry = nullptr);
 
     bool initialize();
     void run();
@@ -104,6 +106,7 @@ private:
     std::string active_config_section_ = "sim2real";
     Sim2realCfg sim2real_cfg_;
     int active_mode_id_ = 0;
+    std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry_;
     std::unordered_map<int, std::string> mode_to_config_section_;
     std::vector<DeployModeProfileSpec> mode_profile_specs_;
     int last_mode_reload_failure_id_ = std::numeric_limits<int>::min();

@@ -7,13 +7,25 @@
 namespace rl_master::runtime
 {
 
-IntegratedControllerRuntime::IntegratedControllerRuntime() = default;
+IntegratedControllerRuntime::IntegratedControllerRuntime(std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry)
+    : mode_registry_(std::move(mode_registry))
+{
+}
 
 IntegratedControllerRuntime::~IntegratedControllerRuntime() = default;
 
+void IntegratedControllerRuntime::setModeProfileRegistry(std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry)
+{
+    if (controller_)
+    {
+        throw std::runtime_error("cannot change mode profile registry after controller runtime initialization");
+    }
+    mode_registry_ = std::move(mode_registry);
+}
+
 void IntegratedControllerRuntime::initialize(int startup_mode_id)
 {
-    controller_ = RL_controller::create();
+    controller_ = RL_controller::create(mode_registry_);
     if (!controller_)
     {
         throw std::runtime_error("failed to create integrated RL_controller runtime");

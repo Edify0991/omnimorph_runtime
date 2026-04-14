@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 
+#include "rl_master/mode_profile_registry.h"
 #include "rl_master/rl_cfg.h"
 #include "rl_master/runtime/realtime_utils.h"
 #include "rl_master/solver/robot_solver.h"
@@ -64,17 +65,20 @@ int main(int argc, char **argv)
 {
     const int startup_mode_id = parseStartupModeId(argc, argv);
 
-    Sim2realCfg startup_cfg;
-    const std::string startup_section = resolveDeployConfigSectionForModeFromYAML(
-        RL_CFG_PATH,
-        startup_mode_id,
-        "engineai_walk");
-    if (!startup_cfg.loadFromYAML(RL_CFG_PATH, startup_section))
+    std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry;
+    try
     {
-        std::cerr << "Failed to load startup config section '" << startup_section
-                  << "' for realtime setup." << std::endl;
+        mode_registry = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Failed to load mode profile registry: " << e.what() << std::endl;
         return -1;
     }
+
+    const auto &startup_spec = mode_registry->specForMode(startup_mode_id, true);
+    const auto &startup_cfg = mode_registry->cfgForMode(startup_mode_id, true);
+    const std::string startup_section = startup_spec.config_section;
     std::cout << "[RL_solver] startup mode_id=" << startup_mode_id
               << ", config section=" << startup_section << std::endl;
     rl_master::runtime::RealtimeConfig runtime_rt = startup_cfg.realtime;
@@ -83,7 +87,7 @@ int main(int argc, char **argv)
     rl_master::runtime::configureRealtime(runtime_rt, "RL_solver");
 
     std::unique_ptr<rl_master::solver::RobotSolver> solver =
-        rl_master::solver::RobotSolver::create(startup_mode_id);
+        rl_master::solver::RobotSolver::create(startup_mode_id, mode_registry);
     if (!solver)
     {
         std::cerr << "Failed to create RobotSolver." << std::endl;

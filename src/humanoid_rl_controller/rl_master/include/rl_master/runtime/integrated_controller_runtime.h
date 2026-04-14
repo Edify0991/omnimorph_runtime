@@ -7,6 +7,7 @@
 #include <string>
 
 #include "rl_master/deploy_state_machine.h"
+#include "rl_master/mode_profile_registry.h"
 #include "rl_master/robot_types.h"
 
 class RL_controller;
@@ -18,8 +19,10 @@ namespace rl_master::runtime
 class IntegratedControllerRuntime
 {
 public:
-    IntegratedControllerRuntime();
+    explicit IntegratedControllerRuntime(std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry = nullptr);
     ~IntegratedControllerRuntime();
+
+    void setModeProfileRegistry(std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry);
 
     void initialize(int startup_mode_id = rl_master::kModeCodeMin);
     rl_master::RobotCommandData step(
@@ -36,6 +39,7 @@ public:
     const RL_controller &controller() const;
 
 private:
+    std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry_;
     std::unique_ptr<RL_controller> controller_;
     rl_master::TeleopCommand latest_teleop_{};
     int mode_command_cache_ = rl_master::kCtrlWordSetModeBase + rl_master::kModeCodeMin;

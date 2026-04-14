@@ -142,6 +142,7 @@ add_library(rl_master_runtime SHARED
   deploy_state_machine.cpp
   external_observation_provider.cpp
   logging/structured_logger.cpp
+  mode_profile_registry.cpp
   RL_controller.cpp
   onnx_policy_runner.cpp
   observation_builder.cpp

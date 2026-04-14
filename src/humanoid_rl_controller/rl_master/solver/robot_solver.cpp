@@ -51,9 +51,16 @@ std::vector<double> toDoubleVector(const std::vector<float> &values)
 
 RobotSolver::~RobotSolver() = default;
 
-std::unique_ptr<RobotSolver> RobotSolver::create(int startup_mode_id)
+std::unique_ptr<RobotSolver> RobotSolver::create(
+    int startup_mode_id,
+    std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry)
 {
     auto solver = std::unique_ptr<RobotSolver>(new RobotSolver());
+    solver->mode_registry_ = std::move(mode_registry);
+    if (!solver->mode_registry_)
+    {
+        solver->mode_registry_ = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
+    }
     solver->initModeProfileMap();
     if (!solver->switchToModeConfig(startup_mode_id, true))
     {
@@ -68,16 +75,20 @@ std::unique_ptr<RobotSolver> RobotSolver::create(int startup_mode_id)
 void RobotSolver::initModeProfileMap()
 {
     mode_profile_specs_.clear();
+    mode_to_config_section_.clear();
+    if (!mode_registry_)
+    {
+        return;
+    }
+
     try
     {
-        mode_profile_specs_ = loadDeployModeProfilesFromYAML(RL_CFG_PATH);
+        mode_profile_specs_ = mode_registry_->specs();
     }
     catch (const std::exception &e)
     {
-        std::cerr << "[RL_solver] failed to parse deploy_mode_profiles: " << e.what()
-                  << ". fallback to default section resolution." << std::endl;
+        std::cerr << "[RL_solver] failed to read mode registry specs: " << e.what() << std::endl;
     }
-    mode_to_config_section_.clear();
     for (const auto &spec : mode_profile_specs_)
     {
         if (spec.config_section.empty())
@@ -90,34 +101,25 @@ void RobotSolver::initModeProfileMap()
 
 bool RobotSolver::switchToModeConfig(int mode_id, bool allow_fallback_to_default)
 {
-    std::string section;
+    if (!mode_registry_)
+    {
+        return false;
+    }
+
     int resolved_mode_id = mode_id;
-    auto it = mode_to_config_section_.find(mode_id);
-    if (it != mode_to_config_section_.end())
-    {
-        section = it->second;
-    }
-    else if (allow_fallback_to_default)
-    {
-        section = resolveDeployConfigSectionForModeFromYAML(RL_CFG_PATH, mode_id, "sim2real");
-        if (!mode_profile_specs_.empty())
-        {
-            resolved_mode_id = mode_profile_specs_.front().mode_id;
-        }
-    }
-    else
-    {
-        return false;
-    }
-
-    if (section.empty())
-    {
-        return false;
-    }
-
+    std::string section;
     Sim2realCfg loaded;
-    if (!loaded.loadFromYAML(RL_CFG_PATH, section))
+    try
     {
+        const auto &spec = mode_registry_->specForMode(mode_id, allow_fallback_to_default);
+        resolved_mode_id = spec.mode_id;
+        section = spec.config_section;
+        loaded = mode_registry_->cfgForMode(mode_id, allow_fallback_to_default);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "[RL_solver] failed to resolve mode config for mode_id=" << mode_id
+                  << ": " << e.what() << std::endl;
         return false;
     }
 
@@ -203,6 +205,7 @@ void RobotSolver::initializeBuffers()
 
 void RobotSolver::initializeController()
 {
+    controller_runtime_.setModeProfileRegistry(mode_registry_);
     controller_runtime_.initialize(active_mode_id_);
     syncRuntimeCfgFromController(true);
 }

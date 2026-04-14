@@ -86,19 +86,32 @@ Helper examples:
 Real-robot runtime path:
 
 1. `main()` in `rl_solver.cpp`
-2. `RobotSolver::create(mode_id)`
-3. `RobotSolver::initialize()`
-4. `RobotSolver::initializeController()`
-5. `IntegratedControllerRuntime::initialize(startup_mode_id)`
-6. `RL_controller::RL_controller_Init()`
-7. `RobotSolver::run()` loop
-8. `motor_shm_io_.readFeedback(...)`
-9. `dds_bridge_.spinOnce()` + sampled teleop / walk_mode / imu
-10. `dds_bridge_.buildRobotStateData(...)`
-11. `IntegratedControllerRuntime::step(...)`
-12. `RL_controller::step(...)`
-13. `RobotSolver::applyRuntimeCommand(...)`
-14. `sendMotorCmd()`
+2. `ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk")`
+3. `mode_registry->specForMode(startup_mode_id, true)`
+4. `mode_registry->cfgForMode(startup_mode_id, true)`
+5. configure realtime from the selected startup cfg
+6. `RobotSolver::create(startup_mode_id, mode_registry)`
+7. `RobotSolver::switchToModeConfig(startup_mode_id, true)`
+8. `RobotSolver::initialize()`
+9. `RobotSolver::initializeController()`
+10. `IntegratedControllerRuntime::setModeProfileRegistry(mode_registry_)`
+11. `IntegratedControllerRuntime::initialize(startup_mode_id)`
+12. `RL_controller::RL_controller_Init(startup_mode_id)`
+13. `RL_controller::initModeProfiles()`
+14. `RobotSolver::run()` loop
+15. `motor_shm_io_.readFeedback(...)`
+16. `dds_bridge_.spinOnce()` + sampled teleop / walk_mode / imu
+17. `dds_bridge_.buildRobotStateData(...)`
+18. `IntegratedControllerRuntime::step(...)`
+19. `RL_controller::step(...)`
+20. `RobotSolver::applyRuntimeCommand(...)`
+21. `sendMotorCmd()`
+
+Important details:
+
+- `solver` and `controller` now share the same cached mode/profile registry
+- runtime mode switching uses already-built in-memory profiles
+- switching mode no longer depends on both sides separately re-reading `rl_cfg.yaml`
 
 ## 6. Why This Is Better
 
