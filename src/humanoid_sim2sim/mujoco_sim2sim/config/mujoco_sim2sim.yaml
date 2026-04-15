@@ -80,9 +80,12 @@ mujoco_sim_bridge:
     enable_python_viewer_inspector: false
     viewer_inspector_topic: "/humanoid/sim2sim/mujoco_viewer_inspector"
     viewer_fps: 60.0
+    viewer_inspector_hz: 10.0
     viewer_width: 1280
     viewer_height: 720
     viewer_title: "MuJoCo Sim2Sim Viewer"
+    enable_state_telemetry: true
+    state_telemetry_hz: 50.0
     # Python interactive backend only.
     show_left_ui: true
     show_right_ui: true

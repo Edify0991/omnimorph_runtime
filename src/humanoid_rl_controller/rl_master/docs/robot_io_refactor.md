@@ -1,4 +1,4 @@
-﻿# RobotIO Refactor (DDS Runtime)
+﻿# RobotIO Refactor (Legacy DDS Runtime)
 
 ## 目标
 
@@ -8,13 +8,18 @@
 - 当前实现为 `DdsRobotIO`
 - 未来可按需扩展其他后端（不影响控制器主逻辑）
 
+注意：
+
+- 这份文档描述的是 legacy 双进程 `RobotIO` 路径
+- 现役 fused runtime 已不再使用 `/humanoid/rl/command`
+
 ## 运行链路
 
 1. `read_state()` <- `/humanoid/rl/state`
 2. `read_control_command()` <- `/humanoid/rl/teleop`
 3. `read_mode_command()` <- `/humanoid/rl/walk_mode`
 4. `controller.step(...)` 产出动作
-5. `write_command()` -> `/humanoid/rl/command`
+5. `write_command()` -> legacy `/humanoid/rl/command`
 
 异常/停机路径：
 
@@ -37,3 +42,4 @@
 
 - 旧的 `shared_memory_robot_io.*` 已删除
 - 电机闭环 SHM 逻辑仅保留在 `RL_solver` 中
+- `/humanoid/rl/command` 已收口为 legacy 接口，不再属于现役 fused runtime

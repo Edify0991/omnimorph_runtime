@@ -310,6 +310,8 @@ public:
     bool enable_cmd_watchdog = true;
     double cmd_timeout_s = 0.12;
     int loop_overrun_warn_us = 2000;
+    bool enable_state_telemetry = true;
+    double state_telemetry_hz = 50.0;
 
     std::vector<float> tau_limit;
 
@@ -606,6 +608,8 @@ public:
             enable_cmd_watchdog = yamlReadOr<bool>(cfg, "enable_cmd_watchdog", true);
             cmd_timeout_s = yamlReadOr<double>(cfg, "cmd_timeout_s", 0.12);
             loop_overrun_warn_us = yamlReadOr<int>(cfg, "loop_overrun_warn_us", 2000);
+            enable_state_telemetry = yamlReadOr<bool>(cfg, "enable_state_telemetry", true);
+            state_telemetry_hz = yamlReadOr<double>(cfg, "state_telemetry_hz", 50.0);
 
             realtime = parseRealtimeConfigNode(cfg["realtime"]);
             if (!cfg["realtime"])
@@ -692,6 +696,9 @@ public:
                   << ", cpu_id=" << realtime.cpu_id
                   << ", use_fifo=" << (realtime.use_fifo_scheduler ? "true" : "false")
                   << ", fifo_priority=" << realtime.fifo_priority
+                  << std::endl;
+        std::cout << "State Telemetry: enabled=" << (enable_state_telemetry ? "true" : "false")
+                  << ", hz=" << state_telemetry_hz
                   << std::endl;
         std::cout << "=============================" << std::endl;
     }

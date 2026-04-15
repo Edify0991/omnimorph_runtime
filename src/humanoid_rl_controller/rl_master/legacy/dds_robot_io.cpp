@@ -32,7 +32,7 @@ void DdsRobotIO::connect()
     node_ = std::make_shared<rclcpp::Node>("rl_controller_dds_io");
 
     command_pub_ = node_->create_publisher<std_msgs::msg::Float32MultiArray>(
-        rl_master::dds::kTopicPolicyCommand,
+        rl_master::dds::legacy::kTopicPolicyCommand,
         rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 
     state_sub_ = node_->create_subscription<std_msgs::msg::Float32MultiArray>(

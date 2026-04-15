@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -146,13 +147,16 @@ MujocoSimBridge::MujocoSimBridge()
     resolveModelMappings();
     initializeState();
     controller_runtime_.initialize(startup_mode_id_);
-    mode_command_cache_ = rl_master::kCtrlWordSetModeBase + startup_mode_id_;
+    mode_command_cache_.store(rl_master::kCtrlWordSetModeBase + startup_mode_id_);
     initializeViewer();
     setupRosInterfaces();
+    startInputExecutor();
+    startStateTelemetry();
+    startViewerTelemetry();
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s",
+        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
@@ -161,12 +165,17 @@ MujocoSimBridge::MujocoSimBridge()
         enable_viewer_ ? "on" : "off",
         enable_python_viewer_stream_ ? viewer_frame_topic_.c_str() : "off",
         enable_python_viewer_inspector_ ? viewer_inspector_topic_.c_str() : "off",
-        no_command_behavior_.c_str());
+        no_command_behavior_.c_str(),
+        enable_state_telemetry_ ? "on" : "off",
+        state_telemetry_hz_);
 }
 
 MujocoSimBridge::~MujocoSimBridge()
 {
     control_timer_.reset();
+    stopViewerTelemetry();
+    stopStateTelemetry();
+    stopInputExecutor();
     walk_mode_sub_.reset();
     teleop_sub_.reset();
     state_pub_.reset();
@@ -210,9 +219,12 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<bool>("enable_python_viewer_inspector", false);
     this->declare_parameter<std::string>("viewer_inspector_topic", "/humanoid/sim2sim/mujoco_viewer_inspector");
     this->declare_parameter<double>("viewer_fps", 60.0);
+    this->declare_parameter<double>("viewer_inspector_hz", 10.0);
     this->declare_parameter<int>("viewer_width", 1280);
     this->declare_parameter<int>("viewer_height", 720);
     this->declare_parameter<std::string>("viewer_title", "MuJoCo Sim2Sim Viewer");
+    this->declare_parameter<bool>("enable_state_telemetry", true);
+    this->declare_parameter<double>("state_telemetry_hz", 50.0);
     this->declare_parameter<std::vector<double>>("kp", std::vector<double>(kJointCount, 80.0));
     this->declare_parameter<std::vector<double>>("kd", std::vector<double>(kJointCount, 2.0));
     this->declare_parameter<std::vector<double>>("torque_limit", std::vector<double>(kJointCount, 120.0));
@@ -247,11 +259,14 @@ void MujocoSimBridge::loadParameters()
         viewer_inspector_topic_ = "/humanoid/sim2sim/mujoco_viewer_inspector";
     }
     viewer_fps_ = std::max(1.0, this->get_parameter("viewer_fps").as_double());
+    viewer_inspector_hz_ = std::max(0.1, this->get_parameter("viewer_inspector_hz").as_double());
     const int64_t viewer_width_param = this->get_parameter("viewer_width").as_int();
     const int64_t viewer_height_param = this->get_parameter("viewer_height").as_int();
     viewer_width_ = static_cast<int>(std::clamp<int64_t>(viewer_width_param, 320, 8192));
     viewer_height_ = static_cast<int>(std::clamp<int64_t>(viewer_height_param, 240, 8192));
     viewer_title_ = this->get_parameter("viewer_title").as_string();
+    enable_state_telemetry_ = this->get_parameter("enable_state_telemetry").as_bool();
+    state_telemetry_hz_ = std::max(0.0, this->get_parameter("state_telemetry_hz").as_double());
 
     std::vector<std::string> joint_names_param = canonical_names;
     const auto joint_names_param_obj = this->get_parameter("joint_names");
@@ -551,24 +566,325 @@ void MujocoSimBridge::setupRosInterfaces()
             rclcpp::QoS(rclcpp::KeepLast(5)).best_effort());
     }
 
-    teleop_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+    const auto period = std::chrono::duration<double>(1.0 / control_hz_);
+    control_timer_ = this->create_wall_timer(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(period),
+        [this]() { this->controlLoopTick(); });
+}
+
+void MujocoSimBridge::startInputExecutor()
+{
+    stopInputExecutor();
+
+    input_node_ = std::make_shared<rclcpp::Node>("mujoco_sim_bridge_io");
+    input_executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+
+    teleop_sub_ = input_node_->create_subscription<geometry_msgs::msg::Twist>(
         rl_master::dds::kTopicTeleopCommand,
         rclcpp::QoS(rclcpp::KeepLast(20)).best_effort(),
         [this](const geometry_msgs::msg::Twist::SharedPtr msg) {
             this->teleopCallback(msg);
         });
 
-    walk_mode_sub_ = this->create_subscription<std_msgs::msg::Int32>(
+    walk_mode_sub_ = input_node_->create_subscription<std_msgs::msg::Int32>(
         rl_master::dds::kTopicWalkMode,
         rclcpp::QoS(rclcpp::KeepLast(20)).reliable(),
         [this](const std_msgs::msg::Int32::SharedPtr msg) {
             this->walkModeCallback(msg);
         });
 
-    const auto period = std::chrono::duration<double>(1.0 / control_hz_);
-    control_timer_ = this->create_wall_timer(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(period),
-        [this]() { this->controlLoopTick(); });
+    io_stop_requested_.store(false);
+    input_executor_->add_node(input_node_);
+    input_executor_thread_ = std::thread([this]() {
+        try
+        {
+            if (input_executor_)
+            {
+                input_executor_->spin();
+            }
+        }
+        catch (const std::exception &e)
+        {
+            RCLCPP_ERROR(this->get_logger(), "MuJoCo input executor exception: %s", e.what());
+        }
+    });
+}
+
+void MujocoSimBridge::stopInputExecutor()
+{
+    io_stop_requested_.store(true);
+    telemetry_cv_.notify_all();
+
+    if (input_executor_)
+    {
+        input_executor_->cancel();
+    }
+    if (input_executor_thread_.joinable())
+    {
+        input_executor_thread_.join();
+    }
+    if (input_executor_ && input_node_)
+    {
+        input_executor_->remove_node(input_node_);
+    }
+    walk_mode_sub_.reset();
+    teleop_sub_.reset();
+    input_executor_.reset();
+    input_node_.reset();
+}
+
+void MujocoSimBridge::startStateTelemetry()
+{
+    stopStateTelemetry();
+    io_stop_requested_.store(false);
+    state_telemetry_thread_ = std::thread([this]() {
+        while (!io_stop_requested_.load())
+        {
+            rl_master::RobotStateData state;
+            bool enabled = false;
+            double publish_hz = 0.0;
+            bool has_state = false;
+
+            {
+                std::unique_lock<std::mutex> lock(telemetry_mutex_);
+                enabled = enable_state_telemetry_;
+                publish_hz = state_telemetry_hz_;
+                has_state = has_mirrored_state_;
+                if (!enabled || publish_hz <= 0.0 || !has_state)
+                {
+                    telemetry_cv_.wait_for(
+                        lock,
+                        std::chrono::milliseconds(100),
+                        [this]() {
+                            return io_stop_requested_.load() ||
+                                   (enable_state_telemetry_ && state_telemetry_hz_ > 0.0 && has_mirrored_state_);
+                        });
+                    continue;
+                }
+                state = latest_mirrored_state_;
+            }
+
+            publishRobotState(state);
+
+            std::unique_lock<std::mutex> lock(telemetry_mutex_);
+            telemetry_cv_.wait_for(
+                lock,
+                std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double>(1.0 / publish_hz)),
+                [this]() { return io_stop_requested_.load(); });
+        }
+    });
+}
+
+void MujocoSimBridge::stopStateTelemetry()
+{
+    io_stop_requested_.store(true);
+    telemetry_cv_.notify_all();
+    if (state_telemetry_thread_.joinable())
+    {
+        state_telemetry_thread_.join();
+    }
+}
+
+void MujocoSimBridge::startViewerTelemetry()
+{
+    stopViewerTelemetry();
+    io_stop_requested_.store(false);
+    viewer_telemetry_thread_ = std::thread([this]() {
+        auto last_frame_pub = std::chrono::steady_clock::time_point{};
+        auto last_inspector_pub = std::chrono::steady_clock::time_point{};
+
+        while (!io_stop_requested_.load())
+        {
+            std::vector<float> qpos;
+            std::vector<float> qvel;
+            std::vector<float> ctrl;
+            float sim_time = 0.0f;
+            std::string inspector_text;
+            bool has_frame = false;
+            bool has_inspector = false;
+
+            {
+                std::unique_lock<std::mutex> lock(viewer_telemetry_mutex_);
+                if ((!enable_python_viewer_stream_ || !has_viewer_frame_) &&
+                    (!enable_python_viewer_inspector_ || !has_viewer_inspector_))
+                {
+                    viewer_telemetry_cv_.wait_for(
+                        lock,
+                        std::chrono::milliseconds(100),
+                        [this]() {
+                            return io_stop_requested_.load() ||
+                                   (enable_python_viewer_stream_ && has_viewer_frame_) ||
+                                   (enable_python_viewer_inspector_ && has_viewer_inspector_);
+                        });
+                    continue;
+                }
+
+                has_frame = has_viewer_frame_;
+                has_inspector = has_viewer_inspector_;
+                if (has_frame)
+                {
+                    qpos = latest_viewer_qpos_;
+                    qvel = latest_viewer_qvel_;
+                    ctrl = latest_viewer_ctrl_;
+                    sim_time = latest_viewer_sim_time_;
+                }
+                if (has_inspector)
+                {
+                    inspector_text = latest_viewer_inspector_text_;
+                }
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+            if (enable_python_viewer_stream_ && has_frame)
+            {
+                const auto frame_period = std::chrono::duration<double>(1.0 / std::max(1.0, viewer_fps_));
+                if (last_frame_pub.time_since_epoch().count() == 0 ||
+                    (now - last_frame_pub) >= frame_period)
+                {
+                    publishViewerFrameMirror(qpos, qvel, ctrl, sim_time);
+                    last_frame_pub = now;
+                }
+            }
+
+            if (enable_python_viewer_inspector_ && has_inspector)
+            {
+                const auto inspector_period = std::chrono::duration<double>(1.0 / std::max(0.1, viewer_inspector_hz_));
+                if (last_inspector_pub.time_since_epoch().count() == 0 ||
+                    (now - last_inspector_pub) >= inspector_period)
+                {
+                    publishViewerInspectorText(inspector_text);
+                    last_inspector_pub = now;
+                }
+            }
+
+            std::unique_lock<std::mutex> lock(viewer_telemetry_mutex_);
+            viewer_telemetry_cv_.wait_for(lock, std::chrono::milliseconds(5), [this]() { return io_stop_requested_.load(); });
+        }
+    });
+}
+
+void MujocoSimBridge::stopViewerTelemetry()
+{
+    io_stop_requested_.store(true);
+    viewer_telemetry_cv_.notify_all();
+    if (viewer_telemetry_thread_.joinable())
+    {
+        viewer_telemetry_thread_.join();
+    }
+}
+
+void MujocoSimBridge::updateMirroredState(const rl_master::RobotStateData &state)
+{
+    bool should_notify = false;
+    {
+        std::lock_guard<std::mutex> lock(telemetry_mutex_);
+        should_notify = !has_mirrored_state_;
+        latest_mirrored_state_ = state;
+        has_mirrored_state_ = true;
+    }
+    if (should_notify)
+    {
+        telemetry_cv_.notify_all();
+    }
+}
+
+void MujocoSimBridge::updateViewerFrameMirror()
+{
+    if (!enable_python_viewer_stream_)
+    {
+        return;
+    }
+
+    bool should_notify = false;
+    {
+        std::lock_guard<std::mutex> lock(viewer_telemetry_mutex_);
+        should_notify = !has_viewer_frame_;
+        latest_viewer_qpos_.assign(model_->nq, 0.0f);
+        latest_viewer_qvel_.assign(model_->nv, 0.0f);
+        latest_viewer_ctrl_.assign(model_->nu, 0.0f);
+        for (int i = 0; i < model_->nq; ++i)
+        {
+            latest_viewer_qpos_[i] = static_cast<float>(data_->qpos[i]);
+        }
+        for (int i = 0; i < model_->nv; ++i)
+        {
+            latest_viewer_qvel_[i] = static_cast<float>(data_->qvel[i]);
+        }
+        for (int i = 0; i < model_->nu; ++i)
+        {
+            latest_viewer_ctrl_[i] = static_cast<float>(data_->ctrl[i]);
+        }
+        latest_viewer_sim_time_ = static_cast<float>(data_->time);
+        has_viewer_frame_ = true;
+    }
+    if (should_notify)
+    {
+        viewer_telemetry_cv_.notify_all();
+    }
+}
+
+void MujocoSimBridge::updateViewerInspectorMirror(
+    const rl_master::RobotStateData &state,
+    const rl_master::RobotCommandData &command,
+    const rl_master::CommandRuntimeDecision &runtime_mode)
+{
+    if (!enable_python_viewer_inspector_)
+    {
+        return;
+    }
+
+    double mean_abs_joint_error = 0.0;
+    double max_abs_joint_error = 0.0;
+    for (size_t i = 0; i < kJointCount; ++i)
+    {
+        const double err = std::abs(static_cast<double>(last_target_q_[i]) - static_cast<double>(state.joint_q[i]));
+        mean_abs_joint_error += err;
+        max_abs_joint_error = std::max(max_abs_joint_error, err);
+    }
+    if (kJointCount > 0)
+    {
+        mean_abs_joint_error /= static_cast<double>(kJointCount);
+    }
+
+    std::ostringstream oss;
+    const rl_master::TeleopCommand teleop_command = latestTeleopCommand();
+    oss << std::fixed << std::setprecision(3)
+        << "mode_id=" << controller_runtime_.activeModeId()
+        << " section=" << controller_runtime_.activeConfigSection()
+        << " runtime=" << rl_master::commandRuntimeModeName(runtime_mode.mode)
+        << " active=" << (runtime_mode.open_rl_active ? "1" : "0")
+        << " open_rl=" << static_cast<double>(command.open_rl)
+        << " sim_t=" << static_cast<double>(data_->time)
+        << " teleop=("
+        << static_cast<double>(teleop_command.vx) << ","
+        << static_cast<double>(teleop_command.vy) << ","
+        << static_cast<double>(teleop_command.dyaw) << ")"
+        << " base_rpy=("
+        << static_cast<double>(state.base_rpy[0]) << ","
+        << static_cast<double>(state.base_rpy[1]) << ","
+        << static_cast<double>(state.base_rpy[2]) << ")"
+        << " qerr_mean=" << mean_abs_joint_error
+        << " qerr_max=" << max_abs_joint_error
+        << " paused=" << (viewer_paused_ ? "1" : "0");
+
+    bool should_notify = false;
+    {
+        std::lock_guard<std::mutex> lock(viewer_telemetry_mutex_);
+        should_notify = !has_viewer_inspector_;
+        latest_viewer_inspector_text_ = oss.str();
+        has_viewer_inspector_ = true;
+    }
+    if (should_notify)
+    {
+        viewer_telemetry_cv_.notify_all();
+    }
+}
+
+rl_master::TeleopCommand MujocoSimBridge::latestTeleopCommand() const
+{
+    std::lock_guard<std::mutex> lock(teleop_mutex_);
+    return latest_teleop_command_;
 }
 
 void MujocoSimBridge::initializeState()
@@ -1020,6 +1336,7 @@ void MujocoSimBridge::teleopCallback(const geometry_msgs::msg::Twist::SharedPtr 
     {
         return;
     }
+    std::lock_guard<std::mutex> lock(teleop_mutex_);
     latest_teleop_command_.vx = static_cast<float>(msg->linear.x);
     latest_teleop_command_.vy = static_cast<float>(msg->linear.y);
     latest_teleop_command_.dyaw = static_cast<float>(msg->angular.z);
@@ -1040,7 +1357,7 @@ void MujocoSimBridge::walkModeCallback(const std_msgs::msg::Int32::SharedPtr msg
         }
         return;
     }
-    mode_command_cache_ = msg->data;
+    mode_command_cache_.store(msg->data);
 }
 
 void MujocoSimBridge::controlLoopTick()
@@ -1050,8 +1367,9 @@ void MujocoSimBridge::controlLoopTick()
     const int speed_substeps = std::max(1, static_cast<int>(std::lround(substeps_per_control_ * sim_speed_scale_)));
 
     const rl_master::RobotStateData state = buildRobotState();
+    const rl_master::TeleopCommand teleop_command = latestTeleopCommand();
     const rl_master::RobotCommandData command =
-        controller_runtime_.step(state, latest_teleop_command_, mode_command_cache_);
+        controller_runtime_.step(state, teleop_command, mode_command_cache_.load());
     const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
     const bool control_active = runtime_mode.open_rl_active;
 
@@ -1097,9 +1415,9 @@ void MujocoSimBridge::controlLoopTick()
     }
 
     const rl_master::RobotStateData post_state = buildRobotState();
-    publishRobotState(post_state);
-    publishViewerFrame();
-    publishViewerInspector(post_state, command, runtime_mode);
+    updateMirroredState(post_state);
+    updateViewerFrameMirror();
+    updateViewerInspectorMirror(post_state, command, runtime_mode);
     renderViewerFrame();
 }
 
@@ -1347,6 +1665,15 @@ void MujocoSimBridge::publishRobotState(const rl_master::RobotStateData &state)
 
 void MujocoSimBridge::publishViewerFrame()
 {
+    updateViewerFrameMirror();
+}
+
+void MujocoSimBridge::publishViewerFrameMirror(
+    const std::vector<float> &qpos,
+    const std::vector<float> &qvel,
+    const std::vector<float> &ctrl,
+    float sim_time)
+{
     if (!enable_python_viewer_stream_ || !viewer_frame_pub_)
     {
         return;
@@ -1361,21 +1688,21 @@ void MujocoSimBridge::publishViewerFrame()
     msg.data.push_back(static_cast<float>(model_->nq));
     msg.data.push_back(static_cast<float>(model_->nv));
     msg.data.push_back(static_cast<float>(model_->nu));
-    msg.data.push_back(static_cast<float>(data_->time));
+    msg.data.push_back(sim_time);
     msg.data.push_back(control_hz_ > 0.0 ? static_cast<float>(1.0 / control_hz_) : 0.0f);
     msg.data.push_back(fix_base_ ? 1.0f : 0.0f);
 
-    for (int i = 0; i < model_->nq; ++i)
+    for (size_t i = 0; i < qpos.size(); ++i)
     {
-        msg.data.push_back(static_cast<float>(data_->qpos[i]));
+        msg.data.push_back(qpos[i]);
     }
-    for (int i = 0; i < model_->nv; ++i)
+    for (size_t i = 0; i < qvel.size(); ++i)
     {
-        msg.data.push_back(static_cast<float>(data_->qvel[i]));
+        msg.data.push_back(qvel[i]);
     }
-    for (int i = 0; i < model_->nu; ++i)
+    for (size_t i = 0; i < ctrl.size(); ++i)
     {
-        msg.data.push_back(static_cast<float>(data_->ctrl[i]));
+        msg.data.push_back(ctrl[i]);
     }
 
     viewer_frame_pub_->publish(std::move(msg));
@@ -1386,45 +1713,18 @@ void MujocoSimBridge::publishViewerInspector(
     const rl_master::RobotCommandData &command,
     const rl_master::CommandRuntimeDecision &runtime_mode)
 {
+    updateViewerInspectorMirror(state, command, runtime_mode);
+}
+
+void MujocoSimBridge::publishViewerInspectorText(const std::string &text)
+{
     if (!enable_python_viewer_inspector_ || !viewer_inspector_pub_)
     {
         return;
     }
 
-    double mean_abs_joint_error = 0.0;
-    double max_abs_joint_error = 0.0;
-    for (size_t i = 0; i < kJointCount; ++i)
-    {
-        const double err = std::abs(static_cast<double>(last_target_q_[i]) - static_cast<double>(state.joint_q[i]));
-        mean_abs_joint_error += err;
-        max_abs_joint_error = std::max(max_abs_joint_error, err);
-    }
-    if (kJointCount > 0)
-    {
-        mean_abs_joint_error /= static_cast<double>(kJointCount);
-    }
-
     std_msgs::msg::String msg;
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(3)
-        << "mode_id=" << controller_runtime_.activeModeId()
-        << " section=" << controller_runtime_.activeConfigSection()
-        << " runtime=" << rl_master::commandRuntimeModeName(runtime_mode.mode)
-        << " active=" << (runtime_mode.open_rl_active ? "1" : "0")
-        << " open_rl=" << static_cast<double>(command.open_rl)
-        << " sim_t=" << static_cast<double>(data_->time)
-        << " teleop=("
-        << static_cast<double>(latest_teleop_command_.vx) << ","
-        << static_cast<double>(latest_teleop_command_.vy) << ","
-        << static_cast<double>(latest_teleop_command_.dyaw) << ")"
-        << " base_rpy=("
-        << static_cast<double>(state.base_rpy[0]) << ","
-        << static_cast<double>(state.base_rpy[1]) << ","
-        << static_cast<double>(state.base_rpy[2]) << ")"
-        << " qerr_mean=" << mean_abs_joint_error
-        << " qerr_max=" << max_abs_joint_error
-        << " paused=" << (viewer_paused_ ? "1" : "0");
-    msg.data = oss.str();
+    msg.data = text;
     viewer_inspector_pub_->publish(std::move(msg));
 }
 

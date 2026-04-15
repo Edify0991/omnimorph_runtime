@@ -54,6 +54,9 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
 - `pause_when_no_command`: pause stepping when controller output is inactive
 - `no_command_behavior`: inactive behavior for actuators
 - `actuator_control_mode`: `auto | torque | position`
+- `enable_state_telemetry`: enable low-frequency asynchronous `/humanoid/rl/state`
+- `state_telemetry_hz`: publish rate for asynchronous `/humanoid/rl/state`
+- `viewer_inspector_hz`: asynchronous publish rate for Python viewer inspector text
 
 ### Compatibility argument
 
@@ -66,6 +69,7 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
 - `/humanoid/rl/state` (debug / monitoring)
 
 The bridge does not need `/humanoid/rl/command` anymore in the standard C++ path.
+That topic now belongs only to the legacy split runtime.
 
 ## 5. Internal Function Chain
 
@@ -78,14 +82,26 @@ The bridge does not need `/humanoid/rl/command` anymore in the standard C++ path
 7. `IntegratedControllerRuntime::initialize(startup_mode_id_)`
 8. `RL_controller::RL_controller_Init(startup_mode_id_)`
 9. if no registry was injected, `RL_controller::initModeProfiles()` lazily creates `ModeProfileRegistry::loadFromYaml(...)`
-10. ROS subscriptions + timer setup
-11. each timer tick -> `controlLoopTick()`
-12. `buildRobotState()` from MuJoCo `qpos/qvel`
-13. `IntegratedControllerRuntime::step(...)`
-14. `RL_controller::step(...)`
-15. `updateControlInput(...)`
-16. `mj_step(...)`
-17. `publishRobotState(...)`
+10. `setupRosInterfaces()` creates timer + state publisher
+11. `startInputExecutor()` starts dedicated teleop / walk_mode ROS input thread
+12. `startStateTelemetry()` starts low-frequency asynchronous state telemetry thread
+13. `startViewerTelemetry()` starts asynchronous viewer frame / inspector publisher thread
+14. each timer tick -> `controlLoopTick()`
+15. `buildRobotState()` from MuJoCo `qpos/qvel`
+16. sample latest teleop + mode-command caches
+17. `IntegratedControllerRuntime::step(...)`
+18. `RL_controller::step(...)`
+19. `updateControlInput(...)`
+20. `mj_step(...)`
+21. `updateMirroredState(...)`
+22. `updateViewerFrameMirror(...)`
+23. `updateViewerInspectorMirror(...)`
+
+That means sim2sim now matches sim2real more closely at the edge-I/O level too:
+
+- input subscriptions are asynchronous
+- `/humanoid/rl/state` is telemetry, not a control-path publish
+- Python viewer frame / inspector topics are telemetry too, not control-path publishes
 
 Important detail:
 
@@ -139,6 +155,7 @@ If `enable_viewer:=false` and Python frontend is still enabled, the frontend fal
 - `/humanoid/sim2sim/mujoco_viewer_inspector`
 
 So this path keeps the friendly Python viewer while still reusing the same fused control/runtime logic as the C++ sim2sim backend.
+Those two topics are now published by a dedicated non-real-time viewer telemetry thread rather than directly from the control tick.
 
 If you explicitly need the old split runtime for comparison, use:
 
@@ -148,3 +165,13 @@ If you explicitly need the old split runtime for comparison, use:
   --mode-id 0 \
   --auto-start-mode
 ```
+
+That legacy path still uses:
+
+```text
+/humanoid/rl/command
+```
+
+For a complete topic summary across fused, legacy, and Python frontend paths, see:
+
+- [topic_interface_matrix.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/topic_interface_matrix.md)

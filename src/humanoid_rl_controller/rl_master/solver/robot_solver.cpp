@@ -150,7 +150,10 @@ bool RobotSolver::initialize()
     try
     {
         motor_shm_io_.connect();
-        dds_bridge_.connect();
+        dds_bridge_.connect({
+            sim2real_cfg_.enable_state_telemetry,
+            sim2real_cfg_.state_telemetry_hz,
+        });
         initializeController();
     }
     catch (const std::exception &e)
@@ -230,6 +233,10 @@ void RobotSolver::syncRuntimeCfgFromController(bool force)
     active_mode_id_ = controller_mode_id;
     active_config_section_ = controller_section;
     applyControlGainsFromCfg();
+    dds_bridge_.updateStateTelemetryConfig({
+        sim2real_cfg_.enable_state_telemetry,
+        sim2real_cfg_.state_telemetry_hz,
+    });
 
     std::cout << "[RL_solver] controller runtime synced: mode_id=" << active_mode_id_
               << ", section=" << active_config_section_
@@ -416,14 +423,14 @@ void RobotSolver::applyRuntimeCommand(
         }
 
         const std::vector<float> joint_tau = computePdControl(target_q, target_dq);
-        constexpr float kPdScale = 1.0f;
-        for (size_t i = 0; i < kInstalledMotorCount; ++i)
-        {
-            if (joint_cmd_[i].mode == RUN_MODE_CST)
-            {
-                joint_cmd_[i].tau = joint_tau[i] * kPdScale;
-            }
-        }
+        // constexpr float kPdScale = 1.0f;
+        // for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        // {
+        //     if (joint_cmd_[i].mode == RUN_MODE_CST)
+        //     {
+        //         joint_cmd_[i].tau = joint_tau[i] * kPdScale;
+        //     }
+        // }
     }
     else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kCommandStream ||
              runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCsp)
@@ -472,7 +479,9 @@ void RobotSolver::applyRuntimeCommand(
 
 void RobotSolver::sendRLState()
 {
-    dds_bridge_.publishRobotState(joint_state_);
+    rl_master::RobotStateData io_state;
+    dds_bridge_.buildRobotStateData(joint_state_, &io_state);
+    dds_bridge_.mirrorRobotState(io_state);
 }
 
 std::map<std::string, std::vector<float>> RobotSolver::getRobotStateBag() const
@@ -663,7 +672,6 @@ void RobotSolver::run()
         while (run_flag_.load())
         {
             const auto loop_begin = std::chrono::steady_clock::now();
-            dds_bridge_.spinOnce();
 
             int walk_mode_value = 0;
             std::optional<int> walk_mode_control_word;
@@ -702,7 +710,7 @@ void RobotSolver::run()
             if (current_any_active_mode)
             {
                 hold_target_latched_ = false;
-                dds_bridge_.publishRobotState(io_state);
+                dds_bridge_.mirrorRobotState(io_state);
                 sendMotorCmd();
                 logLoopData();
             }
@@ -726,7 +734,7 @@ void RobotSolver::run()
                     joint_cmd_[i].mode = RUN_MODE_CSP;
                 }
                 sendMotorCmd();
-                dds_bridge_.publishRobotState(io_state);
+                dds_bridge_.mirrorRobotState(io_state);
             }
 
             const auto loop_end = std::chrono::steady_clock::now();

@@ -12,10 +12,14 @@
 namespace rl_master::dds
 {
 
-constexpr const char *kTopicPolicyCommand = "/humanoid/rl/command";
 constexpr const char *kTopicRobotState = "/humanoid/rl/state";
 constexpr const char *kTopicTeleopCommand = "/humanoid/rl/teleop";
 constexpr const char *kTopicWalkMode = "/humanoid/rl/walk_mode";
+
+namespace legacy
+{
+constexpr const char *kTopicPolicyCommand = "/humanoid/rl/command";
+}
 
 // Legacy v1 fixed-size payload width.
 constexpr size_t kRobotStateValueCount = kJointStateValueCount + 3 + 4 + 3;

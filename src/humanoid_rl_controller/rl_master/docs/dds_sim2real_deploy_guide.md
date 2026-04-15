@@ -61,6 +61,7 @@ Notes:
 - `/humanoid/rl/state` (`std_msgs/msg/Float32MultiArray`)
 
 This topic is still published so external tools can inspect state, but the controller no longer depends on reading it back through DDS in the standard path.
+It is now asynchronous low-frequency telemetry rather than a real-time control-path message.
 
 ## 4. Mode / Lifecycle Control Words
 
@@ -98,20 +99,24 @@ Real-robot runtime path:
 11. `IntegratedControllerRuntime::initialize(startup_mode_id)`
 12. `RL_controller::RL_controller_Init(startup_mode_id)`
 13. `RL_controller::initModeProfiles()`
-14. `RobotSolver::run()` loop
-15. `motor_shm_io_.readFeedback(...)`
-16. `dds_bridge_.spinOnce()` + sampled teleop / walk_mode / imu
-17. `dds_bridge_.buildRobotStateData(...)`
-18. `IntegratedControllerRuntime::step(...)`
-19. `RL_controller::step(...)`
-20. `RobotSolver::applyRuntimeCommand(...)`
-21. `sendMotorCmd()`
+14. `SolverDdsBridge` starts dedicated ROS input executor thread
+15. `SolverDdsBridge` starts asynchronous low-frequency state telemetry thread
+16. `RobotSolver::run()` loop
+17. `motor_shm_io_.readFeedback(...)`
+18. sample cached teleop / walk_mode / imu
+19. `dds_bridge_.buildRobotStateData(...)`
+20. `IntegratedControllerRuntime::step(...)`
+21. `RL_controller::step(...)`
+22. `RobotSolver::applyRuntimeCommand(...)`
+23. `dds_bridge_.mirrorRobotState(...)`
+24. `sendMotorCmd()`
 
 Important details:
 
 - `solver` and `controller` now share the same cached mode/profile registry
 - runtime mode switching uses already-built in-memory profiles
 - switching mode no longer depends on both sides separately re-reading `rl_cfg.yaml`
+- ROS input callbacks and `/humanoid/rl/state` publish are kept off the control loop thread
 
 ## 6. Why This Is Better
 
@@ -154,3 +159,5 @@ Check these in order:
 ## 8. Compatibility
 
 The standalone `RL_controller` executable is still available for compatibility and isolated debugging, but it is no longer the recommended production startup method.
+
+The old `/humanoid/rl/command` topic now belongs only to that legacy split-runtime path.

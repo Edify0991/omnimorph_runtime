@@ -213,7 +213,7 @@ flowchart TD
 
 Inside `RobotSolver::run()` each cycle:
 
-1. `dds_bridge_.spinOnce()`
+1. dedicated DDS input executor thread keeps teleop / walk_mode / imu caches fresh
 2. sample latest `walk_mode`
 3. sample latest teleop
 4. `getMotorState()`
@@ -222,13 +222,14 @@ Inside `RobotSolver::run()` each cycle:
 7. `syncRuntimeCfgFromController()`
 8. `applyRuntimeCommand(controller_command, true)`
 9. if controller active:
-10. `dds_bridge_.publishRobotState(io_state)`
+10. `dds_bridge_.mirrorRobotState(io_state)`
 11. `sendMotorCmd()`
 12. else:
 13. latch hold pose if first inactive tick
 14. overwrite commands to CSP hold
 15. `sendMotorCmd()`
-16. `dds_bridge_.publishRobotState(io_state)`
+16. `dds_bridge_.mirrorRobotState(io_state)`
+17. asynchronous telemetry thread publishes `/humanoid/rl/state` at configured low frequency
 
 ### 5.4 Solver-side mode config switching
 
@@ -258,21 +259,31 @@ This means solver-side execution parameters and controller-side policy parameter
 7. `mode_command_cache_ = 1000 + startup_mode_id_`
 8. `initializeViewer()`
 9. `setupRosInterfaces()`
+10. `startInputExecutor()`
+11. `startStateTelemetry()`
+12. `startViewerTelemetry()`
 
 ### 6.3 Main loop
 
 Inside `MujocoSimBridge::controlLoopTick()` each timer tick:
 
 1. `buildRobotState()` from MuJoCo `qpos`, `qvel`, base state
-2. `controller_runtime_.step(state, latest_teleop_command_, mode_command_cache_)`
-3. `resolveCommandRuntimeMode(...)`
-4. if controller inactive:
-5. latch current joint pose into `last_target_q_`
-6. `updateControlInput(command, control_active, now)`
-7. `mj_step(...)` or hold/forward-only path
-8. `publishRobotState(buildRobotState())`
-9. `renderViewerFrame()`
-10. optionally publish Python viewer inspector stream
+2. sample latest teleop from input-thread cache
+3. sample latest mode command from atomic cache
+4. `controller_runtime_.step(state, teleop_command, mode_command_cache_)`
+5. `resolveCommandRuntimeMode(...)`
+6. if controller inactive:
+7. latch current joint pose into `last_target_q_`
+8. `updateControlInput(command, control_active, now)`
+9. `mj_step(...)` or hold/forward-only path
+10. `updateMirroredState(post_state)`
+11. asynchronous telemetry thread publishes `/humanoid/rl/state` at configured low frequency
+12. `updateViewerFrameMirror()`
+13. `updateViewerInspectorMirror(...)`
+14. asynchronous viewer telemetry thread publishes:
+15. `/humanoid/sim2sim/mujoco_viewer_frame`
+16. `/humanoid/sim2sim/mujoco_viewer_inspector`
+17. `renderViewerFrame()`
 
 ## 7. Environment-Specific Split
 
@@ -316,6 +327,13 @@ Python frontend sim2sim also uses:
 
 These remain outside the critical policy-control path.
 
+In the fused runtimes, `/humanoid/rl/state` is now asynchronous telemetry only. It is not part of the internal control path anymore.
+The Python frontend viewer topics are also asynchronous telemetry only.
+
+For a topic-by-topic active vs legacy summary, see:
+
+- [topic_interface_matrix.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/topic_interface_matrix.md)
+
 ## 9. Legacy Python Interactive Sim2Sim Flow
 
 This path is still available only for compatibility and comparison.
@@ -324,7 +342,7 @@ This path is still available only for compatibility and comparison.
 2. launch `mujoco_sim_interactive_backend.py`
 3. Python backend publishes `/humanoid/rl/state`
 4. standalone controller reads state + teleop + `walk_mode`
-5. standalone controller publishes `/humanoid/rl/command`
+5. standalone controller publishes legacy `/humanoid/rl/command`
 6. Python backend subscribes command and applies it to MuJoCo
 
 Topology:

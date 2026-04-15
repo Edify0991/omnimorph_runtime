@@ -16,7 +16,7 @@
 
 // Legacy standalone RobotIO implementation used only by the old
 // two-process controller path:
-//   RL_controller (process A) <-> DDS <-> simulator/solver (process B)
+//   RL_controller (process A) <-> DDS legacy command topic <-> simulator/solver (process B)
 //
 // The fused runtime path does not depend on this class anymore.
 class DdsRobotIO final : public RobotIO

@@ -116,7 +116,7 @@ engineai_walk:
   # obs_dim: 71
   enable_reference_motion: false
   reference_motion_dim: 24
-  reference_motion_sampling: "phase"   # phase / step
+  reference_motion_sampling: "step"   # phase / step
   reference_motion_source: "auto"      # auto / file / policy_outputs
   reference_motion_file: "reference_motion/walk_ref.txt"
   reference_anchor_body: "base"
@@ -195,6 +195,8 @@ engineai_walk:
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12
   loop_overrun_warn_us: 2000
+  enable_state_telemetry: true
+  state_telemetry_hz: 50.0
   auto_start_policy: true
   zeroing_duration_s: 2.0
   # zero_pose: [0.0, 0.0, -0.24, 0.48, -0.24, 0.0, 0.0, 0.0, -0.24, 0.48, -0.24, 0.0]
@@ -354,6 +356,8 @@ stand_sim2real:
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12
   loop_overrun_warn_us: 2000
+  enable_state_telemetry: true
+  state_telemetry_hz: 50.0
   auto_start_policy: true
   zeroing_duration_s: 2.0
   # zero_pose: [0.0, 0.0, -0.24, 0.48, -0.24, 0.0, 0.0, 0.0, -0.24, 0.48, -0.24, 0.0]

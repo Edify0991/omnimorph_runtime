@@ -1,7 +1,9 @@
 #include "rl_master/solver_dds_bridge.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <iostream>
 
 #include "rl_master/KinConv.h"
 
@@ -10,8 +12,20 @@ namespace
 constexpr float kPi = 3.14159265358979323846f;
 }
 
+SolverDdsBridge::~SolverDdsBridge()
+{
+    disconnect();
+}
+
 void SolverDdsBridge::connect()
 {
+    connect(StateTelemetryConfig{});
+}
+
+void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
+{
+    disconnect();
+
     if (!rclcpp::ok())
     {
         int argc = 0;
@@ -20,28 +34,11 @@ void SolverDdsBridge::connect()
     }
 
     node_ = std::make_shared<rclcpp::Node>("rl_solver_dds_bridge");
+    executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
 
     state_pub_ = node_->create_publisher<std_msgs::msg::Float32MultiArray>(
         rl_master::dds::kTopicRobotState,
         rclcpp::QoS(rclcpp::KeepLast(10)).best_effort());
-
-    command_sub_ = node_->create_subscription<std_msgs::msg::Float32MultiArray>(
-        rl_master::dds::kTopicPolicyCommand,
-        rclcpp::QoS(rclcpp::KeepLast(10)).reliable(),
-        [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
-            rl_master::RobotCommandData cmd;
-            uint32_t seq = 0;
-            double stamp = 0.0;
-            if (!rl_master::dds::decodePolicyCommand(*msg, &cmd, &seq, &stamp))
-            {
-                return;
-            }
-            std::lock_guard<std::mutex> lock(command_mutex_);
-            latest_command_ = cmd;
-            latest_command_seq_ = seq;
-            latest_command_stamp_sec_ = stamp;
-            has_command_ = true;
-        });
 
     teleop_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
         rl_master::dds::kTopicTeleopCommand,
@@ -108,41 +105,117 @@ void SolverDdsBridge::connect()
             imu_quat_ = quat;
             imu_rpy_ = rpy;
         });
+
+    {
+        std::lock_guard<std::mutex> lock(telemetry_mutex_);
+        telemetry_config_ = telemetry_config;
+        has_mirrored_state_ = false;
+    }
+    stop_requested_.store(false);
+
+    executor_->add_node(node_);
+    executor_thread_ = std::thread([this]() { executorLoop(); });
+    telemetry_thread_ = std::thread([this]() { telemetryLoop(); });
 }
 
-void SolverDdsBridge::spinOnce()
+void SolverDdsBridge::disconnect()
 {
-    if (!node_)
+    stop_requested_.store(true);
+    telemetry_cv_.notify_all();
+
+    if (executor_)
     {
-        return;
+        executor_->cancel();
     }
-    rclcpp::spin_some(node_);
+
+    if (telemetry_thread_.joinable())
+    {
+        telemetry_thread_.join();
+    }
+    if (executor_thread_.joinable())
+    {
+        executor_thread_.join();
+    }
+
+    if (executor_ && node_)
+    {
+        executor_->remove_node(node_);
+    }
+
+    imu_sub_.reset();
+    walk_mode_sub_.reset();
+    teleop_sub_.reset();
+    state_pub_.reset();
+    executor_.reset();
+    node_.reset();
 }
 
-bool SolverDdsBridge::readLatestPolicyCommand(
-    rl_master::RobotCommandData *command,
-    uint32_t *sequence,
-    double *stamp_sec)
+void SolverDdsBridge::updateStateTelemetryConfig(const StateTelemetryConfig &telemetry_config)
 {
-    if (!command)
     {
-        return false;
+        std::lock_guard<std::mutex> lock(telemetry_mutex_);
+        telemetry_config_ = telemetry_config;
     }
-    std::lock_guard<std::mutex> lock(command_mutex_);
-    if (!has_command_)
+    telemetry_cv_.notify_all();
+}
+
+void SolverDdsBridge::executorLoop()
+{
+    try
     {
-        return false;
+        if (executor_)
+        {
+            executor_->spin();
+        }
     }
-    *command = latest_command_;
-    if (sequence)
+    catch (const std::exception &e)
     {
-        *sequence = latest_command_seq_;
+        std::cerr << "[SolverDdsBridge] executor thread exception: " << e.what() << std::endl;
     }
-    if (stamp_sec)
+}
+
+void SolverDdsBridge::telemetryLoop()
+{
+    while (!stop_requested_.load())
     {
-        *stamp_sec = latest_command_stamp_sec_;
+        rl_master::RobotStateData state;
+        double publish_hz = 0.0;
+        bool enabled = false;
+        bool has_state = false;
+
+        {
+            std::unique_lock<std::mutex> lock(telemetry_mutex_);
+            enabled = telemetry_config_.enabled;
+            publish_hz = telemetry_config_.publish_hz;
+            has_state = has_mirrored_state_;
+
+            if (!enabled || publish_hz <= 0.0 || !has_state)
+            {
+                telemetry_cv_.wait_for(
+                    lock,
+                    std::chrono::milliseconds(100),
+                    [this]() {
+                        return stop_requested_.load() ||
+                               (telemetry_config_.enabled && telemetry_config_.publish_hz > 0.0 && has_mirrored_state_);
+                    });
+                continue;
+            }
+
+            state = latest_mirrored_state_;
+        }
+
+        if (state_pub_)
+        {
+            state_pub_->publish(rl_master::dds::encodeRobotState(state));
+        }
+
+        std::unique_lock<std::mutex> lock(telemetry_mutex_);
+        telemetry_cv_.wait_for(
+            lock,
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::duration<double>(1.0 / publish_hz)),
+            [this]() { return stop_requested_.load(); });
     }
-    return true;
 }
 
 bool SolverDdsBridge::readLatestTeleopCommand(rl_master::TeleopCommand *command)
@@ -202,22 +275,26 @@ void SolverDdsBridge::buildRobotStateData(
     }
 }
 
-void SolverDdsBridge::publishRobotState(const std::vector<JointData> &joint_state)
+void SolverDdsBridge::mirrorRobotState(const std::vector<JointData> &joint_state)
 {
     rl_master::RobotStateData state;
     buildRobotStateData(joint_state, &state);
-    publishRobotState(state);
+    mirrorRobotState(state);
 }
 
-void SolverDdsBridge::publishRobotState(const rl_master::RobotStateData &state)
+void SolverDdsBridge::mirrorRobotState(const rl_master::RobotStateData &state)
 {
-    if (!state_pub_)
+    bool should_notify = false;
     {
-        return;
+        std::lock_guard<std::mutex> lock(telemetry_mutex_);
+        should_notify = !has_mirrored_state_;
+        latest_mirrored_state_ = state;
+        has_mirrored_state_ = true;
     }
-
-    const auto msg = rl_master::dds::encodeRobotState(state);
-    state_pub_->publish(msg);
+    if (should_notify)
+    {
+        telemetry_cv_.notify_all();
+    }
 }
 
 std::array<float, 4> SolverDdsBridge::rpyToQuat(float roll, float pitch, float yaw)

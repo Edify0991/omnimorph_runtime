@@ -44,6 +44,7 @@ K_PROTOCOL_V2_MAGIC = 240426
 K_PROTOCOL_V2_VERSION = 2
 K_PROTOCOL_V2_PAYLOAD_POLICY_COMMAND = 1
 
+# Legacy split-runtime command topic. The fused runtime does not use this path.
 TOPIC_POLICY_COMMAND = "/humanoid/rl/command"
 TOPIC_ROBOT_STATE = "/humanoid/rl/state"
 

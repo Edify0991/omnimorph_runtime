@@ -2,13 +2,18 @@
 #define MUJOCO_SIM2SIM_MUJOCO_SIM_BRIDGE_H
 
 #include <array>
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
 #include <memory>
+#include <thread>
 #include <string>
 #include <vector>
 #include <limits>
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/executors/single_threaded_executor.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include <std_msgs/msg/int32.hpp>
@@ -52,6 +57,19 @@ private:
     void walkModeCallback(const std_msgs::msg::Int32::SharedPtr msg);
     void controlLoopTick();
     void enforceBaseLock();
+    void startInputExecutor();
+    void stopInputExecutor();
+    void startStateTelemetry();
+    void stopStateTelemetry();
+    void updateMirroredState(const rl_master::RobotStateData &state);
+    rl_master::TeleopCommand latestTeleopCommand() const;
+    void startViewerTelemetry();
+    void stopViewerTelemetry();
+    void updateViewerFrameMirror();
+    void updateViewerInspectorMirror(
+        const rl_master::RobotStateData &state,
+        const rl_master::RobotCommandData &command,
+        const rl_master::CommandRuntimeDecision &runtime_mode);
 
     rl_master::RobotStateData buildRobotState() const;
     void updateControlInput(
@@ -64,6 +82,8 @@ private:
         const rl_master::RobotStateData &state,
         const rl_master::RobotCommandData &command,
         const rl_master::CommandRuntimeDecision &runtime_mode);
+    void publishViewerFrameMirror(const std::vector<float> &qpos, const std::vector<float> &qvel, const std::vector<float> &ctrl, float sim_time);
+    void publishViewerInspectorText(const std::string &text);
 
     static std::array<float, 3> quatXyzwToRpy(const std::array<float, 4> &quat_xyzw);
     static std::vector<double> normalizeGainParam(
@@ -99,6 +119,7 @@ private:
     bool enable_python_viewer_inspector_ = false;
     std::string viewer_inspector_topic_ = "/humanoid/sim2sim/mujoco_viewer_inspector";
     double viewer_fps_ = 60.0;
+    double viewer_inspector_hz_ = 10.0;
     int viewer_width_ = 1280;
     int viewer_height_ = 720;
     std::string viewer_title_ = "MuJoCo Sim2Sim Viewer";
@@ -110,6 +131,8 @@ private:
     std::vector<double> hold_kd_;
     std::vector<double> hold_torque_limit_;
     std::vector<double> hold_target_q_;
+    bool enable_state_telemetry_ = true;
+    double state_telemetry_hz_ = 50.0;
 
     std::array<int, kJointCount> joint_ids_{};
     std::array<int, kJointCount> qpos_addrs_{};
@@ -151,13 +174,33 @@ private:
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr state_pub_;
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr viewer_frame_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr viewer_inspector_pub_;
+    rclcpp::Node::SharedPtr input_node_;
+    rclcpp::executors::SingleThreadedExecutor::SharedPtr input_executor_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr teleop_sub_;
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr walk_mode_sub_;
     rclcpp::TimerBase::SharedPtr control_timer_;
+    std::thread input_executor_thread_;
+    std::thread state_telemetry_thread_;
+    std::thread viewer_telemetry_thread_;
+    std::atomic<bool> io_stop_requested_{false};
+    mutable std::mutex teleop_mutex_;
+    std::atomic<int> mode_command_cache_{rl_master::kCtrlWordSetModeBase + rl_master::kModeCodeMin};
+    std::mutex telemetry_mutex_;
+    std::condition_variable telemetry_cv_;
+    rl_master::RobotStateData latest_mirrored_state_{};
+    bool has_mirrored_state_ = false;
+    std::mutex viewer_telemetry_mutex_;
+    std::condition_variable viewer_telemetry_cv_;
+    std::vector<float> latest_viewer_qpos_;
+    std::vector<float> latest_viewer_qvel_;
+    std::vector<float> latest_viewer_ctrl_;
+    float latest_viewer_sim_time_ = 0.0f;
+    bool has_viewer_frame_ = false;
+    std::string latest_viewer_inspector_text_;
+    bool has_viewer_inspector_ = false;
 
     rl_master::runtime::IntegratedControllerRuntime controller_runtime_;
     rl_master::TeleopCommand latest_teleop_command_{};
-    int mode_command_cache_ = rl_master::kCtrlWordSetModeBase + rl_master::kModeCodeMin;
     bool hold_target_latched_ = false;
     rclcpp::Time last_mode_warn_{0, 0, RCL_ROS_TIME};
     bool warned_idle_position_fallback_ = false;

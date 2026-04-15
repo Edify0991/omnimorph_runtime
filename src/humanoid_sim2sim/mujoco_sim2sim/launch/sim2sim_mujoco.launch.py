@@ -73,6 +73,11 @@ def generate_launch_description():
         default_value="60.0",
         description="Viewer render rate in Hz.",
     )
+    viewer_inspector_hz_arg = DeclareLaunchArgument(
+        "viewer_inspector_hz",
+        default_value="10.0",
+        description="Publish rate for Python viewer inspector telemetry.",
+    )
     viewer_width_arg = DeclareLaunchArgument(
         "viewer_width",
         default_value="1280",
@@ -87,6 +92,16 @@ def generate_launch_description():
         "viewer_title",
         default_value="MuJoCo Sim2Sim Viewer",
         description="Viewer window title.",
+    )
+    enable_state_telemetry_arg = DeclareLaunchArgument(
+        "enable_state_telemetry",
+        default_value="true",
+        description="Enable low-frequency /humanoid/rl/state telemetry publishing.",
+    )
+    state_telemetry_hz_arg = DeclareLaunchArgument(
+        "state_telemetry_hz",
+        default_value="50.0",
+        description="Publish rate for /humanoid/rl/state telemetry.",
     )
     show_left_ui_arg = DeclareLaunchArgument(
         "show_left_ui",
@@ -171,9 +186,12 @@ def generate_launch_description():
             "actuator_control_mode": LaunchConfiguration("actuator_control_mode"),
             "enable_viewer": ParameterValue(LaunchConfiguration("enable_viewer"), value_type=bool),
             "viewer_fps": ParameterValue(LaunchConfiguration("viewer_fps"), value_type=float),
+            "viewer_inspector_hz": ParameterValue(LaunchConfiguration("viewer_inspector_hz"), value_type=float),
             "viewer_width": ParameterValue(LaunchConfiguration("viewer_width"), value_type=int),
             "viewer_height": ParameterValue(LaunchConfiguration("viewer_height"), value_type=int),
             "viewer_title": LaunchConfiguration("viewer_title"),
+            "enable_state_telemetry": ParameterValue(LaunchConfiguration("enable_state_telemetry"), value_type=bool),
+            "state_telemetry_hz": ParameterValue(LaunchConfiguration("state_telemetry_hz"), value_type=float),
         },
     ]
 
@@ -251,9 +269,12 @@ def generate_launch_description():
             actuator_mode_arg,
             enable_viewer_arg,
             viewer_fps_arg,
+            viewer_inspector_hz_arg,
             viewer_width_arg,
             viewer_height_arg,
             viewer_title_arg,
+            enable_state_telemetry_arg,
+            state_telemetry_hz_arg,
             show_left_ui_arg,
             show_right_ui_arg,
             start_controller_arg,
