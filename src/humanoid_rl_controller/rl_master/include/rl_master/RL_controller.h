@@ -4,7 +4,6 @@
 #include <onnxruntime_cxx_api.h>
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <deque>
 #include <iostream>
@@ -88,8 +87,9 @@ private:
         std::string config_section;
         std::string tag;
         Sim2realCfg cfg;
+        std::vector<std::string> joint_names;
         std::vector<float> default_angle;
-        std::vector<int> action_index_map;
+        std::vector<int> action_robot_indices;
         std::vector<int> obs_index_map;
         ObservationManifest observation_manifest;
         std::unique_ptr<ObservationBuilder> observation_builder;
@@ -102,9 +102,14 @@ private:
         std::vector<float> robot_base_init_quat_w;
     };
 
-    static const std::array<std::string, rl_master::kLegJointCount> &canonicalJointOrder();
-    std::vector<int> buildActionIndexMap(const Sim2realCfg &cfg, const std::string &cfg_name) const;
-    std::vector<int> buildObsIndexMap(const Sim2realCfg &cfg, const std::string &cfg_name) const;
+    std::vector<int> buildActionRobotIndices(
+        const Sim2realCfg &cfg,
+        const std::vector<std::string> &joint_names,
+        const std::string &cfg_name) const;
+    std::vector<int> buildObsIndexMap(
+        const Sim2realCfg &cfg,
+        const std::vector<std::string> &joint_names,
+        const std::string &cfg_name) const;
     const std::vector<int> &currentActionIndexMap() const;
     const std::vector<int> &currentObsIndexMap() const;
     const Sim2realCfg &activePolicyCfg() const;
@@ -136,14 +141,17 @@ private:
 
     void initModeProfiles();
     std::vector<ModeProfileSpec> loadModeProfileSpecsFromYaml() const;
-    std::vector<float> buildDefaultAnglesFromCfg(const Sim2realCfg::RobotCfg &robot_cfg) const;
+    std::vector<float> buildDefaultAnglesFromCfg(
+        const Sim2realCfg::RobotCfg &robot_cfg,
+        const std::vector<std::string> &joint_names) const;
     size_t profileIndexForMode(int mode_id, bool sanitize_invalid_mode) const;
     ModeProfile &activeModeProfile();
     const ModeProfile &activeModeProfile() const;
-    void syncCompatibilityAliasesFromActiveProfile();
+    void syncActiveProfileToRobotState();
 
     Ort::Env onnx_env_;
     std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry_;
+    std::vector<std::string> joint_order_;
     std::vector<ModeProfile> mode_profiles_;
     std::unordered_map<int, size_t> mode_to_profile_index_;
     int default_mode_id_ = rl_master::kModeCodeMin;

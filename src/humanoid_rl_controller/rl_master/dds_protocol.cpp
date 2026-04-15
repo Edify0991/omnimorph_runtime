@@ -45,35 +45,16 @@ inline size_t max3(size_t a, size_t b, size_t c)
     return std::max(a, std::max(b, c));
 }
 
-inline bool commandShouldUseV2(const RobotCommandData &command)
-{
-    return command.protocol_version >= kProtocolVersionDynamicJointsV2 ||
-           command.active_joint_count != kLegJointCount ||
-           !command.joint_target_q_full.empty() ||
-           !command.joint_target_dq_full.empty() ||
-           !command.joint_target_tau_full.empty();
-}
-
-inline bool stateShouldUseV2(const RobotStateData &state)
-{
-    return state.protocol_version >= kProtocolVersionDynamicJointsV2 ||
-           state.active_joint_count != kLegJointCount ||
-           !state.joint_q_full.empty() ||
-           !state.joint_dq_full.empty() ||
-           !state.joint_tau_full.empty();
-}
-
 inline size_t resolveCommandJointCount(const RobotCommandData &command)
 {
     if (command.active_joint_count > 0)
     {
         return static_cast<size_t>(command.active_joint_count);
     }
-    const size_t dyn_n = max3(
-        command.joint_target_q_full.size(),
-        command.joint_target_dq_full.size(),
-        command.joint_target_tau_full.size());
-    return dyn_n > 0 ? dyn_n : static_cast<size_t>(kLegJointCount);
+    return max3(
+        command.joint_target_q.size(),
+        command.joint_target_dq.size(),
+        command.joint_target_tau.size());
 }
 
 inline size_t resolveStateJointCount(const RobotStateData &state)
@@ -82,65 +63,40 @@ inline size_t resolveStateJointCount(const RobotStateData &state)
     {
         return static_cast<size_t>(state.active_joint_count);
     }
-    const size_t dyn_n = max3(
-        state.joint_q_full.size(),
-        state.joint_dq_full.size(),
-        state.joint_tau_full.size());
-    return dyn_n > 0 ? dyn_n : static_cast<size_t>(kLegJointCount);
+    return max3(
+        state.joint_q.size(),
+        state.joint_dq.size(),
+        state.joint_tau.size());
 }
 
 inline float readCommandQ(const RobotCommandData &command, size_t index)
 {
-    if (index < command.joint_target_q_full.size())
-    {
-        return command.joint_target_q_full[index];
-    }
-    return index < static_cast<size_t>(kLegJointCount) ? command.joint_target_q[index] : 0.0f;
+    return index < command.joint_target_q.size() ? command.joint_target_q[index] : 0.0f;
 }
 
 inline float readCommandDq(const RobotCommandData &command, size_t index)
 {
-    if (index < command.joint_target_dq_full.size())
-    {
-        return command.joint_target_dq_full[index];
-    }
-    return index < static_cast<size_t>(kLegJointCount) ? command.joint_target_dq[index] : 0.0f;
+    return index < command.joint_target_dq.size() ? command.joint_target_dq[index] : 0.0f;
 }
 
 inline float readCommandTau(const RobotCommandData &command, size_t index)
 {
-    if (index < command.joint_target_tau_full.size())
-    {
-        return command.joint_target_tau_full[index];
-    }
-    return index < static_cast<size_t>(kLegJointCount) ? command.joint_target_tau[index] : 0.0f;
+    return index < command.joint_target_tau.size() ? command.joint_target_tau[index] : 0.0f;
 }
 
 inline float readStateQ(const RobotStateData &state, size_t index)
 {
-    if (index < state.joint_q_full.size())
-    {
-        return state.joint_q_full[index];
-    }
-    return index < static_cast<size_t>(kLegJointCount) ? state.joint_q[index] : 0.0f;
+    return index < state.joint_q.size() ? state.joint_q[index] : 0.0f;
 }
 
 inline float readStateDq(const RobotStateData &state, size_t index)
 {
-    if (index < state.joint_dq_full.size())
-    {
-        return state.joint_dq_full[index];
-    }
-    return index < static_cast<size_t>(kLegJointCount) ? state.joint_dq[index] : 0.0f;
+    return index < state.joint_dq.size() ? state.joint_dq[index] : 0.0f;
 }
 
 inline float readStateTau(const RobotStateData &state, size_t index)
 {
-    if (index < state.joint_tau_full.size())
-    {
-        return state.joint_tau_full[index];
-    }
-    return index < static_cast<size_t>(kLegJointCount) ? state.joint_tau[index] : 0.0f;
+    return index < state.joint_tau.size() ? state.joint_tau[index] : 0.0f;
 }
 } // namespace
 
@@ -150,23 +106,6 @@ std_msgs::msg::Float32MultiArray encodePolicyCommand(
     double stamp_sec)
 {
     std_msgs::msg::Float32MultiArray msg;
-
-    const bool use_v2 = commandShouldUseV2(command);
-    if (!use_v2)
-    {
-        msg.data.assign(kJointCmdValueCount, 0.0f);
-        for (size_t i = 0; i < kLegJointCount; ++i)
-        {
-            const size_t offset = 3 * i;
-            msg.data[offset] = command.joint_target_q[i];
-            msg.data[offset + 1] = command.joint_target_dq[i];
-            msg.data[offset + 2] = command.joint_target_tau[i];
-        }
-        msg.data[kJointStateValueCount] = command.open_rl;
-        msg.data[kJointCmdSeqIndex] = static_cast<float>(sequence);
-        msg.data[kJointCmdStampIndex] = static_cast<float>(stamp_sec);
-        return msg;
-    }
 
     const size_t joint_count = resolveCommandJointCount(command);
     msg.data.assign(kPolicyCmdV2HeaderCount + joint_count * 3, 0.0f);
@@ -220,18 +159,17 @@ bool decodePolicyCommand(
 
         command->protocol_version = kProtocolVersionDynamicJointsV2;
         command->active_joint_count = joint_count_i;
-        command->joint_target_q_full.assign(joint_count, 0.0f);
-        command->joint_target_dq_full.assign(joint_count, 0.0f);
-        command->joint_target_tau_full.assign(joint_count, 0.0f);
+        command->joint_target_q.assign(joint_count, 0.0f);
+        command->joint_target_dq.assign(joint_count, 0.0f);
+        command->joint_target_tau.assign(joint_count, 0.0f);
 
         size_t cursor = kPolicyCmdV2HeaderCount;
         for (size_t i = 0; i < joint_count; ++i)
         {
-            command->joint_target_q_full[i] = msg.data[cursor++];
-            command->joint_target_dq_full[i] = msg.data[cursor++];
-            command->joint_target_tau_full[i] = msg.data[cursor++];
+            command->joint_target_q[i] = msg.data[cursor++];
+            command->joint_target_dq[i] = msg.data[cursor++];
+            command->joint_target_tau[i] = msg.data[cursor++];
         }
-        command->syncLegacyFromDynamic();
         command->open_rl = msg.data[4];
 
         if (sequence)
@@ -244,64 +182,12 @@ bool decodePolicyCommand(
         }
         return true;
     }
-
-    if (msg.data.size() < kJointCmdValueCount)
-    {
-        return false;
-    }
-
-    for (size_t i = 0; i < kLegJointCount; ++i)
-    {
-        const size_t offset = 3 * i;
-        command->joint_target_q[i] = msg.data[offset];
-        command->joint_target_dq[i] = msg.data[offset + 1];
-        command->joint_target_tau[i] = msg.data[offset + 2];
-    }
-    command->open_rl = msg.data[kJointStateValueCount];
-
-    if (sequence)
-    {
-        *sequence = static_cast<uint32_t>(std::max(0.0f, msg.data[kJointCmdSeqIndex]));
-    }
-    if (stamp_sec)
-    {
-        *stamp_sec = static_cast<double>(msg.data[kJointCmdStampIndex]);
-    }
-    command->syncDynamicFromLegacy();
-    return true;
+    return false;
 }
 
 std_msgs::msg::Float32MultiArray encodeRobotState(const RobotStateData &state)
 {
     std_msgs::msg::Float32MultiArray msg;
-
-    const bool use_v2 = stateShouldUseV2(state);
-    if (!use_v2)
-    {
-        msg.data.assign(kRobotStateValueCount, 0.0f);
-        for (size_t i = 0; i < kLegJointCount; ++i)
-        {
-            const size_t offset = 3 * i;
-            msg.data[offset] = state.joint_q[i];
-            msg.data[offset + 1] = state.joint_dq[i];
-            msg.data[offset + 2] = state.joint_tau[i];
-        }
-
-        size_t cursor = kJointStateValueCount;
-        for (size_t i = 0; i < 3; ++i)
-        {
-            msg.data[cursor++] = state.base_ang_vel[i];
-        }
-        for (size_t i = 0; i < 4; ++i)
-        {
-            msg.data[cursor++] = state.base_quat[i];
-        }
-        for (size_t i = 0; i < 3; ++i)
-        {
-            msg.data[cursor++] = state.base_rpy[i];
-        }
-        return msg;
-    }
 
     const size_t joint_count = resolveStateJointCount(state);
     msg.data.assign(kStateV2HeaderCount + joint_count * 3 + kBaseStateTailCount, 0.0f);
@@ -362,16 +248,16 @@ bool decodeRobotState(
 
         state->protocol_version = kProtocolVersionDynamicJointsV2;
         state->active_joint_count = joint_count_i;
-        state->joint_q_full.assign(joint_count, 0.0f);
-        state->joint_dq_full.assign(joint_count, 0.0f);
-        state->joint_tau_full.assign(joint_count, 0.0f);
+        state->joint_q.assign(joint_count, 0.0f);
+        state->joint_dq.assign(joint_count, 0.0f);
+        state->joint_tau.assign(joint_count, 0.0f);
 
         size_t cursor = kStateV2HeaderCount;
         for (size_t i = 0; i < joint_count; ++i)
         {
-            state->joint_q_full[i] = msg.data[cursor++];
-            state->joint_dq_full[i] = msg.data[cursor++];
-            state->joint_tau_full[i] = msg.data[cursor++];
+            state->joint_q[i] = msg.data[cursor++];
+            state->joint_dq[i] = msg.data[cursor++];
+            state->joint_tau[i] = msg.data[cursor++];
         }
 
         for (size_t i = 0; i < 3; ++i)
@@ -387,38 +273,9 @@ bool decodeRobotState(
             state->base_rpy[i] = msg.data[cursor++];
         }
 
-        state->syncLegacyFromDynamic();
         return true;
     }
-
-    if (msg.data.size() < kRobotStateValueCount)
-    {
-        return false;
-    }
-
-    for (size_t i = 0; i < kLegJointCount; ++i)
-    {
-        const size_t offset = 3 * i;
-        state->joint_q[i] = msg.data[offset];
-        state->joint_dq[i] = msg.data[offset + 1];
-        state->joint_tau[i] = msg.data[offset + 2];
-    }
-
-    size_t cursor = kJointStateValueCount;
-    for (size_t i = 0; i < 3; ++i)
-    {
-        state->base_ang_vel[i] = msg.data[cursor++];
-    }
-    for (size_t i = 0; i < 4; ++i)
-    {
-        state->base_quat[i] = msg.data[cursor++];
-    }
-    for (size_t i = 0; i < 3; ++i)
-    {
-        state->base_rpy[i] = msg.data[cursor++];
-    }
-    state->syncDynamicFromLegacy();
-    return true;
+    return false;
 }
 
 } // namespace rl_master::dds

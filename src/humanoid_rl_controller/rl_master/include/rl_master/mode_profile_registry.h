@@ -26,6 +26,7 @@ public:
     bool hasMode(int mode_id) const;
     int defaultModeId() const;
     const std::string &defaultConfigSection() const;
+    const std::vector<std::string> &jointOrder() const;
     const std::string &configSectionForMode(int mode_id, bool allow_fallback = true) const;
     const DeployModeProfileSpec &specForMode(int mode_id, bool allow_fallback = true) const;
     const Sim2realCfg &cfgForMode(int mode_id, bool allow_fallback = true) const;
@@ -49,6 +50,7 @@ private:
     std::vector<Entry> entries_;
     std::unordered_map<int, size_t> mode_to_entry_index_;
     std::unordered_map<std::string, size_t> section_to_entry_index_;
+    std::vector<std::string> joint_order_;
     int default_mode_id_ = rl_master::kModeCodeMin;
     std::string default_config_section_ = "engineai_walk";
 };

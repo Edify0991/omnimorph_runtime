@@ -258,14 +258,18 @@ void SolverDdsBridge::buildRobotStateData(
     }
 
     *state = rl_master::RobotStateData{};
-    const size_t n = std::min(joint_state.size(), static_cast<size_t>(rl_master::kLegJointCount));
+    const size_t n = joint_state.size();
+    state->protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
+    state->active_joint_count = static_cast<int>(n);
+    state->joint_q.assign(n, 0.0f);
+    state->joint_dq.assign(n, 0.0f);
+    state->joint_tau.assign(n, 0.0f);
     for (size_t i = 0; i < n; ++i)
     {
         state->joint_q[i] = joint_state[i].q;
         state->joint_dq[i] = joint_state[i].dq;
         state->joint_tau[i] = joint_state[i].tau;
     }
-    state->syncDynamicFromLegacy();
 
     {
         std::lock_guard<std::mutex> lock(imu_mutex_);

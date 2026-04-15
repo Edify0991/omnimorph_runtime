@@ -134,13 +134,8 @@ struct MujocoSimBridge::ViewerState
 MujocoSimBridge::MujocoSimBridge()
     : rclcpp::Node("mujoco_sim_bridge")
 {
-    joint_ids_.fill(-1);
-    qpos_addrs_.fill(-1);
-    qvel_addrs_.fill(-1);
-    actuator_ids_.fill(-1);
-    applied_tau_.fill(0.0f);
-    last_target_q_.fill(0.0f);
     fixed_base_qpos_.fill(0.0);
+    mode_registry_ = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
 
     loadParameters();
     loadModel();
@@ -196,7 +191,11 @@ MujocoSimBridge::~MujocoSimBridge()
 
 void MujocoSimBridge::loadParameters()
 {
-    const std::vector<std::string> canonical_names = defaultJointNames();
+    std::vector<std::string> canonical_names = defaultJointNames();
+    if (mode_registry_ && !mode_registry_->jointOrder().empty())
+    {
+        canonical_names = mode_registry_->jointOrder();
+    }
     this->declare_parameter<std::string>("model_path", "");
     this->declare_parameter<std::string>("base_body_name", "base_link");
     this->declare_parameter<std::string>("base_free_joint_name", "");
@@ -225,9 +224,9 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::string>("viewer_title", "MuJoCo Sim2Sim Viewer");
     this->declare_parameter<bool>("enable_state_telemetry", true);
     this->declare_parameter<double>("state_telemetry_hz", 50.0);
-    this->declare_parameter<std::vector<double>>("kp", std::vector<double>(kJointCount, 80.0));
-    this->declare_parameter<std::vector<double>>("kd", std::vector<double>(kJointCount, 2.0));
-    this->declare_parameter<std::vector<double>>("torque_limit", std::vector<double>(kJointCount, 120.0));
+    this->declare_parameter<std::vector<double>>("kp", std::vector<double>(canonical_names.size(), 80.0));
+    this->declare_parameter<std::vector<double>>("kd", std::vector<double>(canonical_names.size(), 2.0));
+    this->declare_parameter<std::vector<double>>("torque_limit", std::vector<double>(canonical_names.size(), 120.0));
     this->declare_parameter<std::vector<double>>("hold_kp", std::vector<double>{80.0});
     this->declare_parameter<std::vector<double>>("hold_kd", std::vector<double>{2.0});
     this->declare_parameter<std::vector<double>>("hold_torque_limit", std::vector<double>{120.0});
@@ -274,7 +273,7 @@ void MujocoSimBridge::loadParameters()
     {
         joint_names_param = joint_names_param_obj.as_string_array();
     }
-    joint_names_ = normalizeNameParam(joint_names_param, canonical_names, kJointCount);
+    joint_names_ = normalizeNameParam(joint_names_param, canonical_names);
 
     std::vector<std::string> actuator_names_param = joint_names_;
     const auto actuator_names_param_obj = this->get_parameter("actuator_names");
@@ -282,7 +281,7 @@ void MujocoSimBridge::loadParameters()
     {
         actuator_names_param = actuator_names_param_obj.as_string_array();
     }
-    actuator_names_ = normalizeNameParam(actuator_names_param, joint_names_, kJointCount);
+    actuator_names_ = normalizeNameParam(actuator_names_param, joint_names_);
 
     hold_joint_names_.clear();
     const auto hold_joint_names_param_obj = this->get_parameter("hold_joint_names");
@@ -305,9 +304,15 @@ void MujocoSimBridge::loadParameters()
         throw std::runtime_error("hold_actuator_names size must match hold_joint_names");
     }
 
-    kp_ = normalizeGainParam(this->get_parameter("kp").as_double_array(), 80.0, kJointCount);
-    kd_ = normalizeGainParam(this->get_parameter("kd").as_double_array(), 2.0, kJointCount);
-    torque_limit_ = normalizeGainParam(this->get_parameter("torque_limit").as_double_array(), 120.0, kJointCount);
+    kp_ = normalizeGainParam(this->get_parameter("kp").as_double_array(), 80.0, joint_names_.size());
+    kd_ = normalizeGainParam(this->get_parameter("kd").as_double_array(), 2.0, joint_names_.size());
+    torque_limit_ = normalizeGainParam(this->get_parameter("torque_limit").as_double_array(), 120.0, joint_names_.size());
+    joint_ids_.assign(joint_names_.size(), -1);
+    qpos_addrs_.assign(joint_names_.size(), -1);
+    qvel_addrs_.assign(joint_names_.size(), -1);
+    actuator_ids_.assign(joint_names_.size(), -1);
+    applied_tau_.assign(joint_names_.size(), 0.0f);
+    last_target_q_.assign(joint_names_.size(), 0.0f);
 
     const size_t hold_count = hold_joint_names_.size();
     hold_kp_ = normalizeGainParam(this->get_parameter("hold_kp").as_double_array(), 80.0, hold_count);
@@ -381,7 +386,7 @@ void MujocoSimBridge::resolveModelMappings()
 {
     int position_like_actuator_count = 0;
 
-    for (size_t i = 0; i < kJointCount; ++i)
+    for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const int joint_id = mj_name2id(model_, mjOBJ_JOINT, joint_names_[i].c_str());
         if (joint_id < 0)
@@ -403,7 +408,7 @@ void MujocoSimBridge::resolveModelMappings()
         int actuator_id = mj_name2id(model_, mjOBJ_ACTUATOR, actuator_names_[i].c_str());
         if (actuator_id < 0)
         {
-            if (model_->nu == static_cast<int>(kJointCount))
+            if (model_->nu == static_cast<int>(joint_names_.size()))
             {
                 actuator_id = static_cast<int>(i);
                 RCLCPP_WARN(
@@ -497,14 +502,14 @@ void MujocoSimBridge::resolveModelMappings()
     }
     else
     {
-        use_position_actuator_control_ = (position_like_actuator_count > static_cast<int>(kJointCount / 2));
+        use_position_actuator_control_ = (position_like_actuator_count > static_cast<int>(joint_names_.size() / 2));
     }
     RCLCPP_INFO(
         this->get_logger(),
         "Actuator control mode: %s (position_like=%d/%zu), hold_extra_joints=%zu",
         use_position_actuator_control_ ? "position" : "torque",
         position_like_actuator_count,
-        kJointCount,
+        joint_names_.size(),
         hold_joint_names_.size());
 
     base_body_id_ = mj_name2id(model_, mjOBJ_BODY, base_body_name_.c_str());
@@ -836,15 +841,15 @@ void MujocoSimBridge::updateViewerInspectorMirror(
 
     double mean_abs_joint_error = 0.0;
     double max_abs_joint_error = 0.0;
-    for (size_t i = 0; i < kJointCount; ++i)
+    for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const double err = std::abs(static_cast<double>(last_target_q_[i]) - static_cast<double>(state.joint_q[i]));
         mean_abs_joint_error += err;
         max_abs_joint_error = std::max(max_abs_joint_error, err);
     }
-    if (kJointCount > 0)
+    if (!joint_names_.empty())
     {
-        mean_abs_joint_error /= static_cast<double>(kJointCount);
+        mean_abs_joint_error /= static_cast<double>(joint_names_.size());
     }
 
     std::ostringstream oss;
@@ -889,7 +894,7 @@ rl_master::TeleopCommand MujocoSimBridge::latestTeleopCommand() const
 
 void MujocoSimBridge::initializeState()
 {
-    for (size_t i = 0; i < kJointCount; ++i)
+    for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const int qpos_adr = qpos_addrs_[i];
         if (qpos_adr >= 0 && qpos_adr < model_->nq)
@@ -1377,7 +1382,7 @@ void MujocoSimBridge::controlLoopTick()
     {
         if (!hold_target_latched_)
         {
-            for (size_t i = 0; i < kJointCount; ++i)
+            for (size_t i = 0; i < joint_names_.size(); ++i)
             {
                 const int qpos_adr = qpos_addrs_[i];
                 if (qpos_adr >= 0 && qpos_adr < model_->nq)
@@ -1424,8 +1429,13 @@ void MujocoSimBridge::controlLoopTick()
 rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
 {
     rl_master::RobotStateData state;
+    state.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
+    state.active_joint_count = static_cast<int>(joint_names_.size());
+    state.joint_q.assign(joint_names_.size(), 0.0f);
+    state.joint_dq.assign(joint_names_.size(), 0.0f);
+    state.joint_tau.assign(joint_names_.size(), 0.0f);
 
-    for (size_t i = 0; i < kJointCount; ++i)
+    for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const int qpos_adr = qpos_addrs_[i];
         const int qvel_adr = qvel_addrs_[i];
@@ -1477,7 +1487,6 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
 
     state.base_quat = base_quat_xyzw;
     state.base_rpy = quatXyzwToRpy(base_quat_xyzw);
-    state.syncDynamicFromLegacy();
     return state;
 }
 
@@ -1486,34 +1495,53 @@ void MujocoSimBridge::updateControlInput(
     bool control_active,
     rclcpp::Time now)
 {
+    const Sim2realCfg &active_cfg = controller_runtime_.runtimeCfg();
     const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
     const bool mode_policy = runtime_mode.mode == rl_master::CommandRuntimeMode::kPolicy;
     const bool mode_test_cst = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCst;
     const bool mode_test_r1 = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1;
 
     auto commandQAt = [&](size_t idx) -> double {
-        if (command.protocol_version >= rl_master::kProtocolVersionDynamicJointsV2 &&
-            idx < command.joint_target_q_full.size())
-        {
-            return static_cast<double>(command.joint_target_q_full[idx]);
-        }
         return idx < command.joint_target_q.size() ? static_cast<double>(command.joint_target_q[idx]) : 0.0;
     };
     auto commandDqAt = [&](size_t idx) -> double {
-        if (command.protocol_version >= rl_master::kProtocolVersionDynamicJointsV2 &&
-            idx < command.joint_target_dq_full.size())
-        {
-            return static_cast<double>(command.joint_target_dq_full[idx]);
-        }
         return idx < command.joint_target_dq.size() ? static_cast<double>(command.joint_target_dq[idx]) : 0.0;
     };
     auto commandTauAt = [&](size_t idx) -> double {
-        if (command.protocol_version >= rl_master::kProtocolVersionDynamicJointsV2 &&
-            idx < command.joint_target_tau_full.size())
-        {
-            return static_cast<double>(command.joint_target_tau_full[idx]);
-        }
         return idx < command.joint_target_tau.size() ? static_cast<double>(command.joint_target_tau[idx]) : 0.0;
+    };
+    auto isPolicyControlledJoint = [&](size_t idx) -> bool {
+        if (idx >= joint_names_.size())
+        {
+            return false;
+        }
+        const std::string &joint_name = joint_names_[idx];
+
+        if (!active_cfg.action_joint_order.empty())
+        {
+            return std::find(
+                       active_cfg.action_joint_order.begin(),
+                       active_cfg.action_joint_order.end(),
+                       joint_name) != active_cfg.action_joint_order.end();
+        }
+
+        if (active_cfg.action_dim <= 0)
+        {
+            return false;
+        }
+        if (active_cfg.robot_joint_order.empty())
+        {
+            return idx < static_cast<size_t>(active_cfg.action_dim);
+        }
+        const auto it = std::find(
+            active_cfg.robot_joint_order.begin(),
+            active_cfg.robot_joint_order.end(),
+            joint_name);
+        if (it == active_cfg.robot_joint_order.end())
+        {
+            return false;
+        }
+        return static_cast<int>(std::distance(active_cfg.robot_joint_order.begin(), it)) < active_cfg.action_dim;
     };
 
     if (runtime_mode.unknown_open_rl_mode &&
@@ -1537,7 +1565,7 @@ void MujocoSimBridge::updateControlInput(
         warned_idle_position_fallback_ = true;
     }
 
-    for (size_t i = 0; i < kJointCount; ++i)
+    for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const int qpos_adr = qpos_addrs_[i];
         const int qvel_adr = qvel_addrs_[i];
@@ -1553,6 +1581,7 @@ void MujocoSimBridge::updateControlInput(
 
         const double q = data_->qpos[qpos_adr];
         const double dq = data_->qvel[qvel_adr];
+        const bool policy_controlled_joint = isPolicyControlledJoint(i);
 
         double q_des = static_cast<double>(last_target_q_[i]);
         double dq_des = 0.0;
@@ -1566,7 +1595,7 @@ void MujocoSimBridge::updateControlInput(
             }
             if (rl_master::modeUsesTorqueFeedForward(runtime_mode.mode))
             {
-                tau_ff = commandTauAt(i);
+                tau_ff = policy_controlled_joint ? commandTauAt(i) : 0.0;
             }
             last_target_q_[i] = static_cast<float>(q_des);
         }
@@ -1597,7 +1626,10 @@ void MujocoSimBridge::updateControlInput(
             else
             {
                 tau = kp_[i] * (q_des - q) + kd_[i] * (dq_des - dq);
-                if (control_active && (mode_policy || mode_test_r1) && use_command_torque_ff_)
+                if (control_active &&
+                    policy_controlled_joint &&
+                    (mode_policy || mode_test_r1) &&
+                    use_command_torque_ff_)
                 {
                     tau += tau_ff;
                 }
@@ -1780,20 +1812,15 @@ std::vector<double> MujocoSimBridge::normalizeGainParam(
 
 std::vector<std::string> MujocoSimBridge::normalizeNameParam(
     const std::vector<std::string> &input,
-    const std::vector<std::string> &fallback,
-    size_t expected_count)
+    const std::vector<std::string> &fallback)
 {
-    if (fallback.size() != expected_count)
-    {
-        throw std::runtime_error("Fallback name vector size mismatch");
-    }
     if (input.empty())
     {
         return fallback;
     }
-    if (input.size() != expected_count)
+    if (!fallback.empty() && input.size() != fallback.size())
     {
-        throw std::runtime_error("Name vector size mismatch. Expect " + std::to_string(expected_count));
+        throw std::runtime_error("Name vector size mismatch. Expect " + std::to_string(fallback.size()));
     }
     return input;
 }

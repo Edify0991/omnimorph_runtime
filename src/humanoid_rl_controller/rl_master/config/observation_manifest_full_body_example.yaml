@@ -1,0 +1,43 @@
+observation_manifest:
+  schema_version: 3
+  profile: "full_body_example_20dof"
+  # Example total dimension: 71
+  #   phase(2) + command(3) + joint_pos(20) + joint_vel(20) + last_action(20) +
+  #   base_ang_vel(3) + base_rpy(3) = 71
+  #
+  # Update the three joint-related counts together when your active joint set changes:
+  #   joint_pos.count
+  #   joint_vel.count
+  #   last_action.count
+  # and then keep rl_cfg.obs_dim consistent with the new total.
+  terms:
+    - name: phase
+      enabled: true
+      count: 2
+    - name: command
+      enabled: true
+      components: [vx, vy, dyaw]
+    - name: joint_pos
+      enabled: true
+      count: 20
+    - name: joint_vel
+      enabled: true
+      count: 20
+    - name: last_action
+      enabled: true
+      count: 20
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+    - name: base_rpy
+      enabled: true
+      count: 3
+    # Optional extensions:
+    # - name: reference_motion
+    #   enabled: true
+    #   source: reference_motion
+    #   count: 40
+    # - name: external_sensor
+    #   enabled: true
+    #   source: vision_latent
+    #   count: 64

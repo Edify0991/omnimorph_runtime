@@ -1,15 +1,10 @@
 #ifndef ROBOT_STATE_H
 #define ROBOT_STATE_H
 
-#include <algorithm>
-#include <array>
-#include <iostream>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 #include "math_tool.h"
-#include "rl_cfg.h"
 #include "rl_protocol.h"
 
 class RobotState
@@ -20,7 +15,7 @@ public:
 
     static std::unique_ptr<RobotState> create();
 
-    void initialize_buffers();
+    void initialize_buffers(size_t joint_count, const std::vector<float> &default_angles = {});
 
     std::vector<float> joint_q;
     std::vector<float> joint_dq;
@@ -34,18 +29,10 @@ public:
     std::vector<float> base_rpy;
     std::vector<float> base_quat;
 
-    std::vector<float> default_angle_walk;
-    std::vector<float> default_angle_stand;
     std::vector<float> default_angle;
-
-    Sim2realCfg sim2realCfg;
-    Sim2realCfg standSim2RealCfg;
+    std::vector<std::string> joint_names;
 
     float open_rl = rl_master::kOpenRlDisabled;
-
-private:
-    void load_default_angles(const std::vector<std::pair<std::string, float>> &source, std::vector<float> *target) const;
-    static const std::array<std::string, rl_master::kLegJointCount> &joint_name_order();
 };
 
 #endif // ROBOT_STATE_H

@@ -37,7 +37,6 @@ public:
     ~MujocoSimBridge() override;
 
 private:
-    static constexpr size_t kJointCount = rl_master::kLegJointCount;
     struct ViewerState;
 
     void loadParameters();
@@ -92,8 +91,7 @@ private:
         size_t expected_count);
     static std::vector<std::string> normalizeNameParam(
         const std::vector<std::string> &input,
-        const std::vector<std::string> &fallback,
-        size_t expected_count);
+        const std::vector<std::string> &fallback);
 
     std::string model_path_;
     std::string base_body_name_;
@@ -134,12 +132,12 @@ private:
     bool enable_state_telemetry_ = true;
     double state_telemetry_hz_ = 50.0;
 
-    std::array<int, kJointCount> joint_ids_{};
-    std::array<int, kJointCount> qpos_addrs_{};
-    std::array<int, kJointCount> qvel_addrs_{};
-    std::array<int, kJointCount> actuator_ids_{};
-    std::array<float, kJointCount> applied_tau_{};
-    std::array<float, kJointCount> last_target_q_{};
+    std::vector<int> joint_ids_;
+    std::vector<int> qpos_addrs_;
+    std::vector<int> qvel_addrs_;
+    std::vector<int> actuator_ids_;
+    std::vector<float> applied_tau_;
+    std::vector<float> last_target_q_;
 
     std::vector<int> hold_joint_ids_;
     std::vector<int> hold_qpos_addrs_;
@@ -200,6 +198,7 @@ private:
     bool has_viewer_inspector_ = false;
 
     rl_master::runtime::IntegratedControllerRuntime controller_runtime_;
+    std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry_;
     rl_master::TeleopCommand latest_teleop_command_{};
     bool hold_target_latched_ = false;
     rclcpp::Time last_mode_warn_{0, 0, RCL_ROS_TIME};

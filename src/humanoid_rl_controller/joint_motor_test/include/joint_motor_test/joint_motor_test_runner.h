@@ -1,7 +1,6 @@
 ﻿#ifndef JOINT_MOTOR_TEST_RUNNER_H
 #define JOINT_MOTOR_TEST_RUNNER_H
 
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -55,6 +54,8 @@ struct JointMotorTestConfig
 {
     int test_mode_id = 90;
     double control_hz = 500.0;
+    std::string deploy_config_path;
+    std::vector<std::string> joint_names;
 
     TrajectorySource trajectory_source = TrajectorySource::kFile;
     MotorControlMode control_mode = MotorControlMode::kCsp;
@@ -83,9 +84,9 @@ struct JointMotorTestConfig
 
 struct TrajectoryFrame
 {
-    std::array<float, rl_master::kLegJointCount> q{};
-    std::array<float, rl_master::kLegJointCount> dq{};
-    std::array<float, rl_master::kLegJointCount> tau{};
+    std::vector<float> q;
+    std::vector<float> dq;
+    std::vector<float> tau;
 };
 
 class JointMotorTestRunner
@@ -96,6 +97,7 @@ public:
 
 private:
     void loadConfig();
+    void resolveJointLayout();
     void loadTrajectory();
     void loadTrajectoryFromFile(const std::string &path);
     void generateSineTrajectory();
@@ -124,8 +126,8 @@ private:
     static std::vector<std::string> splitCsv(const std::string &line);
     static bool parseNumericRow(const std::string &line, std::vector<double> *values);
 
-    static std::vector<float> normalizeJointVector(const std::vector<float> &input, float fallback);
-    static std::vector<int> normalizeJointOrder(const std::vector<int> &input);
+    static std::vector<float> normalizeJointVector(const std::vector<float> &input, size_t joint_count, float fallback);
+    static std::vector<int> normalizeJointOrder(const std::vector<int> &input, size_t joint_count);
 
     static MotorControlMode parseControlMode(const std::string &raw);
     static TrajectorySource parseTrajectorySource(const std::string &raw);
@@ -139,6 +141,8 @@ private:
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_sub_;
 
     JointMotorTestConfig config_;
+    std::vector<std::string> joint_names_;
+    size_t joint_count_ = 0;
 
     std::vector<TrajectoryFrame> trajectory_;
     bool trajectory_has_input_dq_ = false;

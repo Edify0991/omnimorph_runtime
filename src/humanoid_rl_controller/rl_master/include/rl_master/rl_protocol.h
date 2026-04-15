@@ -6,20 +6,8 @@
 
 namespace rl_master
 {
-// Legacy fixed-size joint count (v1 payload width).
-constexpr int kLegacyJointCount = 12;
-// Backward-compatible alias kept for current runtime.
-constexpr int kLegJointCount = kLegacyJointCount;
-
 // Protocol versions.
-constexpr int kProtocolVersionLegacy = 1;
 constexpr int kProtocolVersionDynamicJointsV2 = 2;
-
-constexpr int kJointStateValueCount = kLegJointCount * 3; // q, dq, tau
-constexpr int kJointCmdLegacyCount = kJointStateValueCount + 1; // + open_rl
-constexpr int kJointCmdSeqIndex = kJointCmdLegacyCount;
-constexpr int kJointCmdStampIndex = kJointCmdLegacyCount + 1;
-constexpr int kJointCmdValueCount = kJointCmdLegacyCount + 2;
 
 constexpr float kOpenRlDisabled = 0.0f;
 constexpr float kOpenRlPolicyEnabled = 10.0f;
@@ -27,8 +15,6 @@ constexpr float kOpenRlCommandStream = 20.0f;
 constexpr float kOpenRlTestCspStream = 30.0f;
 constexpr float kOpenRlTestCstStream = 40.0f;
 constexpr float kOpenRlTestR1Stream = 50.0f;
-// Backward-compatible alias.
-constexpr float kOpenRlEnabled = kOpenRlPolicyEnabled;
 
 inline bool isOpenRlPolicyEnabled(float open_rl_value)
 {

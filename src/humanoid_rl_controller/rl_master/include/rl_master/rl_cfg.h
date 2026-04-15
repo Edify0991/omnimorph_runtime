@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -193,6 +194,21 @@ inline int readDeployModeIdFromEnv(
 #define RL_CFG_PATH RL_MASTER_ROOT_DIR "/config/rl_cfg.yaml"
 #define OBS_MANIFEST_PATH RL_MASTER_ROOT_DIR "/config/observation_manifest.yaml"
 
+inline void appendUniqueName(
+    std::vector<std::string> *out,
+    std::unordered_set<std::string> *seen,
+    const std::string &name)
+{
+    if (!out || !seen || name.empty())
+    {
+        return;
+    }
+    if (seen->insert(name).second)
+    {
+        out->push_back(name);
+    }
+}
+
 struct ExternalObservationSpec
 {
     std::string name;
@@ -314,6 +330,7 @@ public:
     double state_telemetry_hz = 50.0;
 
     std::vector<float> tau_limit;
+    std::vector<std::string> robot_joint_order;
 
     std::string data_path;
     bool save_data_flag = false;
@@ -324,6 +341,7 @@ public:
     class RobotCfg
     {
     public:
+        std::vector<std::string> joint_order;
         std::vector<std::pair<std::string, float>> default_joint_angles;
         std::map<std::string, std::vector<float>> joint_limit_range;
         std::map<std::string, float> motor_torque_limit;
@@ -354,6 +372,7 @@ public:
             }
 
             robotCfg.default_joint_angles.clear();
+            robotCfg.joint_order.clear();
             robotCfg.joint_limit_range.clear();
             robotCfg.motor_torque_limit.clear();
             sub_models.clear();
@@ -643,6 +662,11 @@ public:
                     it->second.as<float>()});
             }
 
+            if (robot["joint_order"])
+            {
+                robotCfg.joint_order = robot["joint_order"].as<std::vector<std::string>>();
+            }
+
             const YAML::Node limits = robot["joint_limit_range"];
             for (auto it = limits.begin(); it != limits.end(); ++it)
             {
@@ -664,6 +688,35 @@ public:
             scales.dof_vel = scale["dof_vel"].as<float>();
             scales.quat = scale["quat"].as<float>();
             scales.height_measurements = scale["height_measurements"].as<float>();
+
+            robot_joint_order.clear();
+            std::unordered_set<std::string> seen_joint_names;
+            seen_joint_names.reserve(
+                robotCfg.joint_order.size() +
+                robotCfg.default_joint_angles.size() +
+                action_joint_order.size() +
+                obs_joint_order.size());
+
+            for (const auto &name : robotCfg.joint_order)
+            {
+                appendUniqueName(&robot_joint_order, &seen_joint_names, name);
+            }
+            for (const auto &entry : robotCfg.default_joint_angles)
+            {
+                appendUniqueName(&robot_joint_order, &seen_joint_names, entry.first);
+            }
+            for (const auto &name : action_joint_order)
+            {
+                appendUniqueName(&robot_joint_order, &seen_joint_names, name);
+            }
+            for (const auto &name : obs_joint_order)
+            {
+                appendUniqueName(&robot_joint_order, &seen_joint_names, name);
+            }
+            if (robot_joint_order.empty())
+            {
+                throw std::runtime_error("failed to resolve robot joint order from config: " + config_type);
+            }
 
             return true;
         }

@@ -487,116 +487,108 @@ std::unique_ptr<RL_controller> RL_controller::create(std::shared_ptr<const rl_ma
     return std::make_unique<RL_controller>(std::move(mode_registry));
 }
 
-const std::array<std::string, rl_master::kLegJointCount> &RL_controller::canonicalJointOrder()
-{
-    static const std::array<std::string, rl_master::kLegJointCount> kJointOrder = {
-        "right_hip_roll",
-        "right_hip_yaw",
-        "right_hip_pitch",
-        "right_knee_pitch",
-        "right_ankle_pitch",
-        "right_ankle_roll",
-        "left_hip_roll",
-        "left_hip_yaw",
-        "left_hip_pitch",
-        "left_knee_pitch",
-        "left_ankle_pitch",
-        "left_ankle_roll"};
-    return kJointOrder;
-}
-
-std::vector<int> RL_controller::buildActionIndexMap(const Sim2realCfg &cfg, const std::string &cfg_name) const
+std::vector<int> RL_controller::buildActionRobotIndices(
+    const Sim2realCfg &cfg,
+    const std::vector<std::string> &joint_names,
+    const std::string &cfg_name) const
 {
     if (cfg.action_dim <= 0)
     {
         throw std::runtime_error(cfg_name + ": action_dim must be > 0");
     }
-    if (cfg.action_dim > static_cast<int>(rl_master::kLegJointCount))
+    if (cfg.action_dim > static_cast<int>(joint_names.size()))
     {
         throw std::runtime_error(cfg_name + ": action_dim exceeds robot joint count");
     }
 
-    std::vector<int> map_robot_idx_to_policy_idx(static_cast<size_t>(cfg.action_dim), 0);
-    if (cfg.action_joint_order.empty())
+    std::vector<std::string> action_joint_names = cfg.action_joint_order;
+    if (action_joint_names.empty())
     {
-        for (int i = 0; i < cfg.action_dim; ++i)
+        if (cfg.robot_joint_order.size() < static_cast<size_t>(cfg.action_dim))
         {
-            map_robot_idx_to_policy_idx[static_cast<size_t>(i)] = i;
+            throw std::runtime_error(cfg_name + ": robot_joint_order is shorter than action_dim");
         }
-        return map_robot_idx_to_policy_idx;
+        action_joint_names.assign(
+            cfg.robot_joint_order.begin(),
+            cfg.robot_joint_order.begin() + static_cast<std::ptrdiff_t>(cfg.action_dim));
     }
-
-    if (cfg.action_joint_order.size() != static_cast<size_t>(cfg.action_dim))
+    if (action_joint_names.size() != static_cast<size_t>(cfg.action_dim))
     {
         throw std::runtime_error(cfg_name + ": action_joint_order length must equal action_dim");
     }
 
-    std::unordered_map<std::string, int> policy_order_index;
-    policy_order_index.reserve(cfg.action_joint_order.size());
-    for (size_t i = 0; i < cfg.action_joint_order.size(); ++i)
+    std::unordered_map<std::string, int> joint_name_to_index;
+    joint_name_to_index.reserve(joint_names.size());
+    for (size_t i = 0; i < joint_names.size(); ++i)
     {
-        const auto &name = cfg.action_joint_order[i];
-        if (policy_order_index.find(name) != policy_order_index.end())
+        joint_name_to_index[joint_names[i]] = static_cast<int>(i);
+    }
+
+    std::vector<int> map_policy_idx_to_robot_idx(static_cast<size_t>(cfg.action_dim), -1);
+    std::unordered_map<std::string, bool> seen_names;
+    seen_names.reserve(action_joint_names.size());
+    for (size_t i = 0; i < action_joint_names.size(); ++i)
+    {
+        const auto &name = action_joint_names[i];
+        if (seen_names.find(name) != seen_names.end())
         {
             throw std::runtime_error(cfg_name + ": duplicate joint name in action_joint_order: " + name);
         }
-        policy_order_index[name] = static_cast<int>(i);
-    }
-
-    const auto &canonical = canonicalJointOrder();
-    for (int robot_idx = 0; robot_idx < cfg.action_dim; ++robot_idx)
-    {
-        const auto &joint_name = canonical[static_cast<size_t>(robot_idx)];
-        const auto it = policy_order_index.find(joint_name);
-        if (it == policy_order_index.end())
+        seen_names[name] = true;
+        const auto it = joint_name_to_index.find(name);
+        if (it == joint_name_to_index.end())
         {
-            throw std::runtime_error(cfg_name + ": action_joint_order missing joint " + joint_name);
+            throw std::runtime_error(cfg_name + ": unknown joint in action_joint_order: " + name);
         }
-        map_robot_idx_to_policy_idx[static_cast<size_t>(robot_idx)] = it->second;
+        map_policy_idx_to_robot_idx[i] = it->second;
     }
 
-    return map_robot_idx_to_policy_idx;
+    return map_policy_idx_to_robot_idx;
 }
 
-std::vector<int> RL_controller::buildObsIndexMap(const Sim2realCfg &cfg, const std::string &cfg_name) const
+std::vector<int> RL_controller::buildObsIndexMap(
+    const Sim2realCfg &cfg,
+    const std::vector<std::string> &joint_names,
+    const std::string &cfg_name) const
 {
     if (cfg.motor_N <= 0)
     {
         throw std::runtime_error(cfg_name + ": motor_N must be > 0");
     }
-    if (cfg.motor_N > static_cast<int>(rl_master::kLegJointCount))
+    if (cfg.motor_N > static_cast<int>(joint_names.size()))
     {
         throw std::runtime_error(cfg_name + ": motor_N exceeds robot joint count");
     }
 
     std::vector<int> map_policy_idx_to_robot_idx(static_cast<size_t>(cfg.motor_N), 0);
-    if (cfg.obs_joint_order.empty())
+    std::vector<std::string> obs_joint_names = cfg.obs_joint_order;
+    if (obs_joint_names.empty())
     {
-        for (int i = 0; i < cfg.motor_N; ++i)
+        if (cfg.robot_joint_order.size() < static_cast<size_t>(cfg.motor_N))
         {
-            map_policy_idx_to_robot_idx[static_cast<size_t>(i)] = i;
+            throw std::runtime_error(cfg_name + ": robot_joint_order is shorter than motor_N");
         }
-        return map_policy_idx_to_robot_idx;
+        obs_joint_names.assign(
+            cfg.robot_joint_order.begin(),
+            cfg.robot_joint_order.begin() + static_cast<std::ptrdiff_t>(cfg.motor_N));
     }
-
-    if (cfg.obs_joint_order.size() != static_cast<size_t>(cfg.motor_N))
+    if (obs_joint_names.size() != static_cast<size_t>(cfg.motor_N))
     {
         throw std::runtime_error(cfg_name + ": obs_joint_order length must equal motor_N");
     }
 
-    std::unordered_map<std::string, int> canonical_index;
-    canonical_index.reserve(rl_master::kLegJointCount);
-    const auto &canonical = canonicalJointOrder();
-    for (size_t i = 0; i < canonical.size(); ++i)
+    std::unordered_map<std::string, int> joint_name_to_index;
+    joint_name_to_index.reserve(joint_names.size());
+    for (size_t i = 0; i < joint_names.size(); ++i)
     {
-        canonical_index[canonical[i]] = static_cast<int>(i);
+        joint_name_to_index[joint_names[i]] = static_cast<int>(i);
     }
 
-    for (size_t policy_idx = 0; policy_idx < cfg.obs_joint_order.size(); ++policy_idx)
+    for (size_t policy_idx = 0; policy_idx < obs_joint_names.size(); ++policy_idx)
     {
-        const auto &name = cfg.obs_joint_order[policy_idx];
-        const auto it = canonical_index.find(name);
-        if (it == canonical_index.end())
+        const auto &name = obs_joint_names[policy_idx];
+        const auto it = joint_name_to_index.find(name);
+        if (it == joint_name_to_index.end())
         {
             throw std::runtime_error(cfg_name + ": unknown joint in obs_joint_order: " + name);
         }
@@ -607,7 +599,7 @@ std::vector<int> RL_controller::buildObsIndexMap(const Sim2realCfg &cfg, const s
 
 const std::vector<int> &RL_controller::currentActionIndexMap() const
 {
-    return activeModeProfile().action_index_map;
+    return activeModeProfile().action_robot_indices;
 }
 
 const std::vector<int> &RL_controller::currentObsIndexMap() const
@@ -659,7 +651,7 @@ void RL_controller::refreshPolicyMode(int requested_mode, bool sanitize_invalid_
     const size_t profile_index = profileIndexForMode(requested_mode, sanitize_invalid_mode);
     active_profile_index_ = profile_index;
     active_mode_id_ = mode_profiles_[profile_index].mode_id;
-    syncCompatibilityAliasesFromActiveProfile();
+    syncActiveProfileToRobotState();
 }
 
 void RL_controller::handlePolicySwitch()
@@ -683,8 +675,8 @@ void RL_controller::handlePolicySwitch()
     }
     stacked_obs_buffer_.assign(static_cast<size_t>(cfg.obs_dim * cfg.obs_stack_N), 0.0f);
     action.assign(static_cast<size_t>(cfg.action_dim), 0.0f);
-    joint_target_q.assign(rl_master::kLegJointCount, 0.0f);
-    joint_target_torque.assign(rl_master::kLegJointCount, 0.0f);
+    joint_target_q.assign(joint_order_.size(), 0.0f);
+    joint_target_torque.assign(joint_order_.size(), 0.0f);
     latest_policy_extra_outputs_.clear();
     deploy_step_counter_ = 0;
     phase_reset_pending_ = true;
@@ -752,7 +744,7 @@ const RL_controller::ModeProfile &RL_controller::activeModeProfile() const
     return mode_profiles_[active_profile_index_];
 }
 
-void RL_controller::syncCompatibilityAliasesFromActiveProfile()
+void RL_controller::syncActiveProfileToRobotState()
 {
     if (!robot)
     {
@@ -763,10 +755,7 @@ void RL_controller::syncCompatibilityAliasesFromActiveProfile()
         return;
     }
     const auto &profile = mode_profiles_[active_profile_index_];
-    robot->sim2realCfg = profile.cfg;
-    robot->standSim2RealCfg = profile.cfg;
-    robot->default_angle_walk = profile.default_angle;
-    robot->default_angle_stand = profile.default_angle;
+    robot->joint_names = joint_order_;
     robot->default_angle = profile.default_angle;
 }
 
@@ -791,9 +780,11 @@ size_t RL_controller::profileIndexForMode(int mode_id, bool sanitize_invalid_mod
     return 0;
 }
 
-std::vector<float> RL_controller::buildDefaultAnglesFromCfg(const Sim2realCfg::RobotCfg &robot_cfg) const
+std::vector<float> RL_controller::buildDefaultAnglesFromCfg(
+    const Sim2realCfg::RobotCfg &robot_cfg,
+    const std::vector<std::string> &joint_names) const
 {
-    std::vector<float> out(rl_master::kLegJointCount, 0.0f);
+    std::vector<float> out(joint_names.size(), 0.0f);
     std::unordered_map<std::string, float> default_angle_map;
     default_angle_map.reserve(robot_cfg.default_joint_angles.size());
     for (const auto &entry : robot_cfg.default_joint_angles)
@@ -801,10 +792,9 @@ std::vector<float> RL_controller::buildDefaultAnglesFromCfg(const Sim2realCfg::R
         default_angle_map[entry.first] = entry.second;
     }
 
-    const auto &order = canonicalJointOrder();
-    for (size_t i = 0; i < order.size(); ++i)
+    for (size_t i = 0; i < joint_names.size(); ++i)
     {
-        const auto it = default_angle_map.find(order[i]);
+        const auto it = default_angle_map.find(joint_names[i]);
         if (it != default_angle_map.end())
         {
             out[i] = it->second;
@@ -857,6 +847,12 @@ void RL_controller::initModeProfiles()
         throw std::runtime_error("No deploy mode profile spec is configured");
     }
 
+    joint_order_ = mode_registry_->jointOrder();
+    if (joint_order_.empty())
+    {
+        throw std::runtime_error("Global robot joint order resolved from mode registry is empty");
+    }
+
     for (const auto &spec : specs)
     {
         if (mode_to_profile_index_.find(spec.mode_id) != mode_to_profile_index_.end())
@@ -881,9 +877,10 @@ void RL_controller::initModeProfiles()
         profile.config_section = spec.config_section;
         profile.tag = spec.tag;
         profile.cfg = cfg;
-        profile.default_angle = buildDefaultAnglesFromCfg(profile.cfg.robotCfg);
-        profile.action_index_map = buildActionIndexMap(profile.cfg, profile.config_section);
-        profile.obs_index_map = buildObsIndexMap(profile.cfg, profile.config_section);
+        profile.joint_names = joint_order_;
+        profile.default_angle = buildDefaultAnglesFromCfg(profile.cfg.robotCfg, joint_order_);
+        profile.action_robot_indices = buildActionRobotIndices(profile.cfg, joint_order_, profile.config_section);
+        profile.obs_index_map = buildObsIndexMap(profile.cfg, joint_order_, profile.config_section);
         profile.observation_manifest = ObservationManifest::loadFromYAML(profile.cfg.observation_manifest_path);
         profile.observation_builder = std::make_unique<ObservationBuilder>(profile.observation_manifest);
         if (profile.observation_builder->expectedDim() != static_cast<size_t>(profile.cfg.obs_dim))
@@ -905,8 +902,6 @@ void RL_controller::initModeProfiles()
     active_mode_id_ = default_mode_id_;
     active_profile_index_ = profileIndexForMode(default_mode_id_, true);
 
-    syncCompatibilityAliasesFromActiveProfile();
-
     std::cout << "[RL_controller] mode profiles loaded: " << mode_profiles_.size() << std::endl;
     for (const auto &profile : mode_profiles_)
     {
@@ -919,11 +914,17 @@ void RL_controller::initModeProfiles()
 
 void RL_controller::updateStateFromIO(const rl_master::RobotStateData &state)
 {
-    for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+    const size_t joint_count = joint_order_.size();
+    if (robot->joint_q.size() != joint_count)
     {
-        robot->joint_q[i] = state.joint_q[i];
-        robot->joint_dq[i] = state.joint_dq[i];
-        robot->joint_tau[i] = state.joint_tau[i];
+        robot->initialize_buffers(joint_count, robot->default_angle);
+        robot->joint_names = joint_order_;
+    }
+    for (size_t i = 0; i < joint_count; ++i)
+    {
+        robot->joint_q[i] = (i < state.joint_q.size()) ? state.joint_q[i] : robot->default_angle[i];
+        robot->joint_dq[i] = (i < state.joint_dq.size()) ? state.joint_dq[i] : 0.0f;
+        robot->joint_tau[i] = (i < state.joint_tau.size()) ? state.joint_tau[i] : 0.0f;
     }
 
     for (size_t i = 0; i < 3; ++i)
@@ -1513,12 +1514,13 @@ void RL_controller::logStepRecord(
 
 void RL_controller::RL_controller_Init(int startup_mode_id)
 {
-    robot->initialize_buffers();
     cmd.vx = 0.0f;
     cmd.vy = 0.0f;
     cmd.dyaw = 0.0f;
 
     initModeProfiles();
+    robot->initialize_buffers(joint_order_.size(), mode_profiles_.front().default_angle);
+    robot->joint_names = joint_order_;
 
     int initial_mode_id = startup_mode_id;
     if (mode_to_profile_index_.find(initial_mode_id) == mode_to_profile_index_.end())
@@ -1613,7 +1615,7 @@ rl_master::RobotCommandData RL_controller::step(
     }
     else if (deploy_output.enable_command_stream)
     {
-        robot->joint_target_q.assign(rl_master::kLegJointCount, 0.0f);
+        robot->joint_target_q.assign(robot->default_angle.begin(), robot->default_angle.end());
         const size_t copy_n = std::min(robot->joint_target_q.size(), deploy_output.target_q.size());
         for (size_t i = 0; i < copy_n; ++i)
         {
@@ -1627,19 +1629,18 @@ rl_master::RobotCommandData RL_controller::step(
     else
     {
         robot->joint_target_q = robot->joint_q;
-        robot->joint_target_tau.assign(rl_master::kLegJointCount, 0.0f);
+        robot->joint_target_tau.assign(robot->joint_q.size(), 0.0f);
         robot->open_rl = rl_master::kOpenRlDisabled;
         latest_policy_extra_outputs_.clear();
     }
 
     rl_master::RobotCommandData out_cmd;
+    out_cmd.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
+    out_cmd.active_joint_count = static_cast<int>(robot->joint_target_q.size());
     out_cmd.open_rl = robot->open_rl;
-    for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
-    {
-        out_cmd.joint_target_q[i] = robot->joint_target_q[i];
-        out_cmd.joint_target_dq[i] = 0.0f;
-        out_cmd.joint_target_tau[i] = 0.0f;
-    }
+    out_cmd.joint_target_q = robot->joint_target_q;
+    out_cmd.joint_target_dq.assign(robot->joint_target_q.size(), 0.0f);
+    out_cmd.joint_target_tau = robot->joint_target_tau;
 
     logStepRecord(local_phase_t, phase_t, mode_command, deploy_output);
     return out_cmd;
@@ -1768,43 +1769,25 @@ std::vector<float> RL_controller::get_joint_target_torque(const std::vector<floa
     const auto &active_cfg = activePolicyCfg();
     std::vector<float> target_dq(target_q.size(), 0.0f);
     std::vector<float> target_tau = pd_control(target_q, active_cfg.kps, target_dq, active_cfg.kds);
-
-    auto limit_or = [&](const std::string &name, float fallback) {
-        const auto it = active_cfg.robotCfg.motor_torque_limit.find(name);
-        if (it == active_cfg.robotCfg.motor_torque_limit.end())
-        {
-            return fallback;
-        }
-        return it->second;
-    };
-
-    const float hip_roll_limit = limit_or("hip_roll_joint", 330.0f);
-    const float hip_yaw_limit = limit_or("hip_yaw_joint", 150.0f);
-    const float ankle_limit = limit_or("ankle_left_motor", 90.0f);
-    const float knee_limit = limit_or("knee_joint", 8000.0f);
-
-    auto apply_joint_limits = [&](int index, int ref_index) {
-        if (ref_index == 0 || ref_index == 2)
-        {
-            target_tau[static_cast<size_t>(index)] = std::clamp(target_tau[static_cast<size_t>(index)], -hip_roll_limit, hip_roll_limit);
-        }
-        else if (ref_index == 1)
-        {
-            target_tau[static_cast<size_t>(index)] = std::clamp(target_tau[static_cast<size_t>(index)], -hip_yaw_limit, hip_yaw_limit);
-        }
-        else if (ref_index == 3)
-        {
-            target_tau[static_cast<size_t>(index)] = std::clamp(target_tau[static_cast<size_t>(index)], -knee_limit, knee_limit);
-        }
-        else if (ref_index == 4 || ref_index == 5)
-        {
-            target_tau[static_cast<size_t>(index)] = std::clamp(target_tau[static_cast<size_t>(index)], -ankle_limit, ankle_limit);
-        }
-    };
-
     for (size_t i = 0; i < target_tau.size(); ++i)
     {
-        apply_joint_limits(static_cast<int>(i), static_cast<int>(i % 6));
+        float limit = 0.0f;
+        if (i < active_cfg.tau_limit.size())
+        {
+            limit = std::max(limit, std::abs(active_cfg.tau_limit[i]));
+        }
+        if (i < joint_order_.size())
+        {
+            const auto it = active_cfg.robotCfg.motor_torque_limit.find(joint_order_[i]);
+            if (it != active_cfg.robotCfg.motor_torque_limit.end())
+            {
+                limit = std::max(limit, std::abs(it->second));
+            }
+        }
+        if (limit > 0.0f)
+        {
+            target_tau[i] = std::clamp(target_tau[i], -limit, limit);
+        }
     }
 
     joint_target_torque = target_tau;
@@ -1814,27 +1797,25 @@ std::vector<float> RL_controller::get_joint_target_torque(const std::vector<floa
 std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &policy_action)
 {
     const Sim2realCfg &active_cfg = activePolicyCfg();
-    const std::vector<int> &index_map = currentActionIndexMap();
-    std::vector<float> target_q(rl_master::kLegJointCount, 0.0f);
-
-    for (size_t robot_idx = 0; robot_idx < target_q.size(); ++robot_idx)
+    const std::vector<int> &action_robot_indices = currentActionIndexMap();
+    std::vector<float> target_q = robot->default_angle;
+    if (target_q.size() != joint_order_.size())
     {
-        float action_value = 0.0f;
-        if (robot_idx < static_cast<size_t>(active_cfg.action_dim))
+        target_q.assign(joint_order_.size(), 0.0f);
+    }
+    const size_t action_count = std::min(
+        policy_action.size(),
+        std::min(action_robot_indices.size(), static_cast<size_t>(std::max(0, active_cfg.action_dim))));
+    for (size_t policy_idx = 0; policy_idx < action_count; ++policy_idx)
+    {
+        const int robot_idx = action_robot_indices[policy_idx];
+        if (robot_idx < 0 || static_cast<size_t>(robot_idx) >= target_q.size())
         {
-            int policy_idx = static_cast<int>(robot_idx);
-            if (robot_idx < index_map.size())
-            {
-                policy_idx = index_map[robot_idx];
-            }
-
-            if (policy_idx >= 0 && static_cast<size_t>(policy_idx) < policy_action.size())
-            {
-                action_value = policy_action[static_cast<size_t>(policy_idx)];
-            }
+            continue;
         }
-
-        target_q[robot_idx] = robot->default_angle[robot_idx] + action_value * active_cfg.action_scale;
+        target_q[static_cast<size_t>(robot_idx)] =
+            robot->default_angle[static_cast<size_t>(robot_idx)] +
+            policy_action[policy_idx] * active_cfg.action_scale;
     }
 
     joint_target_q = target_q;

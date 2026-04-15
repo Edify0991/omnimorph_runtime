@@ -63,6 +63,8 @@ private:
     void holdCurrentPose();
     void applyControlGainsFromCfg();
     void initModeProfileMap();
+    void initializeJointLayout();
+    rl_master::RobotStateData buildControllerStateData() const;
     bool switchToModeConfig(int mode_id, bool allow_fallback_to_default);
 
     std::atomic<bool> run_flag_{true};
@@ -109,6 +111,10 @@ private:
     std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry_;
     std::unordered_map<int, std::string> mode_to_config_section_;
     std::vector<DeployModeProfileSpec> mode_profile_specs_;
+    std::vector<std::string> runtime_joint_names_;
+    std::unordered_map<std::string, size_t> runtime_joint_index_;
+    std::vector<std::string> installed_joint_names_;
+    std::vector<int> installed_joint_global_indices_;
     int last_mode_reload_failure_id_ = std::numeric_limits<int>::min();
 
     std::array<rl_master::filters::MovingAverageFilter, kMotorCountMax> velocity_filters_;

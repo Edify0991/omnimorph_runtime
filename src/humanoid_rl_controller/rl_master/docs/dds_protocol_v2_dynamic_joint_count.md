@@ -1,65 +1,67 @@
-# DDS Protocol v2 (Dynamic `joint_count`) Skeleton
+# DDS Protocol v2 Dynamic Joint Count
 
-This repository now supports dual decode paths:
-- v1 legacy fixed width (`kLegJointCount = 12`)
-- v2 dynamic width (`joint_count` carried in payload header)
+The active runtime now uses a single DDS payload format for robot command/state transport:
+
+- protocol version: `2`
+- dynamic `joint_count` carried in the payload header
+- no legacy fixed-width 12-dof decode path in the active encoder/decoder
 
 ## Policy Command Payload
 
-### v1 (legacy)
-- Flat array length: `kJointCmdValueCount`
-- Layout:
-  - `[0 ... 3*N-1]`: `q, dq, tau` interleaved (`N=12`)
-  - `[kJointStateValueCount]`: `open_rl`
-  - `[kJointCmdSeqIndex]`: sequence
-  - `[kJointCmdStampIndex]`: stamp sec
+Header:
 
-### v2 (dynamic)
-- Header:
-  - `[0]`: `kProtocolV2Magic`
-  - `[1]`: protocol version `2`
-  - `[2]`: payload type `kProtocolV2PayloadPolicyCommand`
-  - `[3]`: `joint_count`
-  - `[4]`: `open_rl`
-  - `[5]`: sequence
-  - `[6]`: stamp sec
-- Body:
-  - From `[7]`: `joint_count` groups of `q, dq, tau`
+- `[0]`: `kProtocolV2Magic`
+- `[1]`: protocol version `2`
+- `[2]`: payload type `kProtocolV2PayloadPolicyCommand`
+- `[3]`: `joint_count`
+- `[4]`: `open_rl`
+- `[5]`: sequence
+- `[6]`: stamp seconds
+
+Body:
+
+- from `[7]`: `joint_count` groups of `q, dq, tau`
+
+In code:
+
+- encode: [`dds_protocol.cpp`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/dds_protocol.cpp:103)
+- decode: [`dds_protocol.cpp`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/dds_protocol.cpp:130)
 
 ## Robot State Payload
 
-### v1 (legacy)
-- Flat array length: `kRobotStateValueCount`
-- Layout:
-  - joint `q,dq,tau` for 12 joints
-  - base ang vel (3), base quat xyzw (4), base rpy (3)
+Header:
 
-### v2 (dynamic)
-- Header:
-  - `[0]`: `kProtocolV2Magic`
-  - `[1]`: protocol version `2`
-  - `[2]`: payload type `kProtocolV2PayloadRobotState`
-  - `[3]`: `joint_count`
-- Body:
-  - `joint_count` groups of `q, dq, tau`
-  - base ang vel (3), base quat xyzw (4), base rpy (3)
+- `[0]`: `kProtocolV2Magic`
+- `[1]`: protocol version `2`
+- `[2]`: payload type `kProtocolV2PayloadRobotState`
+- `[3]`: `joint_count`
 
-## Backward Compatibility
+Body:
 
-- Decoder first checks v2 magic/version/payload header.
-- If absent, decoder falls back to v1 legacy parser.
-- For v2 decode:
-  - dynamic vectors are filled (`*_full`)
-  - legacy 12-dim arrays are also populated by truncation/zero-pad
-- For v1 decode:
-  - legacy arrays are parsed as before
-  - dynamic vectors are mirrored from legacy arrays
+- `joint_count` groups of `q, dq, tau`
+- base angular velocity `(3)`
+- base quaternion `xyzw (4)`
+- base rpy `(3)`
 
-## How to emit v2 from current code
+In code:
 
-`encodePolicyCommand(...)` / `encodeRobotState(...)` emits v2 when at least one is true:
-- `protocol_version >= 2`
-- `active_joint_count != 12`
-- dynamic vectors (`*_full`) are non-empty
+- encode: [`dds_protocol.cpp`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/dds_protocol.cpp:186)
+- decode: [`dds_protocol.cpp`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/dds_protocol.cpp:219)
 
-Otherwise it emits legacy v1 payload.
+## Runtime Meaning
+
+`joint_count` is the active vector width carried between producer and consumer for that message.
+
+- In sim2sim fused runtime, MuJoCo bridge publishes the configured runtime joint set.
+- In sim2real fused runtime, solver publishes the global runtime joint layout, then maps the physically installed hardware joints into that layout.
+- Consumers must not assume `12`, lower-body-only ordering, or any compile-time joint width.
+
+## Compatibility Boundary
+
+The repository still keeps some legacy code paths and docs under `legacy/` for historical split-runtime comparison, but the active `dds_protocol.cpp` implementation no longer accepts old v1 fixed-width payloads.
+
+That means:
+
+- all active producers should use `encodePolicyCommand(...)` / `encodeRobotState(...)`
+- all active consumers should use `decodePolicyCommand(...)` / `decodeRobotState(...)`
+- any remaining external tool that still emits old 12-dof flat arrays must be upgraded before use with the current fused runtime

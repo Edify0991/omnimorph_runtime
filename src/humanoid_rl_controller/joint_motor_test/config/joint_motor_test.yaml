@@ -2,6 +2,11 @@
   # Use 1000 + test_mode_id to switch+start, or 2000 + test_mode_id to switch only.
   test_mode_id: 90
   control_hz: 500.0
+  # By default the test runner resolves its joint layout from this deploy config
+  # and the selected test_mode_id. Override joint_names below only when you need
+  # a custom subset/order that is different from the deploy profile.
+  deploy_config_path: ""
+  joint_names: []
 
   # file / sine
   # Default to sine so launch can run out-of-box without a trajectory file.
@@ -12,12 +17,13 @@
 
   # Offline reference trajectory file.
   # Supported row formats:
-  # - 12  cols: q[12]
-  # - 13  cols: time + q[12]
-  # - 24  cols: q[12] + dq[12]
-  # - 25  cols: time + q[12] + dq[12]
-  # - 36  cols: q[12] + dq[12] + tau[12]
-  # - 37  cols: time + q[12] + dq[12] + tau[12]
+  # - N      cols: q[N]
+  # - N + 1  cols: time + q[N]
+  # - 2N     cols: q[N] + dq[N]
+  # - 2N + 1 cols: time + q[N] + dq[N]
+  # - 3N     cols: q[N] + dq[N] + tau[N]
+  # - 3N + 1 cols: time + q[N] + dq[N] + tau[N]
+  # where N is the resolved active joint count.
   trajectory_file: ""
 
   loop_trajectory: true
@@ -51,7 +57,8 @@
 
     # all / sequential
     activation_mode: all
-    sequential_joint_order: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    # Leave empty to use [0 .. N-1] automatically.
+    sequential_joint_order: []
     sequential_segment_sec: 2.0
 
     # Export generated sine reference trajectory CSV.

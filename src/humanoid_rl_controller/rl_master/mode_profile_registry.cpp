@@ -1,6 +1,7 @@
 #include "rl_master/mode_profile_registry.h"
 
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 namespace rl_master
@@ -45,6 +46,11 @@ const std::string &ModeProfileRegistry::defaultConfigSection() const
     return default_config_section_;
 }
 
+const std::vector<std::string> &ModeProfileRegistry::jointOrder() const
+{
+    return joint_order_;
+}
+
 const std::string &ModeProfileRegistry::configSectionForMode(int mode_id, bool allow_fallback) const
 {
     return entryForMode(mode_id, allow_fallback).spec.config_section;
@@ -72,6 +78,7 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
     entries_.clear();
     mode_to_entry_index_.clear();
     section_to_entry_index_.clear();
+    joint_order_.clear();
     default_mode_id_ = rl_master::kModeCodeMin;
     default_config_section_ = fallback_section.empty() ? "engineai_walk" : fallback_section;
 
@@ -89,6 +96,7 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
     default_config_section_ = specs_.front().config_section.empty() ? default_config_section_ : specs_.front().config_section;
 
     std::unordered_map<std::string, Sim2realCfg> cfg_cache;
+    std::unordered_set<std::string> seen_joint_names;
     entries_.reserve(specs_.size());
     for (const auto &spec : specs_)
     {
@@ -123,6 +131,11 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
         entries_.push_back(std::move(entry));
         mode_to_entry_index_[spec.mode_id] = index;
         section_to_entry_index_.emplace(spec.config_section, index);
+
+        for (const auto &joint_name : cfg.robot_joint_order)
+        {
+            appendUniqueName(&joint_order_, &seen_joint_names, joint_name);
+        }
     }
 }
 

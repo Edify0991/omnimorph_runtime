@@ -21,9 +21,6 @@ namespace legacy
 constexpr const char *kTopicPolicyCommand = "/humanoid/rl/command";
 }
 
-// Legacy v1 fixed-size payload width.
-constexpr size_t kRobotStateValueCount = kJointStateValueCount + 3 + 4 + 3;
-
 // Protocol v2 dynamic joint payload markers.
 constexpr int kProtocolV2Magic = 240426;
 constexpr int kProtocolV2PayloadPolicyCommand = 1;

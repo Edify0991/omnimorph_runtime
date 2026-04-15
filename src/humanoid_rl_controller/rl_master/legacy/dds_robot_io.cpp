@@ -155,8 +155,9 @@ void DdsRobotIO::estop()
             stop_cmd.joint_target_q = latest_state_.joint_q;
         }
     }
-    stop_cmd.joint_target_dq.fill(0.0f);
-    stop_cmd.joint_target_tau.fill(0.0f);
+    stop_cmd.active_joint_count = static_cast<int>(stop_cmd.joint_target_q.size());
+    stop_cmd.joint_target_dq.assign(stop_cmd.joint_target_q.size(), 0.0f);
+    stop_cmd.joint_target_tau.assign(stop_cmd.joint_target_q.size(), 0.0f);
     (void)write_command(stop_cmd);
 }
 

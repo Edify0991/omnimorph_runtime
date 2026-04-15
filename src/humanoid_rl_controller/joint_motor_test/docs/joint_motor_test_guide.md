@@ -4,6 +4,12 @@
 
 `joint_motor_test` is a standalone test package for offline motor/joint verification.
 
+It now runs with dynamic joint-count trajectories. The active joint layout is resolved in this order:
+
+- `joint_names` from `joint_motor_test.yaml` when explicitly provided
+- otherwise the selected `test_mode_id` from `deploy_config_path` / `rl_cfg.yaml`
+- otherwise startup fails instead of silently assuming a legacy 12-dof layout
+
 It keeps the existing deployment pipeline:
 
 - command publish: `/humanoid/rl/command`
@@ -40,12 +46,14 @@ Set in yaml:
 
 Supported row formats:
 
-- `q[12]`
-- `time + q[12]`
-- `q[12] + dq[12]`
-- `time + q[12] + dq[12]`
-- `q[12] + dq[12] + tau[12]`
-- `time + q[12] + dq[12] + tau[12]`
+- `q[N]`
+- `time + q[N]`
+- `q[N] + dq[N]`
+- `time + q[N] + dq[N]`
+- `q[N] + dq[N] + tau[N]`
+- `time + q[N] + dq[N] + tau[N]`
+
+Here `N` is the resolved active joint count, not a hard-coded 12.
 
 If `dq` is missing, it is estimated from `q` and configured `control_hz`.
 If `tau` is missing and mode is `cst/r1`, fallback PD is used (`fallback_kp/kd`).
@@ -72,7 +80,7 @@ Supports:
 
 Key params:
 
-- `offset / amplitude / period_sec / phase_rad` (scalar or 12-dim vector)
+- `offset / amplitude / period_sec / phase_rad` (scalar or N-dim vector)
 - `sequential_joint_order`
 - `sequential_segment_sec`
 
@@ -161,6 +169,7 @@ Logged data includes:
 - robot state q/dq/tau
 - mode/lifecycle/open_rl
 - joint tracking error and RMSE
+- resolved `joint_names` and `joint_count` in metadata
 
 ## 8. Safety Notes
 

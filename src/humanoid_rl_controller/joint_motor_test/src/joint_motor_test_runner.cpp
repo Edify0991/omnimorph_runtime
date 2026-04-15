@@ -1,7 +1,6 @@
 ﻿#include "joint_motor_test/joint_motor_test_runner.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cctype>
@@ -19,6 +18,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "rl_master/dds_protocol.h"
+#include "rl_master/mode_profile_registry.h"
 #include "rl_master/rl_cfg.h"
 #include "rl_master/rl_protocol.h"
 
@@ -37,14 +37,14 @@ std::string nowTag()
     return oss.str();
 }
 
-std::vector<float> toVector(const std::array<float, rl_master::kLegJointCount> &arr)
-{
-    return std::vector<float>(arr.begin(), arr.end());
-}
-
 std::vector<float> toStateQ(const rl_master::RobotStateData &state)
 {
     return std::vector<float>(state.joint_q.begin(), state.joint_q.end());
+}
+
+float safeRead(const std::vector<float> &values, size_t index, float fallback = 0.0f)
+{
+    return index < values.size() ? values[index] : fallback;
 }
 
 std::string sourceName(TrajectorySource src)
@@ -85,7 +85,7 @@ JointMotorTestRunner::JointMotorTestRunner()
     loadTrajectory();
 
     command_pub_ = node_->create_publisher<std_msgs::msg::Float32MultiArray>(
-        rl_master::dds::kTopicPolicyCommand,
+        rl_master::dds::legacy::kTopicPolicyCommand,
         rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 
     state_sub_ = node_->create_subscription<std_msgs::msg::Float32MultiArray>(
@@ -106,11 +106,12 @@ JointMotorTestRunner::JointMotorTestRunner()
 
     RCLCPP_INFO(
         node_->get_logger(),
-        "joint_motor_test ready: mode_id=%d source=%s control_mode=%s hz=%.2f frames=%zu",
+        "joint_motor_test ready: mode_id=%d source=%s control_mode=%s hz=%.2f joints=%zu frames=%zu",
         config_.test_mode_id,
         sourceName(config_.trajectory_source).c_str(),
         controlModeName(config_.control_mode).c_str(),
         config_.control_hz,
+        joint_count_,
         trajectory_.size());
 }
 
@@ -247,6 +248,17 @@ void JointMotorTestRunner::loadConfig()
 
     config_.test_mode_id = readInt("test_mode_id", config_.test_mode_id);
     config_.control_hz = std::max(1.0, readDouble("control_hz", config_.control_hz));
+    config_.deploy_config_path = readString("deploy_config_path", "");
+    if (config_.deploy_config_path.empty())
+    {
+        config_.deploy_config_path = RL_CFG_PATH;
+    }
+    if (cfg["joint_names"])
+    {
+        config_.joint_names = cfg["joint_names"].as<std::vector<std::string>>();
+    }
+
+    resolveJointLayout();
 
     config_.trajectory_source = parseTrajectorySource(readString("trajectory_source", "file"));
     config_.control_mode = parseControlMode(readString("control_mode", "csp"));
@@ -262,25 +274,25 @@ void JointMotorTestRunner::loadConfig()
     {
         config_.zero_pose = cfg["zero_pose"].as<std::vector<float>>();
     }
-    config_.zero_pose = normalizeJointVector(config_.zero_pose, 0.0f);
+    config_.zero_pose = normalizeJointVector(config_.zero_pose, joint_count_, 0.0f);
 
     if (cfg["fallback_kp"])
     {
         config_.fallback_kp = cfg["fallback_kp"].as<std::vector<float>>();
     }
-    config_.fallback_kp = normalizeJointVector(config_.fallback_kp, 60.0f);
+    config_.fallback_kp = normalizeJointVector(config_.fallback_kp, joint_count_, 60.0f);
 
     if (cfg["fallback_kd"])
     {
         config_.fallback_kd = cfg["fallback_kd"].as<std::vector<float>>();
     }
-    config_.fallback_kd = normalizeJointVector(config_.fallback_kd, 2.0f);
+    config_.fallback_kd = normalizeJointVector(config_.fallback_kd, joint_count_, 2.0f);
 
     if (cfg["tau_limit"])
     {
         config_.tau_limit = cfg["tau_limit"].as<std::vector<float>>();
     }
-    config_.tau_limit = normalizeJointVector(config_.tau_limit, 120.0f);
+    config_.tau_limit = normalizeJointVector(config_.tau_limit, joint_count_, 120.0f);
     config_.strict_safety_checks = readBool("strict_safety_checks", true);
     config_.max_abs_q = static_cast<float>(std::max(0.1, readDouble("max_abs_q", 6.5)));
     config_.max_abs_dq = static_cast<float>(std::max(0.1, readDouble("max_abs_dq", 40.0)));
@@ -327,13 +339,45 @@ void JointMotorTestRunner::loadConfig()
                                                  : "";
     }
 
-    config_.sine.offset = normalizeJointVector(config_.sine.offset, 0.0f);
-    config_.sine.amplitude = normalizeJointVector(config_.sine.amplitude, 0.1f);
-    config_.sine.period_sec = normalizeJointVector(config_.sine.period_sec, 2.0f);
-    config_.sine.phase_rad = normalizeJointVector(config_.sine.phase_rad, 0.0f);
-    config_.sine.sequential_joint_order = normalizeJointOrder(config_.sine.sequential_joint_order);
+    config_.sine.offset = normalizeJointVector(config_.sine.offset, joint_count_, 0.0f);
+    config_.sine.amplitude = normalizeJointVector(config_.sine.amplitude, joint_count_, 0.1f);
+    config_.sine.period_sec = normalizeJointVector(config_.sine.period_sec, joint_count_, 2.0f);
+    config_.sine.phase_rad = normalizeJointVector(config_.sine.phase_rad, joint_count_, 0.0f);
+    config_.sine.sequential_joint_order = normalizeJointOrder(config_.sine.sequential_joint_order, joint_count_);
     config_.sine.duration_sec = std::max(0.2, config_.sine.duration_sec);
     config_.sine.sequential_segment_sec = std::max(0.1, config_.sine.sequential_segment_sec);
+}
+
+void JointMotorTestRunner::resolveJointLayout()
+{
+    joint_names_.clear();
+    if (!config_.joint_names.empty())
+    {
+        joint_names_ = config_.joint_names;
+    }
+    else
+    {
+        auto registry = rl_master::ModeProfileRegistry::loadFromYaml(config_.deploy_config_path, "engineai_walk");
+        const auto &cfg = registry->cfgForMode(config_.test_mode_id, true);
+        if (!cfg.action_joint_order.empty())
+        {
+            joint_names_ = cfg.action_joint_order;
+        }
+        else
+        {
+            joint_names_ = cfg.robot_joint_order;
+        }
+    }
+
+    if (joint_names_.empty())
+    {
+        throw std::runtime_error(
+            "joint_motor_test failed to resolve joint layout from config_path=" +
+            config_.deploy_config_path +
+            ", mode_id=" +
+            std::to_string(config_.test_mode_id));
+    }
+    joint_count_ = joint_names_.size();
 }
 
 void JointMotorTestRunner::loadTrajectory()
@@ -410,37 +454,37 @@ void JointMotorTestRunner::loadTrajectoryFromFile(const std::string &path)
     bool has_dq = false;
     bool has_tau = false;
 
-    if (col_count == 12)
+    if (col_count == joint_count_)
     {
         has_time = false;
         has_dq = false;
         has_tau = false;
     }
-    else if (col_count == 13)
+    else if (col_count == joint_count_ + 1)
     {
         has_time = true;
         has_dq = false;
         has_tau = false;
     }
-    else if (col_count == 24)
+    else if (col_count == joint_count_ * 2)
     {
         has_time = false;
         has_dq = true;
         has_tau = false;
     }
-    else if (col_count == 25)
+    else if (col_count == joint_count_ * 2 + 1)
     {
         has_time = true;
         has_dq = true;
         has_tau = false;
     }
-    else if (col_count == 36)
+    else if (col_count == joint_count_ * 3)
     {
         has_time = false;
         has_dq = true;
         has_tau = true;
     }
-    else if (col_count == 37)
+    else if (col_count == joint_count_ * 3 + 1)
     {
         has_time = true;
         has_dq = true;
@@ -450,7 +494,8 @@ void JointMotorTestRunner::loadTrajectoryFromFile(const std::string &path)
     {
         throw std::runtime_error(
             "unsupported trajectory column count: " + std::to_string(col_count) +
-            " (expect 12/13/24/25/36/37)");
+            " for joint_count=" + std::to_string(joint_count_) +
+            " (expect N/N+1/2N/2N+1/3N/3N+1)");
     }
 
     trajectory_.reserve(rows.size());
@@ -464,24 +509,27 @@ void JointMotorTestRunner::loadTrajectoryFromFile(const std::string &path)
         size_t cursor = has_time ? 1 : 0;
 
         TrajectoryFrame frame;
-        for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+        frame.q.assign(joint_count_, 0.0f);
+        frame.dq.assign(joint_count_, 0.0f);
+        frame.tau.assign(joint_count_, 0.0f);
+        for (size_t i = 0; i < joint_count_; ++i)
         {
             frame.q[i] = static_cast<float>(row[cursor + i]);
         }
-        cursor += rl_master::kLegJointCount;
+        cursor += joint_count_;
 
         if (has_dq)
         {
-            for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+            for (size_t i = 0; i < joint_count_; ++i)
             {
                 frame.dq[i] = static_cast<float>(row[cursor + i]);
             }
-            cursor += rl_master::kLegJointCount;
+            cursor += joint_count_;
         }
 
         if (has_tau)
         {
-            for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+            for (size_t i = 0; i < joint_count_; ++i)
             {
                 frame.tau[i] = static_cast<float>(row[cursor + i]);
             }
@@ -495,7 +543,7 @@ void JointMotorTestRunner::loadTrajectoryFromFile(const std::string &path)
         const float dt = static_cast<float>(1.0 / std::max(1.0, config_.control_hz));
         for (size_t i = 1; i < trajectory_.size(); ++i)
         {
-            for (size_t j = 0; j < rl_master::kLegJointCount; ++j)
+            for (size_t j = 0; j < joint_count_; ++j)
             {
                 trajectory_[i - 1].dq[j] = (trajectory_[i].q[j] - trajectory_[i - 1].q[j]) / dt;
             }
@@ -510,7 +558,7 @@ void JointMotorTestRunner::loadTrajectoryFromFile(const std::string &path)
     {
         for (auto &frame : trajectory_)
         {
-            frame.tau.fill(0.0f);
+            std::fill(frame.tau.begin(), frame.tau.end(), 0.0f);
         }
     }
 
@@ -538,7 +586,10 @@ void JointMotorTestRunner::generateSineTrajectory()
         }
 
         TrajectoryFrame frame;
-        for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+        frame.q.assign(joint_count_, 0.0f);
+        frame.dq.assign(joint_count_, 0.0f);
+        frame.tau.assign(joint_count_, 0.0f);
+        for (size_t i = 0; i < joint_count_; ++i)
         {
             const bool joint_active = (config_.sine.activation_mode == SineActivationMode::kAll) ||
                                       (static_cast<int>(i) == active_joint);
@@ -588,17 +639,17 @@ void JointMotorTestRunner::exportTrajectoryToCsv(const std::string &path) const
     }
 
     ofs << "time_s";
-    for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+    for (size_t i = 0; i < joint_count_; ++i)
     {
-        ofs << ",q" << i;
+        ofs << ",q:" << (i < joint_names_.size() ? joint_names_[i] : std::to_string(i));
     }
-    for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+    for (size_t i = 0; i < joint_count_; ++i)
     {
-        ofs << ",dq" << i;
+        ofs << ",dq:" << (i < joint_names_.size() ? joint_names_[i] : std::to_string(i));
     }
-    for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+    for (size_t i = 0; i < joint_count_; ++i)
     {
-        ofs << ",tau" << i;
+        ofs << ",tau:" << (i < joint_names_.size() ? joint_names_[i] : std::to_string(i));
     }
     ofs << "\n";
 
@@ -606,15 +657,15 @@ void JointMotorTestRunner::exportTrajectoryToCsv(const std::string &path) const
     for (size_t step = 0; step < trajectory_.size(); ++step)
     {
         ofs << std::fixed << std::setprecision(6) << (step * dt);
-        for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+        for (size_t i = 0; i < joint_count_; ++i)
         {
             ofs << "," << std::setprecision(9) << trajectory_[step].q[i];
         }
-        for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+        for (size_t i = 0; i < joint_count_; ++i)
         {
             ofs << "," << std::setprecision(9) << trajectory_[step].dq[i];
         }
-        for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+        for (size_t i = 0; i < joint_count_; ++i)
         {
             ofs << "," << std::setprecision(9) << trajectory_[step].tau[i];
         }
@@ -641,7 +692,7 @@ void JointMotorTestRunner::validateTrajectoryFrame(const TrajectoryFrame &frame,
         }
     };
 
-    for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+    for (size_t i = 0; i < joint_count_; ++i)
     {
         checkFinite(frame.q[i], "q", i);
         checkFinite(frame.dq[i], "dq", i);
@@ -750,6 +801,11 @@ rl_master::RobotCommandData JointMotorTestRunner::buildPlaybackCommand()
     }
 
     rl_master::RobotCommandData command;
+    command.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
+    command.active_joint_count = static_cast<int>(joint_count_);
+    command.joint_target_q.assign(joint_count_, 0.0f);
+    command.joint_target_dq.assign(joint_count_, 0.0f);
+    command.joint_target_tau.assign(joint_count_, 0.0f);
     auto clipAbs = [](float value, float limit) {
         const float safe_limit = std::max(0.0f, std::abs(limit));
         if (safe_limit <= 1e-6f)
@@ -762,28 +818,27 @@ rl_master::RobotCommandData JointMotorTestRunner::buildPlaybackCommand()
     if (config_.control_mode == MotorControlMode::kCsp)
     {
         command.open_rl = rl_master::kOpenRlTestCspStream;
-        for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+        for (size_t i = 0; i < joint_count_; ++i)
         {
             command.joint_target_q[i] = clipAbs(frame.q[i], config_.max_abs_q);
             command.joint_target_dq[i] = clipAbs(frame.dq[i], config_.max_abs_dq);
         }
-        command.joint_target_tau.fill(0.0f);
         return command;
     }
 
-    for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+    for (size_t i = 0; i < joint_count_; ++i)
     {
         command.joint_target_q[i] = clipAbs(frame.q[i], config_.max_abs_q);
         command.joint_target_dq[i] = clipAbs(frame.dq[i], config_.max_abs_dq);
     }
 
-    for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+    for (size_t i = 0; i < joint_count_; ++i)
     {
         float tau_cmd = frame.tau[i];
         if (!trajectory_has_input_tau_)
         {
-            tau_cmd = (frame.q[i] - state.joint_q[i]) * config_.fallback_kp[i] +
-                      (frame.dq[i] - state.joint_dq[i]) * config_.fallback_kd[i];
+            tau_cmd = (frame.q[i] - safeRead(state.joint_q, i, 0.0f)) * config_.fallback_kp[i] +
+                      (frame.dq[i] - safeRead(state.joint_dq, i, 0.0f)) * config_.fallback_kd[i];
         }
         const float safe_tau_limit = std::min(std::abs(config_.tau_limit[i]), config_.max_abs_tau);
         command.joint_target_tau[i] = clampTorque(tau_cmd, safe_tau_limit);
@@ -803,11 +858,14 @@ rl_master::RobotCommandData JointMotorTestRunner::buildPlaybackCommand()
 rl_master::RobotCommandData JointMotorTestRunner::buildZeroingCommand(const std::vector<float> &target_q) const
 {
     rl_master::RobotCommandData command;
+    command.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
+    command.active_joint_count = static_cast<int>(joint_count_);
+    command.joint_target_q.assign(joint_count_, 0.0f);
+    command.joint_target_dq.assign(joint_count_, 0.0f);
+    command.joint_target_tau.assign(joint_count_, 0.0f);
     command.open_rl = rl_master::kOpenRlCommandStream;
-    command.joint_target_dq.fill(0.0f);
-    command.joint_target_tau.fill(0.0f);
 
-    const size_t copy_n = std::min(target_q.size(), static_cast<size_t>(rl_master::kLegJointCount));
+    const size_t copy_n = std::min(target_q.size(), joint_count_);
     for (size_t i = 0; i < copy_n; ++i)
     {
         command.joint_target_q[i] = target_q[i];
@@ -818,6 +876,7 @@ rl_master::RobotCommandData JointMotorTestRunner::buildZeroingCommand(const std:
 rl_master::RobotCommandData JointMotorTestRunner::buildDisabledCommand()
 {
     rl_master::RobotCommandData command;
+    command.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
     command.open_rl = rl_master::kOpenRlDisabled;
 
     rl_master::RobotStateData state;
@@ -825,9 +884,14 @@ rl_master::RobotCommandData JointMotorTestRunner::buildDisabledCommand()
         std::lock_guard<std::mutex> lock(state_mutex_);
         state = latest_state_;
     }
+    command.active_joint_count = static_cast<int>(std::max(joint_count_, state.joint_q.size()));
     command.joint_target_q = state.joint_q;
-    command.joint_target_dq.fill(0.0f);
-    command.joint_target_tau.fill(0.0f);
+    if (command.joint_target_q.size() < joint_count_)
+    {
+        command.joint_target_q.resize(joint_count_, 0.0f);
+    }
+    command.joint_target_dq.assign(command.joint_target_q.size(), 0.0f);
+    command.joint_target_tau.assign(command.joint_target_q.size(), 0.0f);
     return command;
 }
 
@@ -861,23 +925,23 @@ void JointMotorTestRunner::logStep(
     scalars["open_rl"] = static_cast<double>(command.open_rl);
     scalars["playback_index"] = static_cast<double>(playback_index_);
 
-    std::vector<float> q_err(rl_master::kLegJointCount, 0.0f);
+    std::vector<float> q_err(joint_count_, 0.0f);
     double rmse = 0.0;
-    for (size_t i = 0; i < rl_master::kLegJointCount; ++i)
+    for (size_t i = 0; i < joint_count_; ++i)
     {
-        q_err[i] = command.joint_target_q[i] - state.joint_q[i];
+        q_err[i] = safeRead(command.joint_target_q, i, 0.0f) - safeRead(state.joint_q, i, 0.0f);
         rmse += static_cast<double>(q_err[i] * q_err[i]);
     }
-    rmse = std::sqrt(rmse / static_cast<double>(rl_master::kLegJointCount));
+    rmse = joint_count_ > 0 ? std::sqrt(rmse / static_cast<double>(joint_count_)) : 0.0;
     scalars["joint_q_tracking_rmse"] = rmse;
 
     std::map<std::string, std::vector<float>> vectors;
-    vectors["state_q"] = toVector(state.joint_q);
-    vectors["state_dq"] = toVector(state.joint_dq);
-    vectors["state_tau"] = toVector(state.joint_tau);
-    vectors["cmd_q"] = toVector(command.joint_target_q);
-    vectors["cmd_dq"] = toVector(command.joint_target_dq);
-    vectors["cmd_tau"] = toVector(command.joint_target_tau);
+    vectors["state_q"] = state.joint_q;
+    vectors["state_dq"] = state.joint_dq;
+    vectors["state_tau"] = state.joint_tau;
+    vectors["cmd_q"] = command.joint_target_q;
+    vectors["cmd_dq"] = command.joint_target_dq;
+    vectors["cmd_tau"] = command.joint_target_tau;
     vectors["q_error"] = q_err;
 
     logger_.writeRecord(rl_master::monotonicTimeSec(), "joint_motor_test", scalars, vectors);
@@ -901,6 +965,7 @@ void JointMotorTestRunner::initLogger()
 
     metadata.numeric_fields["test_mode_id"] = static_cast<double>(config_.test_mode_id);
     metadata.numeric_fields["control_hz"] = config_.control_hz;
+    metadata.numeric_fields["joint_count"] = static_cast<double>(joint_count_);
     metadata.numeric_fields["frame_count"] = static_cast<double>(trajectory_.size());
     metadata.numeric_fields["loop_trajectory"] = config_.loop_trajectory ? 1.0 : 0.0;
     metadata.numeric_fields["zeroing_duration_s"] = config_.zeroing_duration_s;
@@ -920,6 +985,7 @@ void JointMotorTestRunner::initLogger()
         order.push_back(std::to_string(idx));
     }
     metadata.string_list_fields["sine_sequential_joint_order"] = order;
+    metadata.string_list_fields["joint_names"] = joint_names_;
 
     if (!logger_.open(config_.data_path, "joint_motor_test", metadata))
     {
@@ -1045,43 +1111,46 @@ bool JointMotorTestRunner::parseNumericRow(const std::string &line, std::vector<
     return !values->empty();
 }
 
-std::vector<float> JointMotorTestRunner::normalizeJointVector(const std::vector<float> &input, float fallback)
+std::vector<float> JointMotorTestRunner::normalizeJointVector(const std::vector<float> &input, size_t joint_count, float fallback)
 {
+    if (joint_count == 0)
+    {
+        return {};
+    }
     if (input.empty())
     {
-        return std::vector<float>(rl_master::kLegJointCount, fallback);
+        return std::vector<float>(joint_count, fallback);
     }
     if (input.size() == 1)
     {
-        return std::vector<float>(rl_master::kLegJointCount, input.front());
+        return std::vector<float>(joint_count, input.front());
     }
-    if (input.size() != rl_master::kLegJointCount)
+    if (input.size() != joint_count)
     {
         throw std::runtime_error(
-            "joint vector size must be 1 or " + std::to_string(rl_master::kLegJointCount));
+            "joint vector size must be 1 or " + std::to_string(joint_count));
     }
     return input;
 }
 
-std::vector<int> JointMotorTestRunner::normalizeJointOrder(const std::vector<int> &input)
+std::vector<int> JointMotorTestRunner::normalizeJointOrder(const std::vector<int> &input, size_t joint_count)
 {
     std::vector<int> out;
-    std::array<bool, rl_master::kLegJointCount> used{};
-    used.fill(false);
+    std::vector<bool> used(joint_count, false);
 
     if (input.empty())
     {
-        out.reserve(rl_master::kLegJointCount);
-        for (int i = 0; i < rl_master::kLegJointCount; ++i)
+        out.reserve(joint_count);
+        for (size_t i = 0; i < joint_count; ++i)
         {
-            out.push_back(i);
+            out.push_back(static_cast<int>(i));
         }
         return out;
     }
 
     for (int idx : input)
     {
-        if (idx < 0 || idx >= rl_master::kLegJointCount)
+        if (idx < 0 || static_cast<size_t>(idx) >= joint_count)
         {
             continue;
         }
@@ -1095,9 +1164,9 @@ std::vector<int> JointMotorTestRunner::normalizeJointOrder(const std::vector<int
 
     if (out.empty())
     {
-        for (int i = 0; i < rl_master::kLegJointCount; ++i)
+        for (size_t i = 0; i < joint_count; ++i)
         {
-            out.push_back(i);
+            out.push_back(static_cast<int>(i));
         }
     }
     return out;
