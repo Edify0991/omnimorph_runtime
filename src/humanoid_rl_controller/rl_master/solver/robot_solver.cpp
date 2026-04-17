@@ -201,6 +201,7 @@ bool RobotSolver::initialize()
             sim2real_cfg_.enable_state_telemetry,
             sim2real_cfg_.state_telemetry_hz,
         });
+        dds_bridge_.updateSourceContract(sim2real_cfg_.source_contract);
         initializeController();
     }
     catch (const std::exception &e)
@@ -284,6 +285,7 @@ void RobotSolver::syncRuntimeCfgFromController(bool force)
         sim2real_cfg_.enable_state_telemetry,
         sim2real_cfg_.state_telemetry_hz,
     });
+    dds_bridge_.updateSourceContract(sim2real_cfg_.source_contract);
 
     std::cout << "[RL_solver] controller runtime synced: mode_id=" << active_mode_id_
               << ", section=" << active_config_section_

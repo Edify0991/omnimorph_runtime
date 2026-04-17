@@ -151,7 +151,7 @@ MujocoSimBridge::MujocoSimBridge()
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz",
+        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
@@ -162,7 +162,8 @@ MujocoSimBridge::MujocoSimBridge()
         enable_python_viewer_inspector_ ? viewer_inspector_topic_.c_str() : "off",
         no_command_behavior_.c_str(),
         enable_state_telemetry_ ? "on" : "off",
-        state_telemetry_hz_);
+        state_telemetry_hz_,
+        controller_runtime_.runtimeCfg().source_contract.sim_base.quat_source_order.c_str());
 }
 
 MujocoSimBridge::~MujocoSimBridge()
@@ -1428,6 +1429,18 @@ void MujocoSimBridge::controlLoopTick()
 
 rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
 {
+    const Sim2realCfg &runtime_cfg = controller_runtime_.runtimeCfg();
+    std::string quat_source_order = runtime_cfg.source_contract.sim_base.quat_source_order;
+    std::transform(quat_source_order.begin(), quat_source_order.end(), quat_source_order.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    if (quat_source_order != "wxyz")
+    {
+        throw std::runtime_error(
+            "MuJoCo sim base quaternion source order must be 'wxyz', got '" +
+            runtime_cfg.source_contract.sim_base.quat_source_order + "'");
+    }
+
     rl_master::RobotStateData state;
     state.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
     state.active_joint_count = static_cast<int>(joint_names_.size());

@@ -30,7 +30,10 @@ public:
     void init();
     void reset();
 
-    PolicyInferenceResult forward(const std::vector<float> &observation);
+    PolicyInferenceResult forward(
+        const std::vector<float> &stacked_observation,
+        const std::vector<float> &current_observation,
+        const std::unordered_map<std::string, std::vector<float>> &features);
 
     const std::vector<std::string> &input_names() const { return input_names_; }
     const std::vector<std::string> &output_names() const { return output_names_; }
@@ -43,11 +46,27 @@ private:
         std::vector<float> data;
     };
 
+    struct InputBinding
+    {
+        int input_index = -1;
+        std::string name;
+        std::string source = "stacked_observation";
+        std::string feature_name;
+        std::vector<int64_t> shape;
+        std::string fill_policy = "error";
+        std::vector<float> constant;
+    };
+
     int findInputIndexByName(const std::string &name) const;
     int findOutputIndexByName(const std::string &name) const;
     std::vector<float> flattenFloatTensor(const Ort::Value &tensor) const;
     std::vector<int64_t> normalizedShape(const std::vector<int64_t> &shape) const;
     static size_t elementCountFromShape(const std::vector<int64_t> &shape);
+    std::vector<float> resolveInputData(
+        const InputBinding &binding,
+        const std::vector<float> &stacked_observation,
+        const std::vector<float> &current_observation,
+        const std::unordered_map<std::string, std::vector<float>> &features) const;
     void validateModelMetadata();
 
     Ort::Env &env_;
@@ -61,14 +80,11 @@ private:
     std::vector<std::string> input_names_;
     std::vector<std::string> output_names_;
 
-    int obs_input_index_ = -1;
-    int timestep_input_index_ = -1;
     int action_output_index_ = -1;
     int action_output_selected_index_ = -1;
     std::vector<int> extra_output_indices_;
-    std::vector<int> unknown_input_indices_;
-    std::vector<AuxInputBuffer> aux_input_buffers_;
-    std::unordered_map<int, size_t> unknown_input_buffer_map_;
+    std::vector<InputBinding> input_bindings_;
+    std::vector<AuxInputBuffer> input_buffers_;
     std::vector<int> selected_output_indices_;
     std::vector<std::string> selected_output_names_;
     bool warned_action_size_mismatch_ = false;

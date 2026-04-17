@@ -121,6 +121,33 @@ engineai_walk:
   reference_motion_file: "reference_motion/walk_ref.txt"
   reference_anchor_body: "base"
   reference_body_names: []             # e.g. ["base", "left_foot", "right_foot"]
+  reference_joint_order:
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+  source_contract:
+    imu_input:
+      payload: "euler_compat"          # euler_compat / quaternion
+      euler_order: ["roll", "pitch", "yaw"]
+      euler_unit: "rad"                # rad / deg
+      quat_order: "xyzw"               # only used when payload=quaternion
+      ang_vel_order: ["x", "y", "z"]
+      frame_alignment_rpy: [0.0, 0.0, 0.0]
+    sim_base:
+      quat_source_order: "wxyz"        # MuJoCo qpos free-joint source order
+    reference_file:
+      body_quat_order: "wxyz"
+    policy_extra_outputs:
+      body_quat_order: "wxyz"
   external_observations:
     - name: vision_latent
       dim: 64
@@ -150,6 +177,22 @@ engineai_walk:
     expected_metadata: {}
     reset_policy_on_mode_switch: true
     extra_output_names: []
+    onnx_inputs: []
+    # Multi-input example:
+    # onnx_inputs:
+    #   - name: obs
+    #     source: stacked_observation
+    #     shape: [1, 705]
+    #     fill_policy: error
+    #   - name: reference_joint_pos
+    #     source: feature
+    #     feature_name: reference_joint_pos
+    #     shape: [1, 12]
+    #     fill_policy: error
+    #   - name: time_step
+    #     source: time_step
+    #     shape: [1, 1]
+    #     fill_policy: error
     # Example for beyondmimic-style exported policy:
     # obs_input_name: "obs"
     # action_output_name: "action"
@@ -530,6 +573,33 @@ stand_sim2real:
   reference_motion_file: "reference_motion/stand_ref.txt"
   reference_anchor_body: "base"
   reference_body_names: []
+  reference_joint_order:
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+  source_contract:
+    imu_input:
+      payload: "euler_compat"
+      euler_order: ["roll", "pitch", "yaw"]
+      euler_unit: "rad"
+      quat_order: "xyzw"
+      ang_vel_order: ["x", "y", "z"]
+      frame_alignment_rpy: [0.0, 0.0, 0.0]
+    sim_base:
+      quat_source_order: "wxyz"
+    reference_file:
+      body_quat_order: "wxyz"
+    policy_extra_outputs:
+      body_quat_order: "wxyz"
   external_observations:
     - name: vision_latent
       dim: 64
@@ -552,6 +622,7 @@ stand_sim2real:
     expected_metadata: {}
     reset_policy_on_mode_switch: true
     extra_output_names: []
+    onnx_inputs: []
   amp_discriminator:
     enabled: false
     input_source: "stacked_observation"

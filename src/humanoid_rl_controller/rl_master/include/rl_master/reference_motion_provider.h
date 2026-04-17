@@ -29,7 +29,7 @@ struct ReferenceMotionFrame
 class ReferenceMotionProvider
 {
 public:
-    bool load(const std::string &file_path, int expected_dim);
+    bool load(const std::string &file_path, int expected_dim, const std::string &body_quat_format_override = "");
     void clear();
 
     bool available() const { return loaded_ && !frames_.empty(); }
@@ -45,7 +45,7 @@ public:
 
 private:
     static size_t sampleIndexByPhase(size_t frame_count, double phase_t, double cycle_time);
-    bool loadStructuredFile(const std::string &file_path, int expected_dim);
+    bool loadStructuredFile(const std::string &file_path, int expected_dim, const std::string &body_quat_format_override);
     bool loadLegacyTextFile(const std::string &file_path, int expected_dim);
     static std::vector<float> parseLine(const std::string &line);
     static std::vector<float> fitDim(const std::vector<float> &values, size_t dim);

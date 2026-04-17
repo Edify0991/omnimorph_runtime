@@ -46,6 +46,7 @@ public:
         double phase_t,
         const Sim2realCfg &cfg,
         const std::vector<int> &obs_index_map,
+        const std::vector<int> &reference_index_map = {},
         const ObservationFeatureContext &feature_context = {}) const;
 
     size_t expectedDim() const;
@@ -59,6 +60,7 @@ private:
         const std::vector<float> &,
         double,
         const Sim2realCfg &,
+        const std::vector<int> &,
         const std::vector<int> &,
         const ObservationFeatureContext &,
         std::vector<float> *)>;

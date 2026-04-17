@@ -179,7 +179,10 @@ ReferenceMotionFrame emptyFrame(int expected_dim)
 }
 } // namespace
 
-bool ReferenceMotionProvider::load(const std::string &file_path, int expected_dim)
+bool ReferenceMotionProvider::load(
+    const std::string &file_path,
+    int expected_dim,
+    const std::string &body_quat_format_override)
 {
     clear();
 
@@ -191,7 +194,7 @@ bool ReferenceMotionProvider::load(const std::string &file_path, int expected_di
     const std::string extension = toLower(std::filesystem::path(file_path).extension().string());
     const bool prefer_structured = extension == ".yaml" || extension == ".yml" || extension == ".json";
 
-    if (loadStructuredFile(file_path, expected_dim))
+    if (loadStructuredFile(file_path, expected_dim, body_quat_format_override))
     {
         return true;
     }
@@ -287,7 +290,10 @@ size_t ReferenceMotionProvider::sampleIndexByPhase(size_t frame_count, double ph
     return index;
 }
 
-bool ReferenceMotionProvider::loadStructuredFile(const std::string &file_path, int expected_dim)
+bool ReferenceMotionProvider::loadStructuredFile(
+    const std::string &file_path,
+    int expected_dim,
+    const std::string &body_quat_format_override)
 {
     YAML::Node root;
     try
@@ -311,7 +317,9 @@ bool ReferenceMotionProvider::loadStructuredFile(const std::string &file_path, i
         metadata.structured_file = true;
         metadata.source_format = motion_root["source_format"] ? motion_root["source_format"].as<std::string>() : "structured";
         metadata.anchor_body = motion_root["anchor_body"] ? motion_root["anchor_body"].as<std::string>() : "";
-        metadata.body_quat_format = motion_root["body_quat_format"] ? motion_root["body_quat_format"].as<std::string>() : "wxyz";
+        metadata.body_quat_format = !body_quat_format_override.empty()
+                                        ? body_quat_format_override
+                                        : (motion_root["body_quat_format"] ? motion_root["body_quat_format"].as<std::string>() : "wxyz");
         if (motion_root["body_names"])
         {
             metadata.body_names = motion_root["body_names"].as<std::vector<std::string>>();

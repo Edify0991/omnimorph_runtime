@@ -10,6 +10,105 @@
 namespace
 {
 constexpr float kPi = 3.14159265358979323846f;
+
+std::string normalizeToken(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+int axisComponentIndex(const std::string &token_raw)
+{
+    const std::string token = normalizeToken(token_raw);
+    if (token == "x" || token == "wx" || token == "roll")
+    {
+        return 0;
+    }
+    if (token == "y" || token == "wy" || token == "pitch")
+    {
+        return 1;
+    }
+    if (token == "z" || token == "wz" || token == "yaw")
+    {
+        return 2;
+    }
+    return -1;
+}
+
+std::array<float, 3> reorderVector3(
+    const std::array<float, 3> &raw,
+    const std::vector<std::string> &order,
+    const std::vector<std::string> &expected_tokens)
+{
+    std::array<float, 3> out{0.0f, 0.0f, 0.0f};
+    for (size_t raw_idx = 0; raw_idx < raw.size() && raw_idx < order.size(); ++raw_idx)
+    {
+        const int canonical_idx = axisComponentIndex(order[raw_idx]);
+        if (canonical_idx >= 0 && canonical_idx < 3)
+        {
+            out[static_cast<size_t>(canonical_idx)] = raw[raw_idx];
+        }
+    }
+    (void)expected_tokens;
+    return out;
+}
+
+std::array<float, 4> quatMultiply(const std::array<float, 4> &lhs, const std::array<float, 4> &rhs)
+{
+    const float x1 = lhs[0], y1 = lhs[1], z1 = lhs[2], w1 = lhs[3];
+    const float x2 = rhs[0], y2 = rhs[1], z2 = rhs[2], w2 = rhs[3];
+    return {
+        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2};
+}
+
+std::array<float, 3> rotateVectorByQuat(
+    const std::array<float, 3> &vec,
+    const std::array<float, 4> &quat_xyzw)
+{
+    const std::vector<float> qv = {quat_xyzw[0], quat_xyzw[1], quat_xyzw[2], quat_xyzw[3]};
+    const float x = qv[0];
+    const float y = qv[1];
+    const float z = qv[2];
+    const float w = qv[3];
+    const float xx = x * x;
+    const float yy = y * y;
+    const float zz = z * z;
+    const float xy = x * y;
+    const float xz = x * z;
+    const float yz = y * z;
+    const float wx = w * x;
+    const float wy = w * y;
+    const float wz = w * z;
+    return {
+        (1.0f - 2.0f * (yy + zz)) * vec[0] + 2.0f * (xy - wz) * vec[1] + 2.0f * (xz + wy) * vec[2],
+        2.0f * (xy + wz) * vec[0] + (1.0f - 2.0f * (xx + zz)) * vec[1] + 2.0f * (yz - wx) * vec[2],
+        2.0f * (xz - wy) * vec[0] + 2.0f * (yz + wx) * vec[1] + (1.0f - 2.0f * (xx + yy)) * vec[2]};
+}
+
+std::array<float, 4> parseQuaternionFromImuMsg(
+    const sensor_msgs::msg::Imu::SharedPtr &msg,
+    const SourceContractImuInput &contract)
+{
+    const std::string quat_order = normalizeToken(contract.quat_order);
+    if (quat_order == "wxyz")
+    {
+        return {
+            static_cast<float>(msg->orientation.y),
+            static_cast<float>(msg->orientation.z),
+            static_cast<float>(msg->orientation.w),
+            static_cast<float>(msg->orientation.x)};
+    }
+    return {
+        static_cast<float>(msg->orientation.x),
+        static_cast<float>(msg->orientation.y),
+        static_cast<float>(msg->orientation.z),
+        static_cast<float>(msg->orientation.w)};
+}
 }
 
 SolverDdsBridge::~SolverDdsBridge()
@@ -66,44 +165,67 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
         "/imu/yesense",
         rclcpp::QoS(rclcpp::KeepLast(30)).best_effort(),
         [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
-            std::array<float, 3> rpy{};
-            std::array<float, 4> quat{};
-
-            const float ow = static_cast<float>(msg->orientation.w);
-            const float ox = static_cast<float>(msg->orientation.x);
-            const float oy = static_cast<float>(msg->orientation.y);
-            const float oz = static_cast<float>(msg->orientation.z);
-
-            // Compatibility with current IMU node:
-            // orientation may carry roll/pitch/yaw with w==0.
-            if (std::abs(ow) < 1e-6f &&
-                std::abs(ox) <= kPi * 2.0f &&
-                std::abs(oy) <= kPi * 2.0f &&
-                std::abs(oz) <= kPi * 2.0f)
+            SourceContract contract_snapshot;
             {
-                rpy = {ox, oy, oz};
-                quat = rpyToQuat(rpy[0], rpy[1], rpy[2]);
+                std::lock_guard<std::mutex> lock(imu_mutex_);
+                contract_snapshot = source_contract_;
+            }
+
+            const auto &imu_contract = contract_snapshot.imu_input;
+            std::array<float, 3> raw_ang_vel{
+                static_cast<float>(msg->angular_velocity.x),
+                static_cast<float>(msg->angular_velocity.y),
+                static_cast<float>(msg->angular_velocity.z)};
+            std::array<float, 3> canonical_ang_vel = reorderVector3(
+                raw_ang_vel,
+                imu_contract.ang_vel_order,
+                {"x", "y", "z"});
+
+            std::array<float, 4> canonical_quat{0.0f, 0.0f, 0.0f, 1.0f};
+            const std::string payload = normalizeToken(imu_contract.payload);
+            if (payload == "quaternion")
+            {
+                canonical_quat = parseQuaternionFromImuMsg(msg, imu_contract);
             }
             else
             {
-                quat = {ox, oy, oz, ow};
-                const std::vector<float> rpy_vec = quaternion_to_euler_array({quat[0], quat[1], quat[2], quat[3]});
-                if (rpy_vec.size() >= 3)
+                std::array<float, 3> raw_euler{
+                    static_cast<float>(msg->orientation.x),
+                    static_cast<float>(msg->orientation.y),
+                    static_cast<float>(msg->orientation.z)};
+                std::array<float, 3> canonical_rpy = reorderVector3(
+                    raw_euler,
+                    imu_contract.euler_order,
+                    {"roll", "pitch", "yaw"});
+                if (normalizeToken(imu_contract.euler_unit) == "deg")
                 {
-                    rpy = {rpy_vec[0], rpy_vec[1], rpy_vec[2]};
+                    constexpr float kDegToRad = kPi / 180.0f;
+                    for (float &value : canonical_rpy)
+                    {
+                        value *= kDegToRad;
+                    }
                 }
-                else
-                {
-                    rpy = {0.0f, 0.0f, 0.0f};
-                }
+                canonical_quat = rpyToQuat(canonical_rpy[0], canonical_rpy[1], canonical_rpy[2]);
             }
 
+            std::array<float, 4> alignment_quat = rpyToQuat(
+                imu_contract.frame_alignment_rpy.size() > 0 ? imu_contract.frame_alignment_rpy[0] : 0.0f,
+                imu_contract.frame_alignment_rpy.size() > 1 ? imu_contract.frame_alignment_rpy[1] : 0.0f,
+                imu_contract.frame_alignment_rpy.size() > 2 ? imu_contract.frame_alignment_rpy[2] : 0.0f);
+            canonical_quat = quatMultiply(canonical_quat, alignment_quat);
+            canonical_ang_vel = rotateVectorByQuat(canonical_ang_vel, alignment_quat);
+
+            const std::vector<float> rpy_vec = quaternion_to_euler_array({
+                canonical_quat[0], canonical_quat[1], canonical_quat[2], canonical_quat[3]});
+            std::array<float, 3> canonical_rpy{
+                rpy_vec.size() > 0 ? rpy_vec[0] : 0.0f,
+                rpy_vec.size() > 1 ? rpy_vec[1] : 0.0f,
+                rpy_vec.size() > 2 ? rpy_vec[2] : 0.0f};
+
             std::lock_guard<std::mutex> lock(imu_mutex_);
-            imu_ang_vel_[0] = static_cast<float>(msg->angular_velocity.x);
-            imu_ang_vel_[1] = static_cast<float>(msg->angular_velocity.y);
-            imu_ang_vel_[2] = static_cast<float>(msg->angular_velocity.z);
-            imu_quat_ = quat;
-            imu_rpy_ = rpy;
+            imu_ang_vel_ = canonical_ang_vel;
+            imu_quat_ = canonical_quat;
+            imu_rpy_ = canonical_rpy;
         });
 
     {
@@ -157,6 +279,12 @@ void SolverDdsBridge::updateStateTelemetryConfig(const StateTelemetryConfig &tel
         telemetry_config_ = telemetry_config;
     }
     telemetry_cv_.notify_all();
+}
+
+void SolverDdsBridge::updateSourceContract(const SourceContract &source_contract)
+{
+    std::lock_guard<std::mutex> lock(imu_mutex_);
+    source_contract_ = source_contract;
 }
 
 void SolverDdsBridge::executorLoop()

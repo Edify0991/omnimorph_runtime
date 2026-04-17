@@ -95,6 +95,96 @@ void appendFeatureVector(
         pushPadded(out, (source && i < max_count) ? (*source)[static_cast<size_t>(i)] : 0.0f, i, max_count);
     }
 }
+
+int componentIndex3(const std::string &component_raw, const std::vector<std::string> &defaults)
+{
+    std::string component = component_raw;
+    std::transform(component.begin(), component.end(), component.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    for (size_t i = 0; i < defaults.size(); ++i)
+    {
+        std::string normalized = defaults[i];
+        std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if (component == normalized)
+        {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+int componentIndex4(const std::string &component_raw, const std::vector<std::string> &defaults)
+{
+    return componentIndex3(component_raw, defaults);
+}
+
+int baseAngVelComponentIndex(const std::string &component_raw)
+{
+    const int xyz_idx = componentIndex3(component_raw, {"x", "y", "z"});
+    if (xyz_idx >= 0)
+    {
+        return xyz_idx;
+    }
+    return componentIndex3(component_raw, {"wx", "wy", "wz"});
+}
+
+bool isValidCommandComponent(const std::string &component_raw)
+{
+    return componentIndex3(component_raw, {"vx", "vy", "dyaw"}) >= 0;
+}
+
+bool isValidEulerComponent(const std::string &component_raw)
+{
+    return componentIndex3(component_raw, {"roll", "pitch", "yaw"}) >= 0;
+}
+
+bool isValidQuatComponent(const std::string &component_raw)
+{
+    return componentIndex4(component_raw, {"x", "y", "z", "w"}) >= 0;
+}
+
+std::vector<std::string> fallbackComponentsForTerm(const std::string &term_name)
+{
+    if (term_name == "base_ang_vel")
+    {
+        return {"wx", "wy", "wz"};
+    }
+    if (term_name == "base_quat")
+    {
+        return {"x", "y", "z", "w"};
+    }
+    return {"roll", "pitch", "yaw"};
+}
+
+const std::vector<float> *featureVectorOrNull(
+    const ObservationFeatureContext &feature_context,
+    const std::string &source_name)
+{
+    return findFeature(feature_context, source_name);
+}
+
+std::vector<float> reorderedReferenceVector(
+    const std::vector<float> *source,
+    const std::vector<int> &reference_index_map,
+    int count)
+{
+    std::vector<float> out;
+    out.reserve(static_cast<size_t>(std::max(count, 0)));
+    for (int i = 0; i < count; ++i)
+    {
+        const int source_idx = i < static_cast<int>(reference_index_map.size())
+                                   ? reference_index_map[static_cast<size_t>(i)]
+                                   : -1;
+        const bool valid = source &&
+                           source_idx >= 0 &&
+                           static_cast<size_t>(source_idx) < source->size();
+        out.push_back(valid ? (*source)[static_cast<size_t>(source_idx)] : 0.0f);
+    }
+    return out;
+}
 } // namespace
 
 ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_file)
@@ -140,9 +230,15 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
         {
             term.count = getCountOrDefault(term_node, 12);
         }
-        else if (term.name == "base_ang_vel" || term.name == "base_rpy")
+        else if (term.name == "base_ang_vel" || term.name == "base_rpy" || term.name == "base_euler")
         {
-            term.count = getCountOrDefault(term_node, 3);
+            const int default_count = term.components.empty() ? 3 : static_cast<int>(term.components.size());
+            term.count = getCountOrDefault(term_node, default_count);
+        }
+        else if (term.name == "base_quat")
+        {
+            const int default_count = term.components.empty() ? 4 : static_cast<int>(term.components.size());
+            term.count = getCountOrDefault(term_node, default_count);
         }
         else if (term.name == "motion_anchor_pos_b" || term.name == "motion_ref_pos_b")
         {
@@ -180,7 +276,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
 {
     static const std::unordered_map<std::string, ObservationProvider> kRegistry = {
         {"phase",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double phase_t, const Sim2realCfg &cfg, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double phase_t, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               const int phase_count = std::min(term.count, 2);
               const double cycle = std::max(1e-6, cfg.cycle_time);
               if (phase_count >= 1)
@@ -196,7 +292,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           true,
           false}},
         {"command",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &cmd, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &cmd, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               if (term.components.empty())
               {
                   const int count = term.count <= 0 ? 3 : term.count;
@@ -238,7 +334,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           true,
           true}},
         {"joint_pos",
-         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &obs_index_map, const ObservationFeatureContext &, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &obs_index_map, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               const int max_count = std::min(term.count, static_cast<int>(obs_index_map.size()));
               for (int i = 0; i < term.count; ++i)
               {
@@ -261,7 +357,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           true,
           false}},
         {"joint_vel",
-         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &obs_index_map, const ObservationFeatureContext &, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &obs_index_map, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               const int max_count = std::min(term.count, static_cast<int>(obs_index_map.size()));
               for (int i = 0; i < term.count; ++i)
               {
@@ -281,7 +377,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           true,
           false}},
         {"last_action",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &last_action, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &last_action, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               const int max_count = std::min(term.count, static_cast<int>(last_action.size()));
               for (int i = 0; i < term.count; ++i)
               {
@@ -292,18 +388,21 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           true,
           false}},
         {"base_ang_vel",
-         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
-              const int max_count = std::min(term.count, static_cast<int>(robot.base_ang_vel.size()));
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const auto components = term.components.empty() ? fallbackComponentsForTerm(term.name) : term.components;
+              const int component_count = static_cast<int>(components.size());
               for (int i = 0; i < term.count; ++i)
               {
-                  pushPadded(out, i < max_count ? robot.base_ang_vel[static_cast<size_t>(i)] * cfg.scales.ang_vel : 0.0f, i, max_count);
+                  const int component_idx = i < component_count ? baseAngVelComponentIndex(components[static_cast<size_t>(i)]) : -1;
+                  const bool valid = component_idx >= 0 && static_cast<size_t>(component_idx) < robot.base_ang_vel.size();
+                  pushPadded(out, valid ? robot.base_ang_vel[static_cast<size_t>(component_idx)] * cfg.scales.ang_vel : 0.0f, i, valid ? 1 : 0);
               }
           },
           3,
           true,
-          false}},
+          true}},
         {"base_rpy",
-         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               const std::vector<float> rpy = quaternion_to_euler_array(robot.base_quat);
               const int max_count = std::min(term.count, static_cast<int>(rpy.size()));
               for (int i = 0; i < term.count; ++i)
@@ -314,92 +413,125 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           3,
           true,
           false}},
+        {"base_euler",
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const std::vector<float> rpy = quaternion_to_euler_array(robot.base_quat);
+              const auto components = term.components.empty() ? fallbackComponentsForTerm(term.name) : term.components;
+              const int component_count = static_cast<int>(components.size());
+              for (int i = 0; i < term.count; ++i)
+              {
+                  const int component_idx = i < component_count ? componentIndex3(components[static_cast<size_t>(i)], {"roll", "pitch", "yaw"}) : -1;
+                  const bool valid = component_idx >= 0 && static_cast<size_t>(component_idx) < rpy.size();
+                  pushPadded(out, valid ? rpy[static_cast<size_t>(component_idx)] * cfg.scales.quat : 0.0f, i, valid ? 1 : 0);
+              }
+          },
+          3,
+          true,
+          true}},
+        {"base_quat",
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const auto components = term.components.empty() ? fallbackComponentsForTerm(term.name) : term.components;
+              const int component_count = static_cast<int>(components.size());
+              for (int i = 0; i < term.count; ++i)
+              {
+                  const int component_idx = i < component_count ? componentIndex4(components[static_cast<size_t>(i)], {"x", "y", "z", "w"}) : -1;
+                  const bool valid = component_idx >= 0 && static_cast<size_t>(component_idx) < robot.base_quat.size();
+                  pushPadded(out, valid ? robot.base_quat[static_cast<size_t>(component_idx)] * cfg.scales.quat : 0.0f, i, valid ? 1 : 0);
+              }
+          },
+          4,
+          true,
+          true}},
         {"reference_motion",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "reference_motion", out);
           },
           0,
           true,
           false}},
         {"reference_joint_pos",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
-              appendFeatureVector(term, feature_context, "reference_joint_pos", out);
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &reference_index_map, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              const std::vector<float> *source = featureVectorOrNull(feature_context, term.source.empty() ? "reference_joint_pos" : term.source);
+              const std::vector<float> values = reorderedReferenceVector(source, reference_index_map, term.count);
+              out->insert(out->end(), values.begin(), values.end());
           },
           12,
           true,
           false}},
         {"reference_joint_vel",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
-              appendFeatureVector(term, feature_context, "reference_joint_vel", out);
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &reference_index_map, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              const std::vector<float> *source = featureVectorOrNull(feature_context, term.source.empty() ? "reference_joint_vel" : term.source);
+              const std::vector<float> values = reorderedReferenceVector(source, reference_index_map, term.count);
+              out->insert(out->end(), values.begin(), values.end());
           },
           12,
           true,
           false}},
         {"motion_anchor_pos_b",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "motion_anchor_pos_b", out);
           },
           3,
           true,
           false}},
         {"motion_ref_pos_b",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "motion_anchor_pos_b", out);
           },
           3,
           true,
           false}},
         {"motion_anchor_ori_b",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "motion_anchor_ori_b", out);
           },
           6,
           true,
           false}},
         {"motion_ref_ori_b",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "motion_anchor_ori_b", out);
           },
           6,
           true,
           false}},
         {"motion_body_pos_b",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "motion_body_pos_b", out);
           },
           0,
           true,
           false}},
         {"motion_body_ori_b",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "motion_body_ori_b", out);
           },
           0,
           true,
           false}},
         {"robot_body_pos",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "robot_body_pos", out);
           },
           0,
           true,
           false}},
         {"robot_body_ori",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "robot_body_ori", out);
           },
           0,
           true,
           false}},
         {"external_sensor",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               appendFeatureVector(term, feature_context, "external_sensor", out);
           },
           0,
           true,
           false}},
         {"feature",
-         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
               if (term.source.empty())
               {
                   throw std::runtime_error("feature term requires non-empty source field");
@@ -424,7 +556,8 @@ size_t ObservationBuilder::resolveTermDim(const ObservationTermConfig &term, con
     {
         return static_cast<size_t>(provider.default_dim);
     }
-    if (term.name == "command" && !term.components.empty())
+    if ((term.name == "command" || term.name == "base_ang_vel" || term.name == "base_euler" || term.name == "base_quat") &&
+        !term.components.empty())
     {
         return static_cast<size_t>(term.components.size());
     }
@@ -465,6 +598,78 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
         if (term.name == "phase" && term.count > 2)
         {
             throw std::runtime_error("phase term count cannot exceed 2");
+        }
+        if (term.name == "command")
+        {
+            if (!term.components.empty() && term.count != static_cast<int>(term.components.size()))
+            {
+                throw std::runtime_error("command term count must equal components length");
+            }
+            if (term.components.empty() && term.count > 3)
+            {
+                throw std::runtime_error("command term count cannot exceed 3 when components is empty");
+            }
+            for (const auto &component : term.components)
+            {
+                if (!isValidCommandComponent(component))
+                {
+                    throw std::runtime_error("Unknown command component: " + component);
+                }
+            }
+        }
+        if (term.name == "base_ang_vel")
+        {
+            if (!term.components.empty() && term.count != static_cast<int>(term.components.size()))
+            {
+                throw std::runtime_error("base_ang_vel term count must equal components length");
+            }
+            if (term.components.empty() && term.count > 3)
+            {
+                throw std::runtime_error("base_ang_vel term count cannot exceed 3 when components is empty");
+            }
+            for (const auto &component : term.components)
+            {
+                if (baseAngVelComponentIndex(component) < 0)
+                {
+                    throw std::runtime_error("Unknown base_ang_vel component: " + component);
+                }
+            }
+        }
+        if (term.name == "base_euler")
+        {
+            if (!term.components.empty() && term.count != static_cast<int>(term.components.size()))
+            {
+                throw std::runtime_error("base_euler term count must equal components length");
+            }
+            if (term.components.empty() && term.count > 3)
+            {
+                throw std::runtime_error("base_euler term count cannot exceed 3 when components is empty");
+            }
+            for (const auto &component : term.components)
+            {
+                if (!isValidEulerComponent(component))
+                {
+                    throw std::runtime_error("Unknown base_euler component: " + component);
+                }
+            }
+        }
+        if (term.name == "base_quat")
+        {
+            if (!term.components.empty() && term.count != static_cast<int>(term.components.size()))
+            {
+                throw std::runtime_error("base_quat term count must equal components length");
+            }
+            if (term.components.empty() && term.count > 4)
+            {
+                throw std::runtime_error("base_quat term count cannot exceed 4 when components is empty");
+            }
+            for (const auto &component : term.components)
+            {
+                if (!isValidQuatComponent(component))
+                {
+                    throw std::runtime_error("Unknown base_quat component: " + component);
+                }
+            }
         }
         if ((term.name == "reference_motion" || term.name == "external_sensor" || term.name == "feature" ||
              term.name == "motion_body_pos_b" || term.name == "motion_body_ori_b" ||
@@ -516,6 +721,7 @@ std::vector<float> ObservationBuilder::build(
     double phase_t,
     const Sim2realCfg &cfg,
     const std::vector<int> &obs_index_map,
+    const std::vector<int> &reference_index_map,
     const ObservationFeatureContext &feature_context) const
 {
     std::vector<float> obs;
@@ -524,7 +730,17 @@ std::vector<float> ObservationBuilder::build(
     for (const auto &resolved_term : resolved_terms_)
     {
         const size_t before = obs.size();
-        resolved_term.gather(resolved_term.config, robot, cmd, last_action, phase_t, cfg, obs_index_map, feature_context, &obs);
+        resolved_term.gather(
+            resolved_term.config,
+            robot,
+            cmd,
+            last_action,
+            phase_t,
+            cfg,
+            obs_index_map,
+            reference_index_map,
+            feature_context,
+            &obs);
         const size_t added = obs.size() - before;
         if (added != resolved_term.dim)
         {

@@ -97,37 +97,6 @@ void OnnxPolicyRunner::init()
         output_names_.emplace_back(output_name.get());
     }
 
-    obs_input_index_ = findInputIndexByName(cfg_.obs_input_name);
-    if (obs_input_index_ < 0 && !cfg_.strict_model_io)
-    {
-        obs_input_index_ = 0;
-    }
-    if (obs_input_index_ < 0)
-    {
-        throw std::runtime_error(
-            "[" + policy_tag_ + "] observation input '" + cfg_.obs_input_name + "' not found");
-    }
-
-    timestep_input_index_ = -1;
-    const int detected_timestep_index = findInputIndexByName(cfg_.time_step_input_name);
-    if (cfg_.enable_time_step_input)
-    {
-        if (detected_timestep_index < 0)
-        {
-            throw std::runtime_error(
-                "[" + policy_tag_ + "] time_step input '" + cfg_.time_step_input_name + "' not found");
-        }
-        timestep_input_index_ = detected_timestep_index;
-    }
-    else if (detected_timestep_index >= 0)
-    {
-        timestep_input_index_ = detected_timestep_index;
-    }
-    if (timestep_input_index_ == obs_input_index_)
-    {
-        timestep_input_index_ = -1;
-    }
-
     action_output_index_ = findOutputIndexByName(cfg_.action_output_name);
     if (action_output_index_ < 0 && !cfg_.strict_model_io)
     {
@@ -180,48 +149,161 @@ void OnnxPolicyRunner::init()
         throw std::runtime_error("[" + policy_tag_ + "] failed to resolve action output index");
     }
 
-    unknown_input_indices_.clear();
-    aux_input_buffers_.clear();
-    unknown_input_buffer_map_.clear();
-    for (int input_index = 0; input_index < input_count; ++input_index)
-    {
-        if (input_index == obs_input_index_ || input_index == timestep_input_index_)
-        {
-            continue;
-        }
-        unknown_input_indices_.push_back(input_index);
+    input_bindings_.clear();
+    input_buffers_.clear();
+    std::vector<bool> bound_inputs(static_cast<size_t>(input_count), false);
 
+    auto defaultShapeForInput = [&](int input_index) {
         auto input_info = session_->GetInputTypeInfo(input_index).GetTensorTypeAndShapeInfo();
         auto normalized_shape = normalizedShape(input_info.GetShape());
         if (normalized_shape.empty())
         {
             normalized_shape = {1};
         }
+        return normalized_shape;
+    };
+
+    auto appendBinding = [&](InputBinding binding) {
+        if (binding.input_index < 0 || binding.input_index >= input_count)
+        {
+            throw std::runtime_error("[" + policy_tag_ + "] invalid input binding index");
+        }
+        if (binding.shape.empty())
+        {
+            binding.shape = defaultShapeForInput(binding.input_index);
+        }
+        bound_inputs[static_cast<size_t>(binding.input_index)] = true;
+        input_bindings_.push_back(std::move(binding));
 
         AuxInputBuffer buffer;
-        buffer.shape = normalized_shape;
-        buffer.data.assign(elementCountFromShape(normalized_shape), 0.0f);
-        unknown_input_buffer_map_[input_index] = aux_input_buffers_.size();
-        aux_input_buffers_.push_back(std::move(buffer));
-    }
+        buffer.shape = input_bindings_.back().shape;
+        buffer.data.assign(elementCountFromShape(buffer.shape), 0.0f);
+        input_buffers_.push_back(std::move(buffer));
+    };
 
-    if (!unknown_input_indices_.empty())
+    if (!cfg_.onnx_inputs.empty())
     {
-        std::ostringstream oss;
-        for (size_t i = 0; i < unknown_input_indices_.size(); ++i)
+        for (const auto &spec : cfg_.onnx_inputs)
         {
-            const int index = unknown_input_indices_[i];
-            if (i > 0)
+            if (spec.name.empty())
             {
-                oss << ", ";
+                throw std::runtime_error("[" + policy_tag_ + "] onnx_inputs item missing name");
             }
-            oss << input_names_[static_cast<size_t>(index)];
+            const int input_index = findInputIndexByName(spec.name);
+            if (input_index < 0)
+            {
+                throw std::runtime_error("[" + policy_tag_ + "] configured input '" + spec.name + "' not found");
+            }
+
+            InputBinding binding;
+            binding.input_index = input_index;
+            binding.name = spec.name;
+            binding.source = spec.source;
+            binding.feature_name = spec.feature_name;
+            binding.shape = spec.shape;
+            binding.fill_policy = spec.fill_policy;
+            binding.constant = spec.constant;
+            appendBinding(std::move(binding));
         }
-        if (cfg_.strict_model_io)
+
+        std::vector<std::string> unbound_names;
+        for (int input_index = 0; input_index < input_count; ++input_index)
         {
-            throw std::runtime_error("[" + policy_tag_ + "] unknown model inputs: " + oss.str());
+            if (!bound_inputs[static_cast<size_t>(input_index)])
+            {
+                unbound_names.push_back(input_names_[static_cast<size_t>(input_index)]);
+            }
         }
-        std::cerr << "[" << policy_tag_ << "] fill unspecified inputs with zeros: " << oss.str() << std::endl;
+        if (!unbound_names.empty())
+        {
+            std::ostringstream oss;
+            for (size_t i = 0; i < unbound_names.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    oss << ", ";
+                }
+                oss << unbound_names[i];
+            }
+            throw std::runtime_error("[" + policy_tag_ + "] onnx_inputs does not cover model inputs: " + oss.str());
+        }
+    }
+    else
+    {
+        int obs_input_index = findInputIndexByName(cfg_.obs_input_name);
+        if (obs_input_index < 0 && !cfg_.strict_model_io)
+        {
+            obs_input_index = 0;
+        }
+        if (obs_input_index < 0)
+        {
+            throw std::runtime_error(
+                "[" + policy_tag_ + "] observation input '" + cfg_.obs_input_name + "' not found");
+        }
+
+        InputBinding obs_binding;
+        obs_binding.input_index = obs_input_index;
+        obs_binding.name = input_names_[static_cast<size_t>(obs_input_index)];
+        obs_binding.source = "stacked_observation";
+        obs_binding.fill_policy = "error";
+        appendBinding(std::move(obs_binding));
+
+        int timestep_input_index = findInputIndexByName(cfg_.time_step_input_name);
+        if (cfg_.enable_time_step_input)
+        {
+            if (timestep_input_index < 0)
+            {
+                throw std::runtime_error(
+                    "[" + policy_tag_ + "] time_step input '" + cfg_.time_step_input_name + "' not found");
+            }
+        }
+        if (timestep_input_index >= 0 && timestep_input_index != obs_input_index)
+        {
+            InputBinding time_binding;
+            time_binding.input_index = timestep_input_index;
+            time_binding.name = input_names_[static_cast<size_t>(timestep_input_index)];
+            time_binding.source = "time_step";
+            time_binding.shape = {1, 1};
+            time_binding.fill_policy = "error";
+            appendBinding(std::move(time_binding));
+        }
+
+        std::vector<std::string> zero_filled_inputs;
+        for (int input_index = 0; input_index < input_count; ++input_index)
+        {
+            if (bound_inputs[static_cast<size_t>(input_index)])
+            {
+                continue;
+            }
+            if (cfg_.strict_model_io)
+            {
+                throw std::runtime_error(
+                    "[" + policy_tag_ + "] unknown model input '" +
+                    input_names_[static_cast<size_t>(input_index)] + "'");
+            }
+
+            InputBinding zero_binding;
+            zero_binding.input_index = input_index;
+            zero_binding.name = input_names_[static_cast<size_t>(input_index)];
+            zero_binding.source = "constant";
+            zero_binding.fill_policy = "zero";
+            appendBinding(std::move(zero_binding));
+            zero_filled_inputs.push_back(input_names_[static_cast<size_t>(input_index)]);
+        }
+
+        if (!zero_filled_inputs.empty())
+        {
+            std::ostringstream oss;
+            for (size_t i = 0; i < zero_filled_inputs.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    oss << ", ";
+                }
+                oss << zero_filled_inputs[i];
+            }
+            std::cerr << "[" << policy_tag_ << "] fill unspecified inputs with zeros: " << oss.str() << std::endl;
+        }
     }
 
     validateModelMetadata();
@@ -234,57 +316,32 @@ void OnnxPolicyRunner::reset()
     time_step_ = cfg_.time_step_start;
 }
 
-PolicyInferenceResult OnnxPolicyRunner::forward(const std::vector<float> &observation)
+PolicyInferenceResult OnnxPolicyRunner::forward(
+    const std::vector<float> &stacked_observation,
+    const std::vector<float> &current_observation,
+    const std::unordered_map<std::string, std::vector<float>> &features)
 {
     if (!session_)
     {
         throw std::runtime_error("[" + policy_tag_ + "] forward called before init()");
     }
-    if (observation.empty())
+    if (stacked_observation.empty() && current_observation.empty())
     {
-        throw std::runtime_error("[" + policy_tag_ + "] observation is empty");
+        throw std::runtime_error("[" + policy_tag_ + "] observation inputs are empty");
     }
 
-    std::array<float, 1> timestep_value{static_cast<float>(time_step_)};
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     std::vector<const char *> input_name_ptrs;
     std::vector<Ort::Value> input_tensors;
-    input_name_ptrs.reserve(input_names_.size());
-    input_tensors.reserve(input_names_.size());
+    input_name_ptrs.reserve(input_bindings_.size());
+    input_tensors.reserve(input_bindings_.size());
 
-    for (size_t input_index = 0; input_index < input_names_.size(); ++input_index)
+    for (size_t binding_index = 0; binding_index < input_bindings_.size(); ++binding_index)
     {
-        input_name_ptrs.push_back(input_names_[input_index].c_str());
-        if (static_cast<int>(input_index) == obs_input_index_)
-        {
-            std::array<int64_t, 2> input_shape{1, static_cast<int64_t>(observation.size())};
-            input_tensors.emplace_back(Ort::Value::CreateTensor<float>(
-                memory_info,
-                const_cast<float *>(observation.data()),
-                observation.size(),
-                input_shape.data(),
-                input_shape.size()));
-            continue;
-        }
-
-        if (static_cast<int>(input_index) == timestep_input_index_)
-        {
-            std::array<int64_t, 2> input_shape{1, 1};
-            input_tensors.emplace_back(Ort::Value::CreateTensor<float>(
-                memory_info,
-                timestep_value.data(),
-                timestep_value.size(),
-                input_shape.data(),
-                input_shape.size()));
-            continue;
-        }
-
-        const auto buffer_it = unknown_input_buffer_map_.find(static_cast<int>(input_index));
-        if (buffer_it == unknown_input_buffer_map_.end())
-        {
-            throw std::runtime_error("[" + policy_tag_ + "] unknown input buffer mapping missing");
-        }
-        auto &buffer = aux_input_buffers_[buffer_it->second];
+        const auto &binding = input_bindings_[binding_index];
+        auto &buffer = input_buffers_[binding_index];
+        buffer.data = resolveInputData(binding, stacked_observation, current_observation, features);
+        input_name_ptrs.push_back(binding.name.c_str());
         input_tensors.emplace_back(Ort::Value::CreateTensor<float>(
             memory_info,
             buffer.data.data(),
@@ -342,11 +399,80 @@ PolicyInferenceResult OnnxPolicyRunner::forward(const std::vector<float> &observ
         result.extra_outputs[selected_output_names_[output_idx]] = flattenFloatTensor(output_tensors[output_idx]);
     }
 
-    if (timestep_input_index_ >= 0)
+    const bool advances_timestep = std::any_of(
+        input_bindings_.begin(),
+        input_bindings_.end(),
+        [](const InputBinding &binding) {
+            return trimCopy(binding.source) == "time_step";
+        });
+    if (advances_timestep)
     {
         ++time_step_;
     }
     return result;
+}
+
+std::vector<float> OnnxPolicyRunner::resolveInputData(
+    const InputBinding &binding,
+    const std::vector<float> &stacked_observation,
+    const std::vector<float> &current_observation,
+    const std::unordered_map<std::string, std::vector<float>> &features) const
+{
+    const size_t target_count = elementCountFromShape(binding.shape);
+    std::vector<float> source_data;
+    const std::string source = trimCopy(binding.source);
+
+    if (source == "stacked_observation")
+    {
+        source_data = stacked_observation;
+    }
+    else if (source == "observation")
+    {
+        source_data = current_observation;
+    }
+    else if (source == "time_step")
+    {
+        source_data = {static_cast<float>(time_step_)};
+    }
+    else if (source == "feature")
+    {
+        const auto it = features.find(binding.feature_name);
+        if (it != features.end())
+        {
+            source_data = it->second;
+        }
+    }
+    else if (source == "constant")
+    {
+        source_data = binding.constant;
+    }
+    else
+    {
+        throw std::runtime_error("[" + policy_tag_ + "] unsupported input source '" + binding.source + "'");
+    }
+
+    if (source_data.size() > target_count)
+    {
+        throw std::runtime_error(
+            "[" + policy_tag_ + "] input '" + binding.name + "' source '" + binding.source +
+            "' provides " + std::to_string(source_data.size()) +
+            " values, exceeds target tensor size " + std::to_string(target_count));
+    }
+    if (source_data.size() < target_count && trimCopy(binding.fill_policy) != "zero")
+    {
+        throw std::runtime_error(
+            "[" + policy_tag_ + "] input '" + binding.name + "' source '" + binding.source +
+            "' provides " + std::to_string(source_data.size()) +
+            " values, smaller than target tensor size " + std::to_string(target_count));
+    }
+
+    std::vector<float> out(target_count, 0.0f);
+    const size_t copy_n = std::min(source_data.size(), target_count);
+    std::copy(
+        source_data.begin(),
+        source_data.begin() + static_cast<std::ptrdiff_t>(copy_n),
+        out.begin());
+    return out;
 }
 
 void OnnxPolicyRunner::validateModelMetadata()
@@ -542,14 +668,19 @@ std::string OnnxPolicyRunner::summary() const
         }
         oss << output_names_[i];
     }
-    oss << "\n  obs_input=" << input_names_[static_cast<size_t>(obs_input_index_)];
-    if (timestep_input_index_ >= 0)
+    oss << "\n  input_bindings: ";
+    for (size_t i = 0; i < input_bindings_.size(); ++i)
     {
-        oss << ", time_step_input=" << input_names_[static_cast<size_t>(timestep_input_index_)];
-    }
-    else
-    {
-        oss << ", time_step_input=disabled";
+        if (i > 0)
+        {
+            oss << ", ";
+        }
+        const auto &binding = input_bindings_[i];
+        oss << binding.name << "<-" << binding.source;
+        if (!binding.feature_name.empty())
+        {
+            oss << "(" << binding.feature_name << ")";
+        }
     }
     oss << ", action_output=" << output_names_[static_cast<size_t>(action_output_index_)];
     return oss.str();

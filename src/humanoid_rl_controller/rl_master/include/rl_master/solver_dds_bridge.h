@@ -18,6 +18,7 @@
 
 #include "dds_protocol.h"
 #include "math_tool.h"
+#include "rl_cfg.h"
 #include "rl_protocol.h"
 #include "robot_types.h"
 
@@ -39,6 +40,7 @@ public:
     void connect(const StateTelemetryConfig &telemetry_config);
     void disconnect();
     void updateStateTelemetryConfig(const StateTelemetryConfig &telemetry_config);
+    void updateSourceContract(const SourceContract &source_contract);
 
     bool readLatestTeleopCommand(rl_master::TeleopCommand *command);
     bool readLatestWalkModeControlWord(int *control_word);
@@ -73,6 +75,7 @@ private:
     std::array<float, 3> imu_ang_vel_{0.0f, 0.0f, 0.0f};
     std::array<float, 4> imu_quat_{0.0f, 0.0f, 0.0f, 1.0f};
     std::array<float, 3> imu_rpy_{0.0f, 0.0f, 0.0f};
+    SourceContract source_contract_{};
 
     std::atomic<bool> stop_requested_{false};
     std::thread executor_thread_;

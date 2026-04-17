@@ -91,6 +91,7 @@ private:
         std::vector<float> default_angle;
         std::vector<int> action_robot_indices;
         std::vector<int> obs_index_map;
+        std::vector<int> reference_index_map;
         ObservationManifest observation_manifest;
         std::unique_ptr<ObservationBuilder> observation_builder;
         PolicyRuntimeGroup policy_group;
@@ -110,8 +111,13 @@ private:
         const Sim2realCfg &cfg,
         const std::vector<std::string> &joint_names,
         const std::string &cfg_name) const;
+    std::vector<int> buildReferenceIndexMap(
+        const Sim2realCfg &cfg,
+        const std::vector<std::string> &joint_names,
+        const std::string &cfg_name) const;
     const std::vector<int> &currentActionIndexMap() const;
     const std::vector<int> &currentObsIndexMap() const;
+    const std::vector<int> &currentReferenceIndexMap() const;
     const Sim2realCfg &activePolicyCfg() const;
     const ObservationBuilder &activeObservationBuilder() const;
     PolicyRuntimeGroup &activePolicyGroup();
@@ -129,7 +135,11 @@ private:
         OnnxPolicyRunner *runner,
         const std::vector<float> &current_observation,
         const std::vector<float> &stacked_observation);
-    PolicyRunOutput runPolicyGroup(PolicyRuntimeGroup *group, const std::vector<float> &stacked_obs);
+    PolicyRunOutput runPolicyGroup(
+        PolicyRuntimeGroup *group,
+        const std::vector<float> &stacked_obs,
+        const std::vector<float> &current_observation,
+        const ObservationFeatureContext &feature_context);
     void initReferenceMotionProvider(const Sim2realCfg &cfg, ReferenceMotionProvider *provider, const std::string &tag);
     ObservationFeatureContext buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t);
     void initDataLogger();
@@ -172,6 +182,7 @@ private:
     std::vector<float> joint_target_q;
     std::vector<float> joint_target_torque;
     std::unordered_map<std::string, std::vector<float>> latest_policy_extra_outputs_;
+    ObservationFeatureContext latest_observation_feature_context_;
 
     std::vector<float> obs;
     std::deque<std::vector<float>> obs_deque;

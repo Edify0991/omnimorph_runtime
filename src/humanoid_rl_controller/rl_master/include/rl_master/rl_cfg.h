@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <algorithm>
 #include <map>
 #include <sstream>
 #include <stdexcept>
@@ -216,6 +217,49 @@ struct ExternalObservationSpec
     bool required = false;
 };
 
+struct OnnxInputSpec
+{
+    std::string name;
+    std::string source = "stacked_observation"; // stacked_observation / observation / time_step / feature / constant
+    std::string feature_name;
+    std::vector<int64_t> shape;
+    std::string fill_policy = "error"; // error / zero
+    std::vector<float> constant;
+};
+
+struct SourceContractImuInput
+{
+    std::string payload = "euler_compat"; // euler_compat / quaternion
+    std::vector<std::string> euler_order{"roll", "pitch", "yaw"};
+    std::string euler_unit = "rad";       // rad / deg
+    std::string quat_order = "xyzw";      // xyzw / wxyz
+    std::vector<std::string> ang_vel_order{"x", "y", "z"};
+    std::vector<float> frame_alignment_rpy{0.0f, 0.0f, 0.0f};
+};
+
+struct SourceContractSimBase
+{
+    std::string quat_source_order = "wxyz"; // MuJoCo free-joint qpos order
+};
+
+struct SourceContractReferenceFile
+{
+    std::string body_quat_order = "wxyz";
+};
+
+struct SourceContractPolicyExtraOutputs
+{
+    std::string body_quat_order = "wxyz";
+};
+
+struct SourceContract
+{
+    SourceContractImuInput imu_input;
+    SourceContractSimBase sim_base;
+    SourceContractReferenceFile reference_file;
+    SourceContractPolicyExtraOutputs policy_extra_outputs;
+};
+
 struct PolicySubModelCfg
 {
     std::string name;
@@ -233,6 +277,7 @@ struct PolicySubModelCfg
     bool enable_time_step_input = false;
     bool strict_model_io = false;
     std::vector<std::string> extra_output_names;
+    std::vector<OnnxInputSpec> onnx_inputs;
     bool enable_metadata_check = false;
     bool metadata_check_strict = true;
     std::vector<std::string> required_metadata_keys;
@@ -255,6 +300,7 @@ struct AmpDiscriminatorCfg
     bool enable_time_step_input = false;
     bool strict_model_io = false;
     std::vector<std::string> extra_output_names;
+    std::vector<OnnxInputSpec> onnx_inputs;
     bool enable_metadata_check = false;
     bool metadata_check_strict = true;
     std::vector<std::string> required_metadata_keys;
@@ -302,6 +348,7 @@ public:
     bool strict_model_io = false;
     bool reset_policy_on_mode_switch = true;
     std::vector<std::string> extra_output_names;
+    std::vector<OnnxInputSpec> onnx_inputs;
     bool enable_metadata_check = false;
     bool metadata_check_strict = true;
     std::vector<std::string> required_metadata_keys;
@@ -317,7 +364,9 @@ public:
     std::string reference_motion_source = "auto";    // auto / file / policy_outputs
     std::string reference_anchor_body = "base";
     std::vector<std::string> reference_body_names;
+    std::vector<std::string> reference_joint_order;
     std::vector<ExternalObservationSpec> external_observations;
+    SourceContract source_contract;
 
     bool auto_start_policy = true;
     double zeroing_duration_s = 2.0;
@@ -378,6 +427,9 @@ public:
             sub_models.clear();
             external_observations.clear();
             amp_discriminator = AmpDiscriminatorCfg{};
+            onnx_inputs.clear();
+            reference_joint_order.clear();
+            source_contract = SourceContract{};
 
             const std::string configured_root_raw = yamlReadOr<std::string>(config, "humanoid_rl_root_dir", "");
             const std::filesystem::path cfg_parent_dir = std::filesystem::path(yaml_file).parent_path();
@@ -421,6 +473,110 @@ public:
                     return raw;
                 }
                 return (std::filesystem::path(humanoid_rl_root_dir) / p).string();
+            };
+
+            auto parseOnnxInputs = [](const YAML::Node &node) -> std::vector<OnnxInputSpec> {
+                std::vector<OnnxInputSpec> specs;
+                if (!node || !node.IsSequence())
+                {
+                    return specs;
+                }
+                specs.reserve(node.size());
+                for (size_t i = 0; i < node.size(); ++i)
+                {
+                    const YAML::Node item = node[i];
+                    if (!item || !item.IsMap())
+                    {
+                        continue;
+                    }
+                    OnnxInputSpec spec;
+                    spec.name = yamlReadOr<std::string>(item, "name", "");
+                    spec.source = yamlReadOr<std::string>(item, "source", "stacked_observation");
+                    spec.feature_name = yamlReadOr<std::string>(item, "feature_name", "");
+                    spec.fill_policy = yamlReadOr<std::string>(item, "fill_policy", "error");
+                    if (item["shape"])
+                    {
+                        spec.shape = item["shape"].as<std::vector<int64_t>>();
+                    }
+                    if (item["constant"])
+                    {
+                        spec.constant = item["constant"].as<std::vector<float>>();
+                    }
+                    specs.push_back(std::move(spec));
+                }
+                return specs;
+            };
+
+            auto validatePermutation = [](
+                                           const std::vector<std::string> &values,
+                                           const std::vector<std::string> &expected,
+                                           const std::string &field_name) {
+                if (values.size() != expected.size())
+                {
+                    throw std::runtime_error(field_name + " must contain exactly " + std::to_string(expected.size()) + " items");
+                }
+                std::unordered_set<std::string> seen;
+                seen.reserve(values.size());
+                for (const auto &value : values)
+                {
+                    if (!seen.insert(value).second)
+                    {
+                        throw std::runtime_error(field_name + " contains duplicates");
+                    }
+                }
+                for (const auto &expected_value : expected)
+                {
+                    if (seen.find(expected_value) == seen.end())
+                    {
+                        throw std::runtime_error(field_name + " must be a permutation of the expected tokens");
+                    }
+                }
+            };
+
+            auto validateOnnxInputs = [](const std::vector<OnnxInputSpec> &specs, const std::string &owner_name) {
+                std::unordered_set<std::string> seen_names;
+                seen_names.reserve(specs.size());
+                for (size_t i = 0; i < specs.size(); ++i)
+                {
+                    const auto &spec = specs[i];
+                    const std::string item_name = owner_name + ".onnx_inputs[" + std::to_string(i) + "]";
+                    if (spec.name.empty())
+                    {
+                        throw std::runtime_error(item_name + " missing name");
+                    }
+                    if (!seen_names.insert(spec.name).second)
+                    {
+                        throw std::runtime_error(item_name + " duplicate name: " + spec.name);
+                    }
+                    if (spec.source != "stacked_observation" &&
+                        spec.source != "observation" &&
+                        spec.source != "time_step" &&
+                        spec.source != "feature" &&
+                        spec.source != "constant")
+                    {
+                        throw std::runtime_error(item_name + " unsupported source: " + spec.source);
+                    }
+                    if (spec.fill_policy != "error" && spec.fill_policy != "zero")
+                    {
+                        throw std::runtime_error(item_name + " unsupported fill_policy: " + spec.fill_policy);
+                    }
+                    if (spec.source == "feature" && spec.feature_name.empty())
+                    {
+                        throw std::runtime_error(item_name + " requires feature_name when source=feature");
+                    }
+                    if (spec.source == "constant" && spec.constant.empty() && spec.fill_policy != "zero")
+                    {
+                        throw std::runtime_error(item_name + " constant source requires values or fill_policy=zero");
+                    }
+                    for (size_t dim_idx = 0; dim_idx < spec.shape.size(); ++dim_idx)
+                    {
+                        if (spec.shape[dim_idx] <= 0)
+                        {
+                            throw std::runtime_error(
+                                item_name + " shape[" + std::to_string(dim_idx) + "] must be > 0");
+                        }
+                    }
+                }
             };
 
             policy_name = yamlReadOr<std::string>(cfg, "policy_name", "");
@@ -493,6 +649,8 @@ public:
             strict_model_io = yamlReadOr<bool>(policy_io_cfg, "strict_model_io", false);
             reset_policy_on_mode_switch = yamlReadOr<bool>(policy_io_cfg, "reset_policy_on_mode_switch", true);
             extra_output_names = yamlReadOr<std::vector<std::string>>(policy_io_cfg, "extra_output_names", {});
+            onnx_inputs = parseOnnxInputs(policy_io_cfg["onnx_inputs"]);
+            validateOnnxInputs(onnx_inputs, config_type + ".policy_io");
             enable_metadata_check = yamlReadOr<bool>(policy_io_cfg, "enable_metadata_check", false);
             metadata_check_strict = yamlReadOr<bool>(policy_io_cfg, "metadata_check_strict", true);
             required_metadata_keys =
@@ -533,6 +691,8 @@ public:
                     sub.enable_time_step_input = yamlReadOr<bool>(sub_io_cfg, "enable_time_step_input", enable_time_step_input);
                     sub.strict_model_io = yamlReadOr<bool>(sub_io_cfg, "strict_model_io", strict_model_io);
                     sub.extra_output_names = yamlReadOr<std::vector<std::string>>(sub_io_cfg, "extra_output_names", {});
+                    sub.onnx_inputs = parseOnnxInputs(sub_io_cfg["onnx_inputs"]);
+                    validateOnnxInputs(sub.onnx_inputs, config_type + ".sub_models[" + std::to_string(sub_index) + "].policy_io");
                     sub.enable_metadata_check = yamlReadOr<bool>(sub_io_cfg, "enable_metadata_check", enable_metadata_check);
                     sub.metadata_check_strict = yamlReadOr<bool>(sub_io_cfg, "metadata_check_strict", metadata_check_strict);
                     sub.required_metadata_keys = yamlReadOr<std::vector<std::string>>(
@@ -579,6 +739,8 @@ public:
                 amp_discriminator.enable_time_step_input = yamlReadOr<bool>(disc_io_cfg, "enable_time_step_input", false);
                 amp_discriminator.strict_model_io = yamlReadOr<bool>(disc_io_cfg, "strict_model_io", false);
                 amp_discriminator.extra_output_names = yamlReadOr<std::vector<std::string>>(disc_io_cfg, "extra_output_names", {});
+                amp_discriminator.onnx_inputs = parseOnnxInputs(disc_io_cfg["onnx_inputs"]);
+                validateOnnxInputs(amp_discriminator.onnx_inputs, config_type + ".amp_discriminator.policy_io");
                 amp_discriminator.enable_metadata_check = yamlReadOr<bool>(disc_io_cfg, "enable_metadata_check", false);
                 amp_discriminator.metadata_check_strict = yamlReadOr<bool>(disc_io_cfg, "metadata_check_strict", true);
                 amp_discriminator.required_metadata_keys =
@@ -594,6 +756,7 @@ public:
             reference_motion_source = yamlReadOr<std::string>(cfg, "reference_motion_source", "auto");
             reference_anchor_body = yamlReadOr<std::string>(cfg, "reference_anchor_body", "base");
             reference_body_names = yamlReadOr<std::vector<std::string>>(cfg, "reference_body_names", {});
+            reference_joint_order = yamlReadOr<std::vector<std::string>>(cfg, "reference_joint_order", {});
             const std::string reference_motion_path_raw = yamlReadOr<std::string>(cfg, "reference_motion_path", "");
             if (!reference_motion_path_raw.empty())
             {
@@ -602,6 +765,108 @@ public:
             else
             {
                 reference_motion_path = resolvePath(reference_motion_file);
+            }
+
+            if (reference_joint_order.empty())
+            {
+                reference_joint_order = action_joint_order;
+            }
+            if (!reference_joint_order.empty() && reference_joint_order.size() != static_cast<size_t>(motor_N))
+            {
+                throw std::runtime_error("reference_joint_order length must equal motor_N");
+            }
+            {
+                std::unordered_set<std::string> seen_reference_joint_names;
+                seen_reference_joint_names.reserve(reference_joint_order.size());
+                for (const auto &name : reference_joint_order)
+                {
+                    if (!seen_reference_joint_names.insert(name).second)
+                    {
+                        throw std::runtime_error("reference_joint_order contains duplicate joint: " + name);
+                    }
+                }
+            }
+
+            const YAML::Node source_contract_cfg = cfg["source_contract"];
+            const YAML::Node imu_contract_cfg = source_contract_cfg["imu_input"];
+            source_contract.imu_input.payload = yamlReadOr<std::string>(
+                imu_contract_cfg, "payload", source_contract.imu_input.payload);
+            source_contract.imu_input.euler_order = yamlReadOr<std::vector<std::string>>(
+                imu_contract_cfg, "euler_order", source_contract.imu_input.euler_order);
+            source_contract.imu_input.euler_unit = yamlReadOr<std::string>(
+                imu_contract_cfg, "euler_unit", source_contract.imu_input.euler_unit);
+            source_contract.imu_input.quat_order = yamlReadOr<std::string>(
+                imu_contract_cfg, "quat_order", source_contract.imu_input.quat_order);
+            source_contract.imu_input.ang_vel_order = yamlReadOr<std::vector<std::string>>(
+                imu_contract_cfg, "ang_vel_order", source_contract.imu_input.ang_vel_order);
+            source_contract.imu_input.frame_alignment_rpy = yamlReadOr<std::vector<float>>(
+                imu_contract_cfg, "frame_alignment_rpy", source_contract.imu_input.frame_alignment_rpy);
+
+            const YAML::Node sim_base_contract_cfg = source_contract_cfg["sim_base"];
+            source_contract.sim_base.quat_source_order = yamlReadOr<std::string>(
+                sim_base_contract_cfg, "quat_source_order", source_contract.sim_base.quat_source_order);
+
+            const YAML::Node reference_file_contract_cfg = source_contract_cfg["reference_file"];
+            source_contract.reference_file.body_quat_order = yamlReadOr<std::string>(
+                reference_file_contract_cfg,
+                "body_quat_order",
+                source_contract.reference_file.body_quat_order);
+
+            const YAML::Node policy_extra_outputs_contract_cfg = source_contract_cfg["policy_extra_outputs"];
+            source_contract.policy_extra_outputs.body_quat_order = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "body_quat_order",
+                source_contract.policy_extra_outputs.body_quat_order);
+
+            if (source_contract.imu_input.euler_order.size() != 3)
+            {
+                throw std::runtime_error("source_contract.imu_input.euler_order must contain exactly 3 items");
+            }
+            if (source_contract.imu_input.ang_vel_order.size() != 3)
+            {
+                throw std::runtime_error("source_contract.imu_input.ang_vel_order must contain exactly 3 items");
+            }
+            if (source_contract.imu_input.frame_alignment_rpy.size() != 3)
+            {
+                throw std::runtime_error("source_contract.imu_input.frame_alignment_rpy must contain exactly 3 items");
+            }
+            validatePermutation(
+                source_contract.imu_input.euler_order,
+                {"roll", "pitch", "yaw"},
+                "source_contract.imu_input.euler_order");
+            validatePermutation(
+                source_contract.imu_input.ang_vel_order,
+                {"x", "y", "z"},
+                "source_contract.imu_input.ang_vel_order");
+            if (source_contract.imu_input.payload != "euler_compat" &&
+                source_contract.imu_input.payload != "quaternion")
+            {
+                throw std::runtime_error("source_contract.imu_input.payload must be 'euler_compat' or 'quaternion'");
+            }
+            if (source_contract.imu_input.euler_unit != "rad" &&
+                source_contract.imu_input.euler_unit != "deg")
+            {
+                throw std::runtime_error("source_contract.imu_input.euler_unit must be 'rad' or 'deg'");
+            }
+            if (source_contract.imu_input.quat_order != "xyzw" &&
+                source_contract.imu_input.quat_order != "wxyz")
+            {
+                throw std::runtime_error("source_contract.imu_input.quat_order must be 'xyzw' or 'wxyz'");
+            }
+            if (source_contract.sim_base.quat_source_order != "wxyz" &&
+                source_contract.sim_base.quat_source_order != "xyzw")
+            {
+                throw std::runtime_error("source_contract.sim_base.quat_source_order must be 'wxyz' or 'xyzw'");
+            }
+            if (source_contract.reference_file.body_quat_order != "xyzw" &&
+                source_contract.reference_file.body_quat_order != "wxyz")
+            {
+                throw std::runtime_error("source_contract.reference_file.body_quat_order must be 'xyzw' or 'wxyz'");
+            }
+            if (source_contract.policy_extra_outputs.body_quat_order != "xyzw" &&
+                source_contract.policy_extra_outputs.body_quat_order != "wxyz")
+            {
+                throw std::runtime_error("source_contract.policy_extra_outputs.body_quat_order must be 'xyzw' or 'wxyz'");
             }
 
             if (cfg["external_observations"])
@@ -695,7 +960,8 @@ public:
                 robotCfg.joint_order.size() +
                 robotCfg.default_joint_angles.size() +
                 action_joint_order.size() +
-                obs_joint_order.size());
+                obs_joint_order.size() +
+                reference_joint_order.size());
 
             for (const auto &name : robotCfg.joint_order)
             {
@@ -710,6 +976,10 @@ public:
                 appendUniqueName(&robot_joint_order, &seen_joint_names, name);
             }
             for (const auto &name : obs_joint_order)
+            {
+                appendUniqueName(&robot_joint_order, &seen_joint_names, name);
+            }
+            for (const auto &name : reference_joint_order)
             {
                 appendUniqueName(&robot_joint_order, &seen_joint_names, name);
             }
@@ -742,7 +1012,16 @@ public:
         std::cout << "AMP Discriminator Path: " << amp_discriminator.policy_path << std::endl;
         std::cout << "Reference Motion Source: " << reference_motion_source << std::endl;
         std::cout << "Reference Motion Path: " << reference_motion_path << std::endl;
+        std::cout << "Reference Joint Order: " << reference_joint_order.size() << std::endl;
+        std::cout << "Source Contract IMU: payload=" << source_contract.imu_input.payload
+                  << ", euler_unit=" << source_contract.imu_input.euler_unit
+                  << ", quat_order=" << source_contract.imu_input.quat_order
+                  << ", sim_base_quat_source_order=" << source_contract.sim_base.quat_source_order
+                  << ", reference_file_body_quat_order=" << source_contract.reference_file.body_quat_order
+                  << ", policy_extra_body_quat_order=" << source_contract.policy_extra_outputs.body_quat_order
+                  << std::endl;
         std::cout << "External Obs Inputs: " << external_observations.size() << std::endl;
+        std::cout << "ONNX Inputs: " << onnx_inputs.size() << std::endl;
         std::cout << "Realtime: enabled=" << (realtime.enabled ? "true" : "false")
                   << ", lock_memory=" << (realtime.lock_memory ? "true" : "false")
                   << ", set_affinity=" << (realtime.set_affinity ? "true" : "false")

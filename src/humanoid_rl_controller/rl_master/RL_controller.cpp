@@ -220,6 +220,52 @@ std::vector<float> convertQuatVectorWxyzToXyzw(const std::vector<float> &wxyz)
     return out;
 }
 
+std::vector<float> convertQuatVectorToXyzw(
+    const std::vector<float> &values,
+    const std::string &source_order_raw)
+{
+    const std::string source_order = toLowerCopy(source_order_raw);
+    if (source_order.empty() || source_order == "xyzw")
+    {
+        return values;
+    }
+    if (source_order == "wxyz")
+    {
+        return convertQuatVectorWxyzToXyzw(values);
+    }
+    return {};
+}
+
+std::vector<float> remapJointVectorToCanonical(
+    const std::vector<float> &values,
+    const std::vector<std::string> &source_joint_order,
+    const std::vector<std::string> &canonical_joint_order)
+{
+    std::vector<float> out(canonical_joint_order.size(), 0.0f);
+    if (values.empty() || source_joint_order.empty() || canonical_joint_order.empty())
+    {
+        return out;
+    }
+
+    std::unordered_map<std::string, size_t> source_index;
+    source_index.reserve(source_joint_order.size());
+    for (size_t i = 0; i < source_joint_order.size(); ++i)
+    {
+        source_index[source_joint_order[i]] = i;
+    }
+
+    for (size_t canonical_idx = 0; canonical_idx < canonical_joint_order.size(); ++canonical_idx)
+    {
+        const auto it = source_index.find(canonical_joint_order[canonical_idx]);
+        if (it == source_index.end() || it->second >= values.size())
+        {
+            continue;
+        }
+        out[canonical_idx] = values[it->second];
+    }
+    return out;
+}
+
 const std::vector<float> *findNamedFeature(
     const std::unordered_map<std::string, std::vector<float>> &features,
     const std::string &name)
@@ -597,6 +643,41 @@ std::vector<int> RL_controller::buildObsIndexMap(
     return map_policy_idx_to_robot_idx;
 }
 
+std::vector<int> RL_controller::buildReferenceIndexMap(
+    const Sim2realCfg &cfg,
+    const std::vector<std::string> &joint_names,
+    const std::string &cfg_name) const
+{
+    std::vector<std::string> reference_joint_names = cfg.reference_joint_order;
+    if (reference_joint_names.empty())
+    {
+        reference_joint_names = cfg.action_joint_order;
+    }
+    if (reference_joint_names.empty())
+    {
+        return {};
+    }
+
+    std::unordered_map<std::string, int> joint_name_to_index;
+    joint_name_to_index.reserve(joint_names.size());
+    for (size_t i = 0; i < joint_names.size(); ++i)
+    {
+        joint_name_to_index[joint_names[i]] = static_cast<int>(i);
+    }
+
+    std::vector<int> map_reference_idx_to_robot_idx(reference_joint_names.size(), -1);
+    for (size_t reference_idx = 0; reference_idx < reference_joint_names.size(); ++reference_idx)
+    {
+        const auto it = joint_name_to_index.find(reference_joint_names[reference_idx]);
+        if (it == joint_name_to_index.end())
+        {
+            throw std::runtime_error(cfg_name + ": unknown joint in reference_joint_order: " + reference_joint_names[reference_idx]);
+        }
+        map_reference_idx_to_robot_idx[reference_idx] = it->second;
+    }
+    return map_reference_idx_to_robot_idx;
+}
+
 const std::vector<int> &RL_controller::currentActionIndexMap() const
 {
     return activeModeProfile().action_robot_indices;
@@ -605,6 +686,11 @@ const std::vector<int> &RL_controller::currentActionIndexMap() const
 const std::vector<int> &RL_controller::currentObsIndexMap() const
 {
     return activeModeProfile().obs_index_map;
+}
+
+const std::vector<int> &RL_controller::currentReferenceIndexMap() const
+{
+    return activeModeProfile().reference_index_map;
 }
 
 const Sim2realCfg &RL_controller::activePolicyCfg() const
@@ -881,6 +967,7 @@ void RL_controller::initModeProfiles()
         profile.default_angle = buildDefaultAnglesFromCfg(profile.cfg.robotCfg, joint_order_);
         profile.action_robot_indices = buildActionRobotIndices(profile.cfg, joint_order_, profile.config_section);
         profile.obs_index_map = buildObsIndexMap(profile.cfg, joint_order_, profile.config_section);
+        profile.reference_index_map = buildReferenceIndexMap(profile.cfg, joint_order_, profile.config_section);
         profile.observation_manifest = ObservationManifest::loadFromYAML(profile.cfg.observation_manifest_path);
         profile.observation_builder = std::make_unique<ObservationBuilder>(profile.observation_manifest);
         if (profile.observation_builder->expectedDim() != static_cast<size_t>(profile.cfg.obs_dim))
@@ -986,6 +1073,7 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
         sub_cfg.enable_time_step_input = sub.enable_time_step_input;
         sub_cfg.strict_model_io = sub.strict_model_io;
         sub_cfg.extra_output_names = sub.extra_output_names;
+        sub_cfg.onnx_inputs = sub.onnx_inputs;
         sub_cfg.enable_metadata_check = sub.enable_metadata_check;
         sub_cfg.metadata_check_strict = sub.metadata_check_strict;
         sub_cfg.required_metadata_keys = sub.required_metadata_keys;
@@ -1034,6 +1122,7 @@ void RL_controller::initAmpDiscriminatorRunner(
     disc_cfg.enable_time_step_input = cfg.amp_discriminator.enable_time_step_input;
     disc_cfg.strict_model_io = cfg.amp_discriminator.strict_model_io;
     disc_cfg.extra_output_names = cfg.amp_discriminator.extra_output_names;
+    disc_cfg.onnx_inputs = cfg.amp_discriminator.onnx_inputs;
     disc_cfg.enable_metadata_check = cfg.amp_discriminator.enable_metadata_check;
     disc_cfg.metadata_check_strict = cfg.amp_discriminator.metadata_check_strict;
     disc_cfg.required_metadata_keys = cfg.amp_discriminator.required_metadata_keys;
@@ -1075,7 +1164,8 @@ void RL_controller::runAmpDiscriminator(
         return;
     }
 
-    PolicyInferenceResult disc_result = runner->forward(*input);
+    const std::unordered_map<std::string, std::vector<float>> empty_features;
+    PolicyInferenceResult disc_result = runner->forward(*input, current_observation, empty_features);
     const std::string prefix = tag + "/amp_discriminator/";
     latest_policy_extra_outputs_[prefix + "score"] = disc_result.action;
     for (auto &kv : disc_result.extra_outputs)
@@ -1096,7 +1186,11 @@ void RL_controller::runAmpDiscriminator(
     }
 }
 
-RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(PolicyRuntimeGroup *group, const std::vector<float> &stacked_obs)
+RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(
+    PolicyRuntimeGroup *group,
+    const std::vector<float> &stacked_obs,
+    const std::vector<float> &current_observation,
+    const ObservationFeatureContext &feature_context)
 {
     if (!group || group->runners.empty())
     {
@@ -1116,7 +1210,8 @@ RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(PolicyRuntimeGroup 
             continue;
         }
 
-        PolicyInferenceResult result = node.runner->forward(stacked_obs);
+        PolicyInferenceResult result =
+            node.runner->forward(stacked_obs, current_observation, feature_context.named_features);
         const float weight = primary_done ? node.weight : 1.0f;
         const size_t dim = std::min(output.action.size(), result.action.size());
         for (size_t i = 0; i < dim; ++i)
@@ -1171,7 +1266,10 @@ void RL_controller::initReferenceMotionProvider(const Sim2realCfg &cfg, Referenc
         return;
     }
 
-    if (!provider->load(cfg.reference_motion_path, cfg.reference_motion_dim))
+    if (!provider->load(
+            cfg.reference_motion_path,
+            cfg.reference_motion_dim,
+            cfg.source_contract.reference_file.body_quat_order))
     {
         std::cerr << "[RL_controller][" << tag << "] failed to load reference motion file: "
                   << cfg.reference_motion_path << std::endl;
@@ -1218,8 +1316,20 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                 reference_motion_dim > 0 ? fitDim(sampled_frame.reference_motion, static_cast<size_t>(reference_motion_dim))
                                          : sampled_frame.reference_motion);
         }
-        setFeatureIfNonEmpty(&feature_context, "reference_joint_pos", sampled_frame.joint_pos);
-        setFeatureIfNonEmpty(&feature_context, "reference_joint_vel", sampled_frame.joint_vel);
+        setFeatureIfNonEmpty(
+            &feature_context,
+            "reference_joint_pos",
+            remapJointVectorToCanonical(
+                sampled_frame.joint_pos,
+                cfg.reference_joint_order,
+                joint_order_));
+        setFeatureIfNonEmpty(
+            &feature_context,
+            "reference_joint_vel",
+            remapJointVectorToCanonical(
+                sampled_frame.joint_vel,
+                cfg.reference_joint_order,
+                joint_order_));
         setFeatureIfNonEmpty(&feature_context, "reference_body_pos_w", sampled_frame.body_pos_w);
         setFeatureIfNonEmpty(&feature_context, "reference_body_quat_w", sampled_frame.body_quat_w);
     }
@@ -1229,11 +1339,23 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
         const std::string preferred_prefix = profile.tag + "/main/";
         if (const auto *joint_pos = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "joint_pos"))
         {
-            setFeatureIfNonEmpty(&feature_context, "reference_joint_pos", *joint_pos);
+            setFeatureIfNonEmpty(
+                &feature_context,
+                "reference_joint_pos",
+                remapJointVectorToCanonical(
+                    *joint_pos,
+                    cfg.reference_joint_order,
+                    joint_order_));
         }
         if (const auto *joint_vel = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "joint_vel"))
         {
-            setFeatureIfNonEmpty(&feature_context, "reference_joint_vel", *joint_vel);
+            setFeatureIfNonEmpty(
+                &feature_context,
+                "reference_joint_vel",
+                remapJointVectorToCanonical(
+                    *joint_vel,
+                    cfg.reference_joint_order,
+                    joint_order_));
         }
         if (const auto *body_pos_w = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "body_pos_w"))
         {
@@ -1241,7 +1363,9 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
         }
         if (const auto *body_quat_w = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "body_quat_w"))
         {
-            const std::vector<float> quat_xyzw = convertQuatVectorWxyzToXyzw(*body_quat_w);
+            const std::vector<float> quat_xyzw = convertQuatVectorToXyzw(
+                *body_quat_w,
+                cfg.source_contract.policy_extra_outputs.body_quat_order);
             setFeatureIfNonEmpty(&feature_context, "reference_body_quat_w", quat_xyzw);
         }
     }
@@ -1656,7 +1780,16 @@ std::vector<float> RL_controller::get_robot_observation(double phase_t)
     const auto &active_cfg = activePolicyCfg();
 
     const ObservationFeatureContext feature_context = buildObservationFeatureContext(active_cfg, phase_t);
-    obs = activeObservationBuilder().build(*robot, cmd, action, phase_t, active_cfg, currentObsIndexMap(), feature_context);
+    latest_observation_feature_context_ = feature_context;
+    obs = activeObservationBuilder().build(
+        *robot,
+        cmd,
+        action,
+        phase_t,
+        active_cfg,
+        currentObsIndexMap(),
+        currentReferenceIndexMap(),
+        feature_context);
     return obs;
 }
 
@@ -1687,7 +1820,11 @@ std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs
         offset += frame_obs.size();
     }
 
-    PolicyRunOutput policy_output = runPolicyGroup(&activePolicyGroup(), stacked_obs_buffer_);
+    PolicyRunOutput policy_output = runPolicyGroup(
+        &activePolicyGroup(),
+        stacked_obs_buffer_,
+        obs,
+        latest_observation_feature_context_);
     std::vector<float> target_action = std::move(policy_output.action);
     latest_policy_extra_outputs_ = std::move(policy_output.extra_outputs);
     runAmpDiscriminator(
