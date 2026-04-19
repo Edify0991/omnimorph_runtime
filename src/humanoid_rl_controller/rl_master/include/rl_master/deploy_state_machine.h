@@ -80,7 +80,6 @@ public:
 
 private:
     void startZeroing(double now_s, const std::vector<float> &current_q);
-    static std::vector<float> fitDim(const std::vector<float> &values, size_t dim);
 
     bool initialized_ = false;
     bool auto_start_policy_ = true;

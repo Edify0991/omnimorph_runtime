@@ -10,6 +10,56 @@ legged_gym_root_dir: "/path/to/legged_gym_root_dir"
 # lifecycle controls (legacy, still accepted): 3001/3002/3003/3004
 # note: direct mode switch by plain mode_id is disabled to avoid ambiguity
 
+# Required explicit global runtime joint order.
+# This is the single authoritative runtime joint space for all active modes.
+# Every active mode must use only joints from this list.
+robot_global_joint_order:
+  - right_hip_roll
+  - right_hip_yaw
+  - right_hip_pitch
+  - right_knee_pitch
+  - right_ankle_pitch
+  - right_ankle_roll
+  - left_hip_roll
+  - left_hip_yaw
+  - left_hip_pitch
+  - left_knee_pitch
+  - left_ankle_pitch
+  - left_ankle_roll
+
+# Example 30-dim full-body extension template:
+# robot_global_joint_order:
+#   - right_hip_roll
+#   - right_hip_yaw
+#   - right_hip_pitch
+#   - right_knee_pitch
+#   - right_ankle_pitch
+#   - right_ankle_roll
+#   - left_hip_roll
+#   - left_hip_yaw
+#   - left_hip_pitch
+#   - left_knee_pitch
+#   - left_ankle_pitch
+#   - left_ankle_roll
+#   - waist_yaw
+#   - waist_roll
+#   - waist_pitch
+#   - left_shoulder_pitch
+#   - left_shoulder_roll
+#   - left_shoulder_yaw
+#   - left_elbow_pitch
+#   - left_elbow_yaw
+#   - left_wrist_pitch
+#   - left_wrist_yaw
+#   - right_shoulder_pitch
+#   - right_shoulder_roll
+#   - right_shoulder_yaw
+#   - right_elbow_pitch
+#   - right_elbow_yaw
+#   - right_wrist_pitch
+#   - right_wrist_yaw
+#   - head_yaw
+
 # Generic mode -> policy profile map. Add new mode_id entries for new scenes/models
 # without changing controller source code.
 deploy_mode_profiles:
@@ -329,6 +379,39 @@ engineai_walk:
 # 2. keep action_joint_order / obs_joint_order aligned with your ONNX export
 # 3. update observation_manifest_file + obs_dim together
 # 4. joints not listed in action_joint_order will stay at default_angle
+# Keep robot.joint_order aligned with top-level robot_global_joint_order.
+#
+# Suggested 30-dim full-body robot.joint_order template:
+#   - right_hip_roll
+#   - right_hip_yaw
+#   - right_hip_pitch
+#   - right_knee_pitch
+#   - right_ankle_pitch
+#   - right_ankle_roll
+#   - left_hip_roll
+#   - left_hip_yaw
+#   - left_hip_pitch
+#   - left_knee_pitch
+#   - left_ankle_pitch
+#   - left_ankle_roll
+#   - waist_yaw
+#   - waist_roll
+#   - waist_pitch
+#   - left_shoulder_pitch
+#   - left_shoulder_roll
+#   - left_shoulder_yaw
+#   - left_elbow_pitch
+#   - left_elbow_yaw
+#   - left_wrist_pitch
+#   - left_wrist_yaw
+#   - right_shoulder_pitch
+#   - right_shoulder_roll
+#   - right_shoulder_yaw
+#   - right_elbow_pitch
+#   - right_elbow_yaw
+#   - right_wrist_pitch
+#   - right_wrist_yaw
+#   - head_yaw
 engineai_full_body_example:
   policy_name: "replace_with_full_body_policy"
   policy_family: "custom"

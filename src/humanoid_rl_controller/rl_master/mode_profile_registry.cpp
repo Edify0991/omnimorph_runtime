@@ -1,5 +1,6 @@
 #include "rl_master/mode_profile_registry.h"
 
+#include <sstream>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
@@ -95,8 +96,16 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
     default_mode_id_ = specs_.front().mode_id;
     default_config_section_ = specs_.front().config_section.empty() ? default_config_section_ : specs_.front().config_section;
 
+    const std::vector<std::string> explicit_global_joint_order = loadRobotGlobalJointOrderFromYAML(yaml_file);
+    std::unordered_set<std::string> explicit_global_joint_names;
+    joint_order_ = explicit_global_joint_order;
+    explicit_global_joint_names.reserve(explicit_global_joint_order.size());
+    for (const auto &joint_name : explicit_global_joint_order)
+    {
+        explicit_global_joint_names.insert(joint_name);
+    }
+
     std::unordered_map<std::string, Sim2realCfg> cfg_cache;
-    std::unordered_set<std::string> seen_joint_names;
     entries_.reserve(specs_.size());
     for (const auto &spec : specs_)
     {
@@ -134,7 +143,47 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
 
         for (const auto &joint_name : cfg.robot_joint_order)
         {
-            appendUniqueName(&joint_order_, &seen_joint_names, joint_name);
+            if (explicit_global_joint_names.find(joint_name) == explicit_global_joint_names.end())
+            {
+                throw std::runtime_error(
+                    "config section '" + spec.config_section +
+                    "' contains joint not present in robot_global_joint_order: " + joint_name);
+            }
+        }
+
+        if (!cfg.robotCfg.zero_joint_angles.empty())
+        {
+            std::unordered_set<std::string> zero_joint_names;
+            zero_joint_names.reserve(cfg.robotCfg.zero_joint_angles.size());
+            for (const auto &entry : cfg.robotCfg.zero_joint_angles)
+            {
+                zero_joint_names.insert(entry.first);
+            }
+
+            std::vector<std::string> missing_zero_joints;
+            for (const auto &joint_name : explicit_global_joint_order)
+            {
+                if (zero_joint_names.find(joint_name) == zero_joint_names.end())
+                {
+                    missing_zero_joints.push_back(joint_name);
+                }
+            }
+            if (!missing_zero_joints.empty())
+            {
+                std::ostringstream oss;
+                for (size_t i = 0; i < missing_zero_joints.size(); ++i)
+                {
+                    if (i > 0)
+                    {
+                        oss << ", ";
+                    }
+                    oss << missing_zero_joints[i];
+                }
+                throw std::runtime_error(
+                    "config section '" + spec.config_section +
+                    "' robot.zero_joint_angles must cover robot_global_joint_order; missing: " +
+                    oss.str());
+            }
         }
     }
 }

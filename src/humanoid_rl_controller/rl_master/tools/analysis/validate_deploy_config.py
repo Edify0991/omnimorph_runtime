@@ -253,6 +253,33 @@ def build_runtime_joint_order(
     return ordered
 
 
+def get_global_robot_joint_order(
+    root_cfg: Dict[str, Any],
+    issues: IssueCollector,
+) -> List[str]:
+    raw = root_cfg.get("robot_global_joint_order")
+    if raw is None:
+        issues.error("global", "robot_global_joint_order is required")
+        return []
+    if not isinstance(raw, list):
+        issues.error("global", "robot_global_joint_order must be a sequence")
+        return []
+
+    out: List[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        name = str(item).strip()
+        if not name:
+            issues.error("global", "robot_global_joint_order contains empty joint name")
+            continue
+        if name in seen:
+            issues.error("global", f"robot_global_joint_order contains duplicate joint '{name}'")
+            continue
+        seen.add(name)
+        out.append(name)
+    return out
+
+
 def validate_zero_pose_contract(
     section_cfg: Dict[str, Any],
     runtime_joint_order: Sequence[str],
@@ -297,6 +324,26 @@ def validate_zero_pose_contract(
             context,
             "robot.zero_joint_angles missing joints: " + ", ".join(missing),
         )
+
+
+def validate_against_global_joint_order(
+    section_cfg: Dict[str, Any],
+    runtime_joint_order: Sequence[str],
+    global_joint_order: Sequence[str],
+    issues: IssueCollector,
+    context: str,
+) -> Sequence[str]:
+    if not global_joint_order:
+        return runtime_joint_order
+
+    global_joint_set = {str(name) for name in global_joint_order}
+    unknown = sorted({str(name) for name in runtime_joint_order} - global_joint_set)
+    if unknown:
+        issues.error(
+            context,
+            "mode joint set contains joints not present in robot_global_joint_order: " + ", ".join(unknown),
+        )
+    return list(global_joint_order)
 
 
 def load_rl_cfg(path: Path) -> Dict[str, Any]:
@@ -1230,6 +1277,13 @@ def validate_profile(
         context,
     )
     runtime_joint_order = build_runtime_joint_order(section_cfg, action_order, obs_order, reference_order)
+    runtime_joint_order = validate_against_global_joint_order(
+        section_cfg,
+        runtime_joint_order,
+        get_global_robot_joint_order(root_cfg, issues),
+        issues,
+        context,
+    )
     validate_zero_pose_contract(section_cfg, runtime_joint_order, issues, context)
     check_source_contract(section_cfg, issues, context)
     check_reference_contract(section_cfg, root_dir, reference_order, issues, context)

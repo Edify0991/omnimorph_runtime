@@ -8,7 +8,7 @@ Current architecture:
 - DDS command/state transport uses dynamic `joint_count`
 - controller maps policy action indices by joint name
 - non-controlled joints stay at the active mode's `default_angle`
-- mode registry builds one global joint order across all configured deploy profiles
+- mode registry uses required top-level `robot_global_joint_order` as the single runtime joint space
 - if you configure `robot.zero_joint_angles`, it must cover the full runtime joint set; otherwise leave it unset and zeroing will fall back to `default_angle`
 
 This means adding a full-body policy is now mainly a configuration job, not a protocol rewrite.

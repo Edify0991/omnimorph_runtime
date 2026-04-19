@@ -13,8 +13,15 @@ void DeployStateMachine::configure(const Sim2realCfg &cfg)
 
 void DeployStateMachine::initialize(const std::vector<float> &current_q, const std::vector<float> &zero_pose, int initial_mode)
 {
+    if (zero_pose.size() != current_q.size())
+    {
+        throw std::runtime_error(
+            "DeployStateMachine initialize dim mismatch. zero_pose=" +
+            std::to_string(zero_pose.size()) +
+            ", current_q=" + std::to_string(current_q.size()));
+    }
     zeroing_start_pose_ = current_q;
-    zeroing_target_pose_ = fitDim(zero_pose, current_q.size());
+    zeroing_target_pose_ = zero_pose;
     active_locomotion_mode_ = initial_mode;
     state_ = auto_start_policy_ ? DeployLifecycleState::kRunning : DeployLifecycleState::kHold;
     initialized_ = true;
@@ -22,12 +29,14 @@ void DeployStateMachine::initialize(const std::vector<float> &current_q, const s
 
 void DeployStateMachine::setZeroPose(const std::vector<float> &zero_pose)
 {
-    if (zeroing_target_pose_.empty())
+    if (!zeroing_target_pose_.empty() && zero_pose.size() != zeroing_target_pose_.size())
     {
-        zeroing_target_pose_ = zero_pose;
-        return;
+        throw std::runtime_error(
+            "DeployStateMachine setZeroPose dim mismatch. new_zero_pose=" +
+            std::to_string(zero_pose.size()) +
+            ", expected=" + std::to_string(zeroing_target_pose_.size()));
     }
-    zeroing_target_pose_ = fitDim(zero_pose, zeroing_target_pose_.size());
+    zeroing_target_pose_ = zero_pose;
 }
 
 DeployStateOutput DeployStateMachine::update(int control_word, double now_s, const std::vector<float> &current_q)
@@ -82,11 +91,19 @@ DeployStateOutput DeployStateMachine::update(int control_word, double now_s, con
 
         const double duration = std::max(0.05, zeroing_duration_s_);
         const double alpha = std::clamp((now_s - zeroing_start_time_s_) / duration, 0.0, 1.0);
-        const std::vector<float> start_pose = fitDim(zeroing_start_pose_, dim);
-        const std::vector<float> target_pose = fitDim(zeroing_target_pose_, dim);
+        if (zeroing_start_pose_.size() != dim || zeroing_target_pose_.size() != dim)
+        {
+            throw std::runtime_error(
+                "DeployStateMachine zeroing interpolation dim mismatch. start=" +
+                std::to_string(zeroing_start_pose_.size()) +
+                ", target=" + std::to_string(zeroing_target_pose_.size()) +
+                ", current=" + std::to_string(dim));
+        }
         for (size_t i = 0; i < dim; ++i)
         {
-            output.target_q[i] = static_cast<float>(start_pose[i] + (target_pose[i] - start_pose[i]) * alpha);
+            output.target_q[i] = static_cast<float>(
+                zeroing_start_pose_[i] +
+                (zeroing_target_pose_[i] - zeroing_start_pose_[i]) * alpha);
         }
 
         if (alpha >= 1.0)
@@ -201,16 +218,14 @@ void DeployStateMachine::startZeroing(double now_s, const std::vector<float> &cu
 {
     zeroing_start_time_s_ = now_s;
     zeroing_start_pose_ = current_q;
-    zeroing_target_pose_ = fitDim(zeroing_target_pose_, current_q.size());
+    if (zeroing_target_pose_.size() != current_q.size())
+    {
+        throw std::runtime_error(
+            "DeployStateMachine zeroing target dim mismatch. target=" +
+            std::to_string(zeroing_target_pose_.size()) +
+            ", current=" + std::to_string(current_q.size()));
+    }
     state_ = DeployLifecycleState::kZeroing;
-}
-
-std::vector<float> DeployStateMachine::fitDim(const std::vector<float> &values, size_t dim)
-{
-    std::vector<float> out(dim, 0.0f);
-    const size_t copy_n = std::min(values.size(), dim);
-    std::copy(values.begin(), values.begin() + static_cast<std::ptrdiff_t>(copy_n), out.begin());
-    return out;
 }
 
 } // namespace rl_master

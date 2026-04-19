@@ -141,6 +141,40 @@ inline std::vector<DeployModeProfileSpec> loadDeployModeProfilesFromYAML(
     return specs;
 }
 
+inline std::vector<std::string> loadRobotGlobalJointOrderFromYAML(
+    const std::string &yaml_file)
+{
+    const YAML::Node root = YAML::LoadFile(yaml_file);
+    const YAML::Node joint_order = root["robot_global_joint_order"];
+    if (!joint_order)
+    {
+        throw std::runtime_error("robot_global_joint_order is required");
+    }
+    if (!joint_order.IsSequence())
+    {
+        throw std::runtime_error("robot_global_joint_order must be a sequence");
+    }
+
+    std::vector<std::string> out;
+    std::unordered_set<std::string> seen;
+    out.reserve(joint_order.size());
+    seen.reserve(joint_order.size());
+    for (size_t i = 0; i < joint_order.size(); ++i)
+    {
+        const std::string name = joint_order[i].as<std::string>();
+        if (name.empty())
+        {
+            throw std::runtime_error("robot_global_joint_order contains empty joint name");
+        }
+        if (!seen.insert(name).second)
+        {
+            throw std::runtime_error("robot_global_joint_order contains duplicate joint: " + name);
+        }
+        out.push_back(name);
+    }
+    return out;
+}
+
 inline std::string resolveDeployConfigSectionForModeFromYAML(
     const std::string &yaml_file,
     int mode_id,

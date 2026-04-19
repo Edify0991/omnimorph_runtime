@@ -187,6 +187,7 @@ Edit `src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml`.
 
 其中第 4 步至少要关注这些字段：
 
+- 顶层 `robot_global_joint_order`（必配，用来显式固定整个 runtime 的全局 joint 空间）
 - `policy_file` 或 `policy_path`
 - `obs_dim`
 - `action_dim`
@@ -230,6 +231,7 @@ Edit `src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml`.
 
 当前推荐配置方式是：
 
+- 顶层 `robot_global_joint_order`（必配）
 - `robot.default_joint_angles`
 - `robot.zero_joint_angles`
 
@@ -242,6 +244,7 @@ Edit `src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml`.
 
 对应当前代码行为：
 
+- runtime 会使用顶层 `robot_global_joint_order` 作为全局 joint 顺序
 - 如果没有配置 `robot.zero_joint_angles`，zeroing 会回退到 `default_angle`
 - 如果配置了 `robot.zero_joint_angles`，就必须完整覆盖该 mode 的运行时 joint 集合
 
