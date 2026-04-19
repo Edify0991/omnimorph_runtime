@@ -80,6 +80,38 @@ runtime_process:
     cpu_id: 3
     use_fifo: true
     fifo_priority: 90
+
+logging:
+  enabled: true
+  backend: mcap
+  output_dir: data/runtime_logs
+  session_name_policy: timestamp_policy   # timestamp_policy / timestamp_mode / custom
+  custom_session_name: ""
+  writer:
+    queue_capacity: 256
+    flush_period_ms: 250
+    compression: zstd   # none / zstd / lz4
+    chunk_size_kb: 1024
+  tick:
+    enabled: true
+    decimation: 1
+    include_observation: true
+    include_policy_action: true
+    include_motor_io: true
+    include_joint_targets: true
+    include_external_observations: false
+  events:
+    enabled: true
+  reference_motion:
+    enabled: false
+  amp:
+    enabled: false
+  source_samples:
+    enabled: true
+    include_base_imu: true
+    include_external_observations: false
+  export:
+    default_format: none
   solver:
     enabled: true
     lock_memory: true
@@ -295,7 +327,6 @@ engineai_walk:
   
   tau_limit: [130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0]
   
-  save_data_flag: true
   control_mode: "sim2real"
   action_filter: 0.5
   
@@ -514,7 +545,6 @@ engineai_full_body_example:
 
   tau_limit: [130, 130, 130, 130, 130, 130, 130, 130, 130, 130, 130, 130, 60, 60, 60, 40, 60, 60, 60, 40]
 
-  save_data_flag: true
   control_mode: "sim2real"
   action_filter: 0.2
 
@@ -776,7 +806,6 @@ stand_sim2real:
   
   tau_limit: [130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0]
   
-  save_data_flag: true
   control_mode: "sim2real"
   action_filter: 0.5
   

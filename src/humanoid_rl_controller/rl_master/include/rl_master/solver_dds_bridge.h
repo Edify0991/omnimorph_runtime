@@ -5,6 +5,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -41,6 +42,12 @@ public:
     void disconnect();
     void updateStateTelemetryConfig(const StateTelemetryConfig &telemetry_config);
     void updateSourceContract(const SourceContract &source_contract);
+    void setImuSampleCallback(
+        std::function<void(
+            const std::array<float, 3> &ang_vel,
+            const std::array<float, 4> &quat,
+            const std::array<float, 3> &rpy,
+            double monotonic_time_sec)> callback);
 
     bool readLatestTeleopCommand(rl_master::TeleopCommand *command);
     bool readLatestWalkModeControlWord(int *control_word);
@@ -76,6 +83,11 @@ private:
     std::array<float, 4> imu_quat_{0.0f, 0.0f, 0.0f, 1.0f};
     std::array<float, 3> imu_rpy_{0.0f, 0.0f, 0.0f};
     SourceContract source_contract_{};
+    std::function<void(
+        const std::array<float, 3> &,
+        const std::array<float, 4> &,
+        const std::array<float, 3> &,
+        double)> imu_sample_callback_;
 
     std::atomic<bool> stop_requested_{false};
     std::thread executor_thread_;

@@ -160,7 +160,7 @@ Main control flow:
 11. `get_joint_target_q(...)`
 12. `get_joint_target_torque(...)`
 13. assemble `RobotCommandData`
-14. `logStepRecord(...)`
+14. build latest controller-side runtime snapshot for fused recorder aggregation
 
 ### 4.4 How mode switching works now
 

@@ -65,6 +65,8 @@ find_package(SharedMemory REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(SymEngine CONFIG REQUIRED)
 find_package(Threads REQUIRED)
+find_library(ZSTD_LIBRARY NAMES zstd REQUIRED)
+find_library(LZ4_LIBRARY NAMES lz4 REQUIRED)
 
 set(ONNXRUNTIME_ROOT "" CACHE PATH "ONNX Runtime installation prefix.")
 if(NOT ONNXRUNTIME_ROOT AND DEFINED ENV{ONNXRUNTIME_ROOT})
@@ -141,7 +143,8 @@ add_library(rl_master_runtime SHARED
   dds_protocol.cpp
   deploy_state_machine.cpp
   external_observation_provider.cpp
-  logging/structured_logger.cpp
+  logging/mcap_writer.cpp
+  logging/runtime_recorder.cpp
   mode_profile_registry.cpp
   RL_controller.cpp
   onnx_policy_runner.cpp
@@ -173,6 +176,8 @@ target_link_libraries(rl_master_runtime PRIVATE
   onnxruntime::onnxruntime
   Threads::Threads
   yaml-cpp
+  ${ZSTD_LIBRARY}
+  ${LZ4_LIBRARY}
 )
 target_link_libraries(rl_master_runtime PRIVATE
   rl_master_arch_flags

@@ -9,6 +9,7 @@
 #include <limits>
 #include <optional>
 #include <sstream>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -23,6 +24,7 @@
 #include "rl_master/dds_protocol.h"
 #include "rl_master/command_runtime_mode.h"
 #include "rl_master/deploy_state_machine.h"
+#include "rl_master/RL_controller.h"
 #include "rl_master/rl_protocol.h"
 
 namespace
@@ -142,6 +144,7 @@ MujocoSimBridge::MujocoSimBridge()
     resolveModelMappings();
     initializeState();
     controller_runtime_.initialize(startup_mode_id_);
+    initRuntimeRecorder();
     mode_command_cache_.store(rl_master::kCtrlWordSetModeBase + startup_mode_id_);
     initializeViewer();
     setupRosInterfaces();
@@ -176,6 +179,8 @@ MujocoSimBridge::~MujocoSimBridge()
     teleop_sub_.reset();
     state_pub_.reset();
     controller_runtime_.estop();
+    runtime_recorder_.flush();
+    runtime_recorder_.close();
     shutdownViewer();
 
     if (data_)
@@ -795,6 +800,211 @@ void MujocoSimBridge::updateMirroredState(const rl_master::RobotStateData &state
     }
 }
 
+void MujocoSimBridge::initRuntimeRecorder()
+{
+    runtime_logging_enabled_ = false;
+    const Sim2realCfg &runtime_cfg = controller_runtime_.runtimeCfg();
+    if (!runtime_cfg.logging.enabled)
+    {
+        return;
+    }
+
+    std::ostringstream snapshot;
+    snapshot << "{"
+             << "\"backend\":\"sim2sim\","
+             << "\"config_section\":\"" << controller_runtime_.activeConfigSection() << "\","
+             << "\"mode_id\":" << controller_runtime_.activeModeId() << ","
+             << "\"policy_name\":\"" << runtime_cfg.policy_name << "\","
+             << "\"policy_family\":\"" << runtime_cfg.policy_family << "\","
+             << "\"model_path\":\"" << model_path_ << "\","
+             << "\"control_hz\":" << control_hz_ << ","
+             << "\"sim_dt\":" << sim_dt_
+             << "}";
+
+    std::map<std::string, std::string> session_metadata;
+    session_metadata["backend"] = "sim2sim_mujoco";
+    session_metadata["policy_name"] = runtime_cfg.policy_name;
+    session_metadata["active_config_section"] = controller_runtime_.activeConfigSection();
+    session_metadata["active_mode_id"] = std::to_string(controller_runtime_.activeModeId());
+    session_metadata["model_path"] = model_path_;
+    session_metadata["output_file_path"] = runtime_cfg.logging.output_file_path;
+
+    if (!runtime_recorder_.open(runtime_cfg.logging, snapshot.str(), session_metadata))
+    {
+        RCLCPP_ERROR(this->get_logger(), "failed to open sim2sim runtime recorder");
+        return;
+    }
+
+    runtime_logging_enabled_ = true;
+
+    rl_master::logging::RuntimeEventRecord event;
+    event.monotonic_time_sec = rl_master::monotonicTimeSec();
+    event.event_type = "sim2sim_initialized";
+    event.tags["model_path"] = model_path_;
+    event.tags["mode_id"] = std::to_string(controller_runtime_.activeModeId());
+    event.tags["config_section"] = controller_runtime_.activeConfigSection();
+    event.tags["effective_compression"] = runtime_recorder_.effectiveCompression();
+    runtime_recorder_.recordEvent(event);
+
+    RCLCPP_INFO(
+        this->get_logger(),
+        "Runtime MCAP log: %s",
+        runtime_recorder_.filePath().c_str());
+}
+
+void MujocoSimBridge::emitDerivedRuntimeEvents(const rl_master::logging::ControllerLogSnapshot &controller_snapshot)
+{
+    if (!runtime_logging_enabled_ || !runtime_recorder_.isOpen() || !controller_snapshot.valid)
+    {
+        return;
+    }
+
+    if (controller_snapshot.active_mode_id != last_logged_mode_id_)
+    {
+        rl_master::logging::RuntimeEventRecord event;
+        event.monotonic_time_sec = controller_snapshot.monotonic_time_sec;
+        event.event_type = "mode_switch";
+        event.tags["mode_id"] = std::to_string(controller_snapshot.active_mode_id);
+        event.tags["config_section"] = controller_snapshot.active_config_section;
+        event.tags["policy_name"] = controller_snapshot.policy_name;
+        runtime_recorder_.recordEvent(event);
+        last_logged_mode_id_ = controller_snapshot.active_mode_id;
+    }
+
+    if (controller_snapshot.deploy_state != last_logged_deploy_state_)
+    {
+        rl_master::logging::RuntimeEventRecord event;
+        event.monotonic_time_sec = controller_snapshot.monotonic_time_sec;
+        event.event_type = "lifecycle_transition";
+        event.tags["deploy_state"] = std::to_string(controller_snapshot.deploy_state);
+        event.tags["mode_id"] = std::to_string(controller_snapshot.active_mode_id);
+        runtime_recorder_.recordEvent(event);
+        last_logged_deploy_state_ = controller_snapshot.deploy_state;
+    }
+}
+
+void MujocoSimBridge::emitBaseImuSourceSample(const rl_master::RobotStateData &state, double monotonic_time_sec)
+{
+    const Sim2realCfg &runtime_cfg = controller_runtime_.runtimeCfg();
+    if (!runtime_logging_enabled_ ||
+        !runtime_recorder_.isOpen() ||
+        !runtime_cfg.logging.source_samples.enabled ||
+        !runtime_cfg.logging.source_samples.include_base_imu)
+    {
+        return;
+    }
+
+    rl_master::logging::RuntimeSourceSampleRecord sample;
+    sample.monotonic_time_sec = monotonic_time_sec;
+    sample.topic = "runtime/source/base_imu";
+    sample.sample_name = "base_imu";
+    sample.tags["backend"] = "sim2sim";
+    sample.values["ang_vel"] = {
+        state.base_ang_vel[0],
+        state.base_ang_vel[1],
+        state.base_ang_vel[2]};
+    sample.values["quat_xyzw"] = {
+        state.base_quat[0],
+        state.base_quat[1],
+        state.base_quat[2],
+        state.base_quat[3]};
+    sample.values["rpy"] = {
+        state.base_rpy[0],
+        state.base_rpy[1],
+        state.base_rpy[2]};
+    runtime_recorder_.recordSourceSample(sample);
+}
+
+void MujocoSimBridge::logLoopData(
+    const rl_master::RobotStateData &state,
+    const rl_master::RobotStateData &post_state,
+    const rl_master::RobotCommandData &command,
+    const rl_master::logging::ControllerLogSnapshot &controller_snapshot,
+    const rl_master::CommandRuntimeDecision &runtime_mode,
+    bool control_active)
+{
+    (void)state;
+    if (!runtime_logging_enabled_ || !runtime_recorder_.isOpen())
+    {
+        return;
+    }
+
+    rl_master::logging::RuntimeTickLogRecord record;
+    record.frame_index = controller_snapshot.frame_index;
+    record.monotonic_time_sec = controller_snapshot.valid
+                                    ? controller_snapshot.monotonic_time_sec
+                                    : rl_master::monotonicTimeSec();
+    record.phase_t = controller_snapshot.phase_t;
+    record.phase_t_global = controller_snapshot.phase_t_global;
+    record.phase_origin_t = controller_snapshot.phase_origin_t;
+    record.requested_mode_command = controller_snapshot.requested_mode_command;
+    record.active_mode_id = controller_snapshot.active_mode_id;
+    record.deploy_state = controller_snapshot.deploy_state;
+    record.active_profile_index = controller_snapshot.active_profile_index;
+    record.open_rl = controller_snapshot.open_rl;
+    record.cmd_vx = controller_snapshot.cmd_vx;
+    record.cmd_vy = controller_snapshot.cmd_vy;
+    record.cmd_dyaw = controller_snapshot.cmd_dyaw;
+    record.latest_cmd_fresh = control_active;
+    record.loop_overrun_count = sim_loop_overrun_count_;
+    record.active_tag = controller_snapshot.active_tag;
+    record.active_config_section = controller_snapshot.active_config_section;
+    record.policy_name = controller_snapshot.policy_name;
+    record.joint_q = controller_snapshot.joint_q;
+    record.joint_dq = controller_snapshot.joint_dq;
+    record.joint_tau = controller_snapshot.joint_tau;
+    record.joint_target_q = controller_snapshot.joint_target_q;
+    record.joint_target_tau = controller_snapshot.joint_target_tau;
+    record.observation = controller_snapshot.observation;
+    record.policy_action = controller_snapshot.policy_action;
+    record.named_features = controller_snapshot.named_features;
+    record.external_feature_names = controller_snapshot.external_feature_names;
+    record.amp_discriminator_score = controller_snapshot.amp_discriminator_score;
+    record.has_amp_discriminator_score = controller_snapshot.has_amp_discriminator_score;
+    record.amp_discriminator_score_mean = controller_snapshot.amp_discriminator_score_mean;
+
+    record.joint_cmd_q = command.joint_target_q;
+    record.joint_cmd_dq = command.joint_target_dq;
+    record.joint_cmd_tau = command.joint_target_tau;
+    record.joint_state_q = post_state.joint_q;
+    record.joint_state_dq = post_state.joint_dq;
+    record.joint_state_tau = post_state.joint_tau;
+    record.motor_cmd_q = command.joint_target_q;
+    record.motor_cmd_dq = command.joint_target_dq;
+    record.motor_cmd_tau = applied_tau_;
+    record.motor_state_q = post_state.joint_q;
+    record.motor_state_dq = post_state.joint_dq;
+    record.motor_state_tau = applied_tau_;
+    record.motor_cmd_mode.assign(joint_names_.size(), 0.0f);
+    for (size_t i = 0; i < joint_names_.size(); ++i)
+    {
+        record.motor_cmd_mode[i] = static_cast<float>(runtime_mode.mode);
+    }
+
+    runtime_recorder_.recordTick(record);
+
+    if (!controller_snapshot.policy_action.empty())
+    {
+        rl_master::logging::RuntimeSourceSampleRecord sample;
+        sample.monotonic_time_sec = record.monotonic_time_sec;
+        sample.topic = "runtime/source/policy_action";
+        sample.sample_name = "policy_action";
+        sample.tags["backend"] = "sim2sim";
+        sample.tags["mode_id"] = std::to_string(record.active_mode_id);
+        sample.values["action"] = controller_snapshot.policy_action;
+        runtime_recorder_.recordSourceSample(sample);
+    }
+
+    if (controller_runtime_.runtimeCfg().logging.source_samples.include_external_observations)
+    {
+        for (auto &sample : controller_runtime_.controller().drainExternalObservationSamplesForLogging())
+        {
+            sample.tags["backend"] = "sim2sim";
+            runtime_recorder_.recordSourceSample(sample);
+        }
+    }
+}
+
 void MujocoSimBridge::updateViewerFrameMirror()
 {
     if (!enable_python_viewer_stream_)
@@ -1368,6 +1578,7 @@ void MujocoSimBridge::walkModeCallback(const std_msgs::msg::Int32::SharedPtr msg
 
 void MujocoSimBridge::controlLoopTick()
 {
+    const auto loop_begin = std::chrono::steady_clock::now();
     const rclcpp::Time now = this->now();
     const bool should_step = !viewer_paused_ || viewer_step_once_;
     const int speed_substeps = std::max(1, static_cast<int>(std::lround(substeps_per_control_ * sim_speed_scale_)));
@@ -1376,6 +1587,8 @@ void MujocoSimBridge::controlLoopTick()
     const rl_master::TeleopCommand teleop_command = latestTeleopCommand();
     const rl_master::RobotCommandData command =
         controller_runtime_.step(state, teleop_command, mode_command_cache_.load());
+    const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
+    emitDerivedRuntimeEvents(controller_snapshot);
     const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
     const bool control_active = runtime_mode.open_rl_active;
 
@@ -1422,9 +1635,19 @@ void MujocoSimBridge::controlLoopTick()
 
     const rl_master::RobotStateData post_state = buildRobotState();
     updateMirroredState(post_state);
+    emitBaseImuSourceSample(post_state, rl_master::monotonicTimeSec());
+    logLoopData(state, post_state, command, controller_snapshot, runtime_mode, control_active);
     updateViewerFrameMirror();
     updateViewerInspectorMirror(post_state, command, runtime_mode);
     renderViewerFrame();
+
+    const auto loop_end = std::chrono::steady_clock::now();
+    const auto loop_elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(loop_end - loop_begin).count();
+    const double budget_us = 1.0e6 / std::max(1.0, control_hz_);
+    if (static_cast<double>(loop_elapsed_us) > budget_us)
+    {
+        ++sim_loop_overrun_count_;
+    }
 }
 
 rl_master::RobotStateData MujocoSimBridge::buildRobotState() const

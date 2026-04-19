@@ -17,7 +17,7 @@
 #include "cmd.h"
 #include "deploy_state_machine.h"
 #include "external_observation_provider.h"
-#include "logging/structured_logger.h"
+#include "logging/runtime_log_types.h"
 #include "math_tool.h"
 #include "mode_profile_registry.h"
 #include "onnx_policy_runner.h"
@@ -54,6 +54,10 @@ public:
     const Sim2realCfg &runtimeCfg() const;
     int activeModeId() const;
     const std::string &activeConfigSection() const;
+    const rl_master::logging::ControllerLogSnapshot &latestLogSnapshot() const;
+    void setExternalObservationFeature(const std::string &name, const std::vector<float> &values);
+    void setExternalObservationFeature(const std::string &name, const std::vector<float> &values, double monotonic_time_sec);
+    std::vector<rl_master::logging::RuntimeSourceSampleRecord> drainExternalObservationSamplesForLogging();
 
 private:
     struct PolicyRunnerNode
@@ -143,12 +147,6 @@ private:
         const ObservationFeatureContext &feature_context);
     void initReferenceMotionProvider(const Sim2realCfg &cfg, ReferenceMotionProvider *provider, const std::string &tag);
     ObservationFeatureContext buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t);
-    void initDataLogger();
-    void logStepRecord(
-        double phase_t,
-        double phase_t_global,
-        int requested_mode_command,
-        const rl_master::DeployStateOutput &deploy_output);
 
     void initModeProfiles();
     std::vector<ModeProfileSpec> loadModeProfileSpecsFromYaml() const;
@@ -193,8 +191,8 @@ private:
     std::vector<float> stacked_obs_buffer_;
 
     Cmd cmd;
-    std::unique_ptr<rl_master::logging::StructuredLogger> data_logger_;
-    uint64_t data_log_frame_index_ = 0;
+    rl_master::logging::ControllerLogSnapshot latest_log_snapshot_;
+    uint64_t log_frame_index_ = 0;
 };
 
 #endif // RL_CONTROLLER_H

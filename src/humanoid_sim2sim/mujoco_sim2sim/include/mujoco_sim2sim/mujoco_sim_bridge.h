@@ -20,6 +20,7 @@
 #include <std_msgs/msg/string.hpp>
 
 #include "rl_master/command_runtime_mode.h"
+#include "rl_master/logging/runtime_recorder.h"
 #include "rl_master/runtime/integrated_controller_runtime.h"
 #include "rl_master/robot_types.h"
 
@@ -61,6 +62,16 @@ private:
     void startStateTelemetry();
     void stopStateTelemetry();
     void updateMirroredState(const rl_master::RobotStateData &state);
+    void initRuntimeRecorder();
+    void emitDerivedRuntimeEvents(const rl_master::logging::ControllerLogSnapshot &controller_snapshot);
+    void logLoopData(
+        const rl_master::RobotStateData &state,
+        const rl_master::RobotStateData &post_state,
+        const rl_master::RobotCommandData &command,
+        const rl_master::logging::ControllerLogSnapshot &controller_snapshot,
+        const rl_master::CommandRuntimeDecision &runtime_mode,
+        bool control_active);
+    void emitBaseImuSourceSample(const rl_master::RobotStateData &state, double monotonic_time_sec);
     rl_master::TeleopCommand latestTeleopCommand() const;
     void startViewerTelemetry();
     void stopViewerTelemetry();
@@ -203,6 +214,11 @@ private:
     bool hold_target_latched_ = false;
     rclcpp::Time last_mode_warn_{0, 0, RCL_ROS_TIME};
     bool warned_idle_position_fallback_ = false;
+    rl_master::logging::RuntimeRecorder runtime_recorder_;
+    bool runtime_logging_enabled_ = false;
+    int last_logged_mode_id_ = std::numeric_limits<int>::min();
+    int last_logged_deploy_state_ = std::numeric_limits<int>::min();
+    uint64_t sim_loop_overrun_count_ = 0;
 };
 
 } // namespace mujoco_sim2sim

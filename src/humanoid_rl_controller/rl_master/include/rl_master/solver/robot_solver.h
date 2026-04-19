@@ -14,7 +14,7 @@
 
 #include "rl_master/KinConv.h"
 #include "rl_master/filters/moving_average_filter.h"
-#include "rl_master/logging/structured_logger.h"
+#include "rl_master/logging/runtime_recorder.h"
 #include "rl_master/rl_cfg.h"
 #include "rl_master/runtime/integrated_controller_runtime.h"
 #include "rl_master/solver/motor_shm_io.h"
@@ -55,9 +55,15 @@ private:
 
     std::map<std::string, std::vector<float>> getRobotStateBag() const;
 
-    rl_master::logging::LoggerMetadata buildLoggerMetadata() const;
-    void initDataLogger();
-    void logLoopData();
+    std::string buildRuntimeConfigSnapshotJson() const;
+    void initRuntimeRecorder();
+    void logLoopData(const rl_master::logging::ControllerLogSnapshot &controller_snapshot);
+    void emitDerivedRuntimeEvents(const rl_master::logging::ControllerLogSnapshot &controller_snapshot);
+    void emitBaseImuSourceSample(
+        const std::array<float, 3> &ang_vel,
+        const std::array<float, 4> &quat,
+        const std::array<float, 3> &rpy,
+        double monotonic_time_sec);
 
     void moveToPosition(const std::vector<float> &target_positions);
     void holdCurrentPose();
@@ -120,9 +126,10 @@ private:
     std::array<rl_master::filters::MovingAverageFilter, kMotorCountMax> velocity_filters_;
     rl_master::runtime::IntegratedControllerRuntime controller_runtime_;
 
-    rl_master::logging::StructuredLogger data_logger_;
-    bool data_logging_enabled_ = false;
-    uint64_t data_log_frame_index_ = 0;
+    rl_master::logging::RuntimeRecorder runtime_recorder_;
+    bool runtime_logging_enabled_ = false;
+    int last_logged_mode_id_ = std::numeric_limits<int>::min();
+    int last_logged_deploy_state_ = std::numeric_limits<int>::min();
 
     std::chrono::time_point<std::chrono::high_resolution_clock> start_time_;
 };

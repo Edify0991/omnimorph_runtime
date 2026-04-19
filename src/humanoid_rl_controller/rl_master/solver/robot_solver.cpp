@@ -6,12 +6,14 @@
 #include <cstring>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <thread>
 
 #include <time.h>
 #include <unistd.h>
 
+#include "rl_master/RL_controller.h"
 #include "rl_master/command_runtime_mode.h"
 #include "rl_master/deploy_state_machine.h"
 #include "rl_master/rl_protocol.h"
@@ -51,16 +53,6 @@ const std::vector<std::string> kInstalledJointNames = {
     "left_ankle_pitch",
     "left_ankle_roll",
 };
-
-std::vector<double> toDoubleVector(const std::vector<float> &values)
-{
-    std::vector<double> out(values.size(), 0.0);
-    for (size_t i = 0; i < values.size(); ++i)
-    {
-        out[i] = static_cast<double>(values[i]);
-    }
-    return out;
-}
 
 } // namespace
 
@@ -178,14 +170,15 @@ bool RobotSolver::switchToModeConfig(int mode_id, bool allow_fallback_to_default
     std::cout << "[RL_solver] mode config active: mode_id=" << active_mode_id_
               << ", section=" << active_config_section_
               << ", policy=" << sim2real_cfg_.policy_name << std::endl;
-    if (data_logging_enabled_ && data_logger_.isOpen())
+    if (runtime_logging_enabled_ && runtime_recorder_.isOpen())
     {
-        data_logger_.writeEvent(
-            rl_master::monotonicTimeSec(),
-            "solver_mode_config_switched",
-            {{"mode_id", std::to_string(active_mode_id_)},
-             {"config_section", active_config_section_},
-             {"policy_name", sim2real_cfg_.policy_name}});
+        rl_master::logging::RuntimeEventRecord event;
+        event.monotonic_time_sec = rl_master::monotonicTimeSec();
+        event.event_type = "solver_mode_config_switched";
+        event.tags["mode_id"] = std::to_string(active_mode_id_);
+        event.tags["config_section"] = active_config_section_;
+        event.tags["policy_name"] = sim2real_cfg_.policy_name;
+        runtime_recorder_.recordEvent(event);
     }
     return true;
 }
@@ -202,6 +195,14 @@ bool RobotSolver::initialize()
             sim2real_cfg_.state_telemetry_hz,
         });
         dds_bridge_.updateSourceContract(sim2real_cfg_.source_contract);
+        dds_bridge_.setImuSampleCallback(
+            [this](
+                const std::array<float, 3> &ang_vel,
+                const std::array<float, 4> &quat,
+                const std::array<float, 3> &rpy,
+                double monotonic_time_sec) {
+                this->emitBaseImuSourceSample(ang_vel, quat, rpy, monotonic_time_sec);
+            });
         initializeController();
     }
     catch (const std::exception &e)
@@ -290,14 +291,15 @@ void RobotSolver::syncRuntimeCfgFromController(bool force)
     std::cout << "[RL_solver] controller runtime synced: mode_id=" << active_mode_id_
               << ", section=" << active_config_section_
               << ", policy=" << sim2real_cfg_.policy_name << std::endl;
-    if (data_logging_enabled_ && data_logger_.isOpen())
+    if (runtime_logging_enabled_ && runtime_recorder_.isOpen())
     {
-        data_logger_.writeEvent(
-            rl_master::monotonicTimeSec(),
-            "solver_mode_config_switched",
-            {{"mode_id", std::to_string(active_mode_id_)},
-             {"config_section", active_config_section_},
-             {"policy_name", sim2real_cfg_.policy_name}});
+        rl_master::logging::RuntimeEventRecord event;
+        event.monotonic_time_sec = rl_master::monotonicTimeSec();
+        event.event_type = "solver_mode_config_switched";
+        event.tags["mode_id"] = std::to_string(active_mode_id_);
+        event.tags["config_section"] = active_config_section_;
+        event.tags["policy_name"] = sim2real_cfg_.policy_name;
+        runtime_recorder_.recordEvent(event);
     }
 }
 
@@ -682,78 +684,297 @@ std::map<std::string, std::vector<float>> RobotSolver::getRobotStateBag() const
     };
 }
 
-rl_master::logging::LoggerMetadata RobotSolver::buildLoggerMetadata() const
+std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
 {
-    rl_master::logging::LoggerMetadata metadata;
-    metadata.string_fields["module"] = "RL_solver";
-    metadata.string_fields["policy_name"] = sim2real_cfg_.policy_name;
-    metadata.string_fields["policy_family"] = sim2real_cfg_.policy_family;
-    metadata.string_fields["policy_path"] = sim2real_cfg_.policy_path;
-    metadata.string_fields["observation_manifest_path"] = sim2real_cfg_.observation_manifest_path;
-    metadata.string_fields["control_mode"] = sim2real_cfg_.control_mode;
+    auto appendQuoted = [](std::ostringstream &oss, const std::string &value) {
+        oss << '\"';
+        for (char ch : value)
+        {
+            switch (ch)
+            {
+            case '\"':
+                oss << "\\\\\"";
+                break;
+            case '\\':
+                oss << "\\\\\\\\";
+                break;
+            case '\n':
+                oss << "\\\\n";
+                break;
+            case '\r':
+                oss << "\\\\r";
+                break;
+            case '\t':
+                oss << "\\\\t";
+                break;
+            default:
+                oss << ch;
+                break;
+            }
+        }
+        oss << '\"';
+    };
 
-    metadata.numeric_fields["obs_dim"] = static_cast<double>(sim2real_cfg_.obs_dim);
-    metadata.numeric_fields["action_dim"] = static_cast<double>(sim2real_cfg_.action_dim);
-    metadata.numeric_fields["obs_stack"] = static_cast<double>(sim2real_cfg_.obs_stack_N);
-    metadata.numeric_fields["control_hz"] = static_cast<double>(sim2real_cfg_.RL_control_f);
-    metadata.numeric_fields["command_timeout_s"] = sim2real_cfg_.cmd_timeout_s;
+    auto appendStringVector = [&appendQuoted](std::ostringstream &oss, const std::vector<std::string> &values) {
+        oss << "[";
+        for (size_t i = 0; i < values.size(); ++i)
+        {
+            if (i > 0)
+            {
+                oss << ",";
+            }
+            appendQuoted(oss, values[i]);
+        }
+        oss << "]";
+    };
 
-    metadata.vector_fields["kps"] = toDoubleVector(sim2real_cfg_.kps);
-    metadata.vector_fields["kds"] = toDoubleVector(sim2real_cfg_.kds);
-    metadata.vector_fields["tau_limit"] = toDoubleVector(sim2real_cfg_.tau_limit);
+    auto appendFloatVector = [](std::ostringstream &oss, const std::vector<float> &values) {
+        oss << "[";
+        for (size_t i = 0; i < values.size(); ++i)
+        {
+            if (i > 0)
+            {
+                oss << ",";
+            }
+            oss.precision(10);
+            oss << static_cast<double>(values[i]);
+        }
+        oss << "]";
+    };
 
-    metadata.string_list_fields["action_joint_order"] = sim2real_cfg_.action_joint_order;
-    metadata.string_list_fields["obs_joint_order"] = sim2real_cfg_.obs_joint_order;
-    for (const auto &sub : sim2real_cfg_.sub_models)
+    std::ostringstream oss;
+    oss << "{";
+    oss << "\"schema_version\":1,";
+    oss << "\"active_mode_id\":" << active_mode_id_ << ",";
+    oss << "\"active_config_section\":";
+    appendQuoted(oss, active_config_section_);
+    oss << ",\"active_policy_name\":";
+    appendQuoted(oss, sim2real_cfg_.policy_name);
+    oss << ",\"runtime_joint_order\":";
+    appendStringVector(oss, runtime_joint_names_);
+    oss << ",\"installed_joint_names\":";
+    appendStringVector(oss, installed_joint_names_);
+    oss << ",\"profiles\":[";
+    for (size_t i = 0; i < mode_profile_specs_.size(); ++i)
     {
-        metadata.string_list_fields["sub_model_names"].push_back(sub.name);
-        metadata.string_list_fields["sub_model_paths"].push_back(sub.policy_path);
+        const auto &spec = mode_profile_specs_[i];
+        if (i > 0)
+        {
+            oss << ",";
+        }
+        const auto cfg = mode_registry_->cfgForMode(spec.mode_id, true);
+        oss << "{";
+        oss << "\"mode_id\":" << spec.mode_id << ",";
+        oss << "\"tag\":";
+        appendQuoted(oss, spec.tag);
+        oss << ",\"config_section\":";
+        appendQuoted(oss, spec.config_section);
+        oss << ",\"policy_name\":";
+        appendQuoted(oss, cfg.policy_name);
+        oss << ",\"policy_family\":";
+        appendQuoted(oss, cfg.policy_family);
+        oss << ",\"policy_path\":";
+        appendQuoted(oss, cfg.policy_path);
+        oss << ",\"observation_manifest_path\":";
+        appendQuoted(oss, cfg.observation_manifest_path);
+        oss << ",\"obs_dim\":" << cfg.obs_dim << ",";
+        oss << "\"action_dim\":" << cfg.action_dim << ",";
+        oss << "\"obs_stack_n\":" << cfg.obs_stack_N << ",";
+        oss << "\"control_hz\":" << cfg.RL_control_f << ",";
+        oss << "\"action_joint_order\":";
+        appendStringVector(oss, cfg.action_joint_order);
+        oss << ",\"obs_joint_order\":";
+        appendStringVector(oss, cfg.obs_joint_order);
+        oss << ",\"tau_limit\":";
+        appendFloatVector(oss, cfg.tau_limit);
+        oss << "}";
     }
-
-    return metadata;
+    oss << "]}";
+    return oss.str();
 }
 
-void RobotSolver::initDataLogger()
+void RobotSolver::initRuntimeRecorder()
 {
-    data_logging_enabled_ = false;
-    if (!sim2real_cfg_.save_data_flag)
+    runtime_logging_enabled_ = false;
+    if (!sim2real_cfg_.logging.enabled)
     {
         return;
     }
 
-    if (!data_logger_.open(sim2real_cfg_.data_path, "solver", buildLoggerMetadata()))
+    std::map<std::string, std::string> session_metadata;
+    session_metadata["backend"] = sim2real_cfg_.logging.backend;
+    session_metadata["policy_name"] = sim2real_cfg_.policy_name;
+    session_metadata["active_config_section"] = active_config_section_;
+    session_metadata["active_mode_id"] = std::to_string(active_mode_id_);
+    session_metadata["output_file_path"] = sim2real_cfg_.logging.output_file_path;
+    session_metadata["requested_compression"] = sim2real_cfg_.logging.writer.compression;
+
+    if (!runtime_recorder_.open(
+            sim2real_cfg_.logging,
+            buildRuntimeConfigSnapshotJson(),
+            session_metadata))
     {
-        std::cerr << "[RL_solver] failed to open structured data logger." << std::endl;
+        std::cerr << "[RL_solver] failed to open runtime recorder." << std::endl;
         return;
     }
 
-    data_logger_.writeEvent(
-        rl_master::monotonicTimeSec(),
-        "solver_initialized",
-        {{"session_base_path", sim2real_cfg_.data_path}});
-    data_logging_enabled_ = true;
-    std::cout << "RL Solver structured log: " << data_logger_.recordsPath() << std::endl;
+    runtime_logging_enabled_ = true;
+    session_metadata["effective_compression"] = runtime_recorder_.effectiveCompression();
+    last_logged_mode_id_ = std::numeric_limits<int>::min();
+    last_logged_deploy_state_ = std::numeric_limits<int>::min();
+
+    rl_master::logging::RuntimeEventRecord solver_event;
+    solver_event.monotonic_time_sec = rl_master::monotonicTimeSec();
+    solver_event.event_type = "solver_initialized";
+    solver_event.tags["session_base_path"] = sim2real_cfg_.logging.session_base_path;
+    solver_event.tags["output_file_path"] = sim2real_cfg_.logging.output_file_path;
+    solver_event.tags["requested_compression"] = sim2real_cfg_.logging.writer.compression;
+    solver_event.tags["effective_compression"] = runtime_recorder_.effectiveCompression();
+    runtime_recorder_.recordEvent(solver_event);
+
+    rl_master::logging::RuntimeEventRecord controller_event;
+    controller_event.monotonic_time_sec = rl_master::monotonicTimeSec();
+    controller_event.event_type = "controller_initialized";
+    controller_event.tags["mode_id"] = std::to_string(active_mode_id_);
+    controller_event.tags["config_section"] = active_config_section_;
+    runtime_recorder_.recordEvent(controller_event);
+
+    std::cout << "Runtime MCAP log: " << runtime_recorder_.filePath() << std::endl;
 }
 
-void RobotSolver::logLoopData()
+void RobotSolver::emitBaseImuSourceSample(
+    const std::array<float, 3> &ang_vel,
+    const std::array<float, 4> &quat,
+    const std::array<float, 3> &rpy,
+    double monotonic_time_sec)
 {
-    if (!data_logging_enabled_ || !data_logger_.isOpen())
+    if (!runtime_logging_enabled_ ||
+        !runtime_recorder_.isOpen() ||
+        !sim2real_cfg_.logging.source_samples.enabled ||
+        !sim2real_cfg_.logging.source_samples.include_base_imu)
     {
         return;
     }
 
-    std::map<std::string, double> scalars;
-    scalars["frame_index"] = static_cast<double>(data_log_frame_index_++);
-    scalars["open_rl"] = static_cast<double>(open_rl_);
-    scalars["last_open_rl"] = static_cast<double>(last_open_rl_);
-    scalars["latest_cmd_fresh"] = latest_cmd_fresh_ ? 1.0 : 0.0;
-    scalars["loop_overrun_count"] = static_cast<double>(loop_overrun_count_);
+    rl_master::logging::RuntimeSourceSampleRecord sample;
+    sample.monotonic_time_sec = monotonic_time_sec;
+    sample.topic = "runtime/source/base_imu";
+    sample.sample_name = "base_imu";
+    sample.tags["backend"] = "sim2real";
+    sample.values["ang_vel"] = {ang_vel[0], ang_vel[1], ang_vel[2]};
+    sample.values["quat_xyzw"] = {quat[0], quat[1], quat[2], quat[3]};
+    sample.values["rpy"] = {rpy[0], rpy[1], rpy[2]};
+    runtime_recorder_.recordSourceSample(sample);
+}
 
-    data_logger_.writeRecord(
-        rl_master::monotonicTimeSec(),
-        "solver_loop",
-        scalars,
-        getRobotStateBag());
+void RobotSolver::emitDerivedRuntimeEvents(const rl_master::logging::ControllerLogSnapshot &controller_snapshot)
+{
+    if (!runtime_logging_enabled_ || !runtime_recorder_.isOpen() || !controller_snapshot.valid)
+    {
+        return;
+    }
+
+    if (controller_snapshot.active_mode_id != last_logged_mode_id_)
+    {
+        rl_master::logging::RuntimeEventRecord event;
+        event.monotonic_time_sec = controller_snapshot.monotonic_time_sec;
+        event.event_type = "mode_switch";
+        event.tags["mode_id"] = std::to_string(controller_snapshot.active_mode_id);
+        event.tags["config_section"] = controller_snapshot.active_config_section;
+        event.tags["policy_name"] = controller_snapshot.policy_name;
+        runtime_recorder_.recordEvent(event);
+        last_logged_mode_id_ = controller_snapshot.active_mode_id;
+    }
+
+    if (controller_snapshot.deploy_state != last_logged_deploy_state_)
+    {
+        rl_master::logging::RuntimeEventRecord event;
+        event.monotonic_time_sec = controller_snapshot.monotonic_time_sec;
+        event.event_type = "lifecycle_transition";
+        event.tags["deploy_state"] = std::to_string(controller_snapshot.deploy_state);
+        event.tags["mode_id"] = std::to_string(controller_snapshot.active_mode_id);
+        runtime_recorder_.recordEvent(event);
+        last_logged_deploy_state_ = controller_snapshot.deploy_state;
+    }
+}
+
+void RobotSolver::logLoopData(const rl_master::logging::ControllerLogSnapshot &controller_snapshot)
+{
+    if (!runtime_logging_enabled_ || !runtime_recorder_.isOpen())
+    {
+        return;
+    }
+
+    rl_master::logging::RuntimeTickLogRecord record;
+    record.frame_index = controller_snapshot.frame_index;
+    record.monotonic_time_sec = controller_snapshot.valid
+                                    ? controller_snapshot.monotonic_time_sec
+                                    : rl_master::monotonicTimeSec();
+    record.phase_t = controller_snapshot.phase_t;
+    record.phase_t_global = controller_snapshot.phase_t_global;
+    record.phase_origin_t = controller_snapshot.phase_origin_t;
+    record.requested_mode_command = controller_snapshot.requested_mode_command;
+    record.active_mode_id = controller_snapshot.active_mode_id;
+    record.deploy_state = controller_snapshot.deploy_state;
+    record.active_profile_index = controller_snapshot.active_profile_index;
+    record.open_rl = controller_snapshot.open_rl;
+    record.cmd_vx = controller_snapshot.cmd_vx;
+    record.cmd_vy = controller_snapshot.cmd_vy;
+    record.cmd_dyaw = controller_snapshot.cmd_dyaw;
+    record.latest_cmd_fresh = latest_cmd_fresh_;
+    record.loop_overrun_count = loop_overrun_count_;
+    record.active_tag = controller_snapshot.active_tag;
+    record.active_config_section = controller_snapshot.active_config_section;
+    record.policy_name = controller_snapshot.policy_name;
+    record.joint_q = controller_snapshot.joint_q;
+    record.joint_dq = controller_snapshot.joint_dq;
+    record.joint_tau = controller_snapshot.joint_tau;
+    record.joint_target_q = controller_snapshot.joint_target_q;
+    record.joint_target_tau = controller_snapshot.joint_target_tau;
+    record.observation = controller_snapshot.observation;
+    record.policy_action = controller_snapshot.policy_action;
+    record.named_features = controller_snapshot.named_features;
+    record.external_feature_names = controller_snapshot.external_feature_names;
+    record.amp_discriminator_score = controller_snapshot.amp_discriminator_score;
+    record.has_amp_discriminator_score = controller_snapshot.has_amp_discriminator_score;
+    record.amp_discriminator_score_mean = controller_snapshot.amp_discriminator_score_mean;
+
+    record.joint_cmd_q = joint_cmd_q_;
+    record.joint_cmd_dq = joint_cmd_dq_;
+    record.joint_cmd_tau = joint_cmd_tau_;
+    record.joint_state_q = joint_state_q_;
+    record.joint_state_dq = joint_state_dq_;
+    record.joint_state_tau = joint_state_tau_;
+    record.motor_cmd_q = motor_cmd_q_;
+    record.motor_cmd_dq = motor_cmd_dq_;
+    record.motor_cmd_tau = motor_cmd_tau_;
+    record.motor_state_q = motor_state_q_;
+    record.motor_state_dq = motor_state_dq_;
+    record.motor_state_tau = motor_state_tau_;
+    record.motor_cmd_mode = motor_cmd_mode_;
+
+    runtime_recorder_.recordTick(record);
+
+    if (!controller_snapshot.policy_action.empty())
+    {
+        rl_master::logging::RuntimeSourceSampleRecord sample;
+        sample.monotonic_time_sec = record.monotonic_time_sec;
+        sample.topic = "runtime/source/policy_action";
+        sample.sample_name = "policy_action";
+        sample.tags["backend"] = "sim2real";
+        sample.tags["mode_id"] = std::to_string(record.active_mode_id);
+        sample.values["action"] = controller_snapshot.policy_action;
+        runtime_recorder_.recordSourceSample(sample);
+    }
+
+    if (sim2real_cfg_.logging.source_samples.include_external_observations)
+    {
+        for (auto &sample : controller_runtime_.controller().drainExternalObservationSamplesForLogging())
+        {
+            sample.tags["backend"] = "sim2real";
+            runtime_recorder_.recordSourceSample(sample);
+        }
+    }
 }
 
 void RobotSolver::moveToPosition(const std::vector<float> &target_positions)
@@ -823,7 +1044,7 @@ void RobotSolver::holdCurrentPose()
 
 void RobotSolver::run()
 {
-    initDataLogger();
+    initRuntimeRecorder();
 
     getMotorState();
     sendRLState();
@@ -867,6 +1088,8 @@ void RobotSolver::run()
             const rl_master::RobotCommandData controller_command =
                 controller_runtime_.step(io_state, teleop_sample, walk_mode_control_word);
             syncRuntimeCfgFromController();
+            const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
+            emitDerivedRuntimeEvents(controller_snapshot);
             applyRuntimeCommand(controller_command, true);
 
             const auto last_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(last_open_rl_));
@@ -885,7 +1108,7 @@ void RobotSolver::run()
                 hold_target_latched_ = false;
                 dds_bridge_.mirrorRobotState(io_state);
                 sendMotorCmd();
-                logLoopData();
+                logLoopData(controller_snapshot);
             }
             else
             {
@@ -948,7 +1171,8 @@ void RobotSolver::run()
     }
 
     holdCurrentPose();
-    data_logger_.flush();
+    runtime_recorder_.flush();
+    runtime_recorder_.close();
 }
 
 } // namespace rl_master::solver

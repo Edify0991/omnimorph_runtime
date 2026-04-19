@@ -119,6 +119,10 @@ SUPPORTED_IMU_PAYLOADS = {"euler_compat", "quaternion"}
 SUPPORTED_EULER_UNITS = {"rad", "deg"}
 SUPPORTED_QUAT_ORDERS = {"xyzw", "wxyz"}
 SUPPORTED_REFERENCE_SOURCES = {"auto", "file", "policy_outputs"}
+SUPPORTED_LOGGING_BACKENDS = {"mcap"}
+SUPPORTED_SESSION_NAME_POLICIES = {"timestamp_policy", "timestamp_mode", "custom"}
+SUPPORTED_LOGGING_EXPORT_FORMATS = {"none", "parquet"}
+SUPPORTED_LOGGING_COMPRESSIONS = {"none", "lz4", "zstd"}
 
 
 @dataclass
@@ -214,6 +218,58 @@ def resolve_path(raw: str, root_dir: Path) -> Path:
     if path.is_absolute():
         return path
     return root_dir / path
+
+
+def validate_logging_config(
+    root_cfg: Dict[str, Any],
+    root_dir: Path,
+    issues: IssueCollector,
+) -> None:
+    logging_cfg = to_dict(root_cfg.get("logging"))
+    if not logging_cfg:
+        issues.error("global", "top-level logging config is required")
+        return
+
+    backend = normalize_token(logging_cfg.get("backend", "mcap"))
+    if backend not in SUPPORTED_LOGGING_BACKENDS:
+        issues.error("global", f"logging.backend must be one of {sorted(SUPPORTED_LOGGING_BACKENDS)}")
+
+    session_name_policy = normalize_token(logging_cfg.get("session_name_policy", "timestamp_policy"))
+    if session_name_policy not in SUPPORTED_SESSION_NAME_POLICIES:
+        issues.error("global", f"logging.session_name_policy must be one of {sorted(SUPPORTED_SESSION_NAME_POLICIES)}")
+    if session_name_policy == "custom" and not str(logging_cfg.get("custom_session_name", "")).strip():
+        issues.error("global", "logging.custom_session_name is required when session_name_policy=custom")
+
+    output_dir_raw = str(logging_cfg.get("output_dir", ""))
+    if not output_dir_raw:
+        issues.error("global", "logging.output_dir is required")
+    else:
+        output_dir = resolve_path(output_dir_raw, root_dir)
+        parent = output_dir.parent
+        if not parent.exists():
+            issues.warn("global", f"logging.output_dir parent does not exist yet: {parent}")
+
+    writer_cfg = to_dict(logging_cfg.get("writer"))
+    if as_int(writer_cfg.get("queue_capacity", 256), 0) <= 0:
+        issues.error("global", "logging.writer.queue_capacity must be > 0")
+    if as_int(writer_cfg.get("flush_period_ms", 250), 0) <= 0:
+        issues.error("global", "logging.writer.flush_period_ms must be > 0")
+    compression = normalize_token(writer_cfg.get("compression", "zstd"))
+    if compression not in SUPPORTED_LOGGING_COMPRESSIONS:
+        issues.error("global", f"logging.writer.compression must be one of {sorted(SUPPORTED_LOGGING_COMPRESSIONS)}")
+
+    tick_cfg = to_dict(logging_cfg.get("tick"))
+    if as_int(tick_cfg.get("decimation", 1), 0) <= 0:
+        issues.error("global", "logging.tick.decimation must be > 0")
+
+    source_cfg = to_dict(logging_cfg.get("source_samples"))
+    if source_cfg and not isinstance(source_cfg, dict):
+        issues.error("global", "logging.source_samples must be a map when provided")
+
+    export_cfg = to_dict(logging_cfg.get("export"))
+    export_format = normalize_token(export_cfg.get("default_format", "none"))
+    if export_format not in SUPPORTED_LOGGING_EXPORT_FORMATS:
+        issues.error("global", f"logging.export.default_format must be one of {sorted(SUPPORTED_LOGGING_EXPORT_FORMATS)}")
 
 
 def find_by_name(seq: Sequence[Tuple[str, Any]], key: str) -> Optional[Any]:
@@ -1460,6 +1516,8 @@ def main() -> int:
                 f"fallback to local path: {root_dir}",
             )
 
+    validate_logging_config(root_cfg, root_dir, issues)
+
     specs = get_mode_profile_specs(root_cfg)
     if not specs:
         issues.error("global", "no deploy mode profiles resolved")
@@ -1485,6 +1543,14 @@ def main() -> int:
             issues=issues,
             skip_onnx=args.skip_onnx,
         )
+
+    for _, section, _ in selected_specs:
+        section_cfg = to_dict(root_cfg.get(section))
+        if "save_data_flag" in section_cfg:
+            issues.error(
+                f"profile(section={section})",
+                "legacy save_data_flag is no longer supported; use top-level logging.enabled",
+            )
 
     issues.print()
     print(

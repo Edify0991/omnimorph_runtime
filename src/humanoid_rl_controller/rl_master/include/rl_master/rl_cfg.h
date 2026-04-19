@@ -344,6 +344,70 @@ struct AmpDiscriminatorCfg
     float warn_below = -1.0e9f;
 };
 
+struct RuntimeLogWriterConfig
+{
+    int queue_capacity = 256;
+    int flush_period_ms = 250;
+    std::string compression = "none";
+    int chunk_size_kb = 1024;
+};
+
+struct RuntimeLogTickConfig
+{
+    bool enabled = true;
+    int decimation = 1;
+    bool include_observation = true;
+    bool include_policy_action = true;
+    bool include_motor_io = true;
+    bool include_joint_targets = true;
+    bool include_external_observations = false;
+};
+
+struct RuntimeLogEventsConfig
+{
+    bool enabled = true;
+};
+
+struct RuntimeLogReferenceMotionConfig
+{
+    bool enabled = false;
+};
+
+struct RuntimeLogAmpConfig
+{
+    bool enabled = false;
+};
+
+struct RuntimeLogSourceSamplesConfig
+{
+    bool enabled = true;
+    bool include_base_imu = true;
+    bool include_external_observations = false;
+};
+
+struct RuntimeLogExportConfig
+{
+    std::string default_format = "none";
+};
+
+struct RuntimeLoggingConfig
+{
+    bool enabled = false;
+    std::string backend = "mcap";
+    std::string output_dir;
+    std::string session_name_policy = "timestamp_policy";
+    std::string custom_session_name;
+    RuntimeLogWriterConfig writer;
+    RuntimeLogTickConfig tick;
+    RuntimeLogEventsConfig events;
+    RuntimeLogReferenceMotionConfig reference_motion;
+    RuntimeLogAmpConfig amp;
+    RuntimeLogSourceSamplesConfig source_samples;
+    RuntimeLogExportConfig export_config;
+    std::string session_base_path;
+    std::string output_file_path;
+};
+
 class Sim2realCfg
 {
 public:
@@ -414,8 +478,8 @@ public:
     std::vector<float> tau_limit;
     std::vector<std::string> robot_joint_order;
 
+    RuntimeLoggingConfig logging;
     std::string data_path;
-    bool save_data_flag = false;
     std::string control_mode;
     float action_filter = 0.0f;
     rl_master::runtime::RealtimeConfig realtime;
@@ -465,6 +529,7 @@ public:
             onnx_inputs.clear();
             reference_joint_order.clear();
             source_contract = SourceContract{};
+            logging = RuntimeLoggingConfig{};
 
             const std::string configured_root_raw = yamlReadOr<std::string>(config, "humanoid_rl_root_dir", "");
             const std::filesystem::path cfg_parent_dir = std::filesystem::path(yaml_file).parent_path();
@@ -509,6 +574,53 @@ public:
                 }
                 return (std::filesystem::path(humanoid_rl_root_dir) / p).string();
             };
+
+            const YAML::Node logging_cfg = config["logging"];
+            logging.enabled = yamlReadOr<bool>(logging_cfg, "enabled", false);
+            logging.backend = yamlReadOr<std::string>(logging_cfg, "backend", "mcap");
+            logging.output_dir = yamlReadOr<std::string>(logging_cfg, "output_dir", "data");
+            logging.session_name_policy = yamlReadOr<std::string>(logging_cfg, "session_name_policy", "timestamp_policy");
+            logging.custom_session_name = yamlReadOr<std::string>(logging_cfg, "custom_session_name", "");
+            if (!logging.output_dir.empty())
+            {
+                logging.output_dir = resolvePath(logging.output_dir);
+            }
+            else
+            {
+                logging.output_dir = (std::filesystem::path(humanoid_rl_root_dir) / "data").string();
+            }
+
+            const YAML::Node logging_writer_cfg = logging_cfg["writer"];
+            logging.writer.queue_capacity = yamlReadOr<int>(logging_writer_cfg, "queue_capacity", 256);
+            logging.writer.flush_period_ms = yamlReadOr<int>(logging_writer_cfg, "flush_period_ms", 250);
+            logging.writer.compression = yamlReadOr<std::string>(logging_writer_cfg, "compression", "none");
+            logging.writer.chunk_size_kb = yamlReadOr<int>(logging_writer_cfg, "chunk_size_kb", 1024);
+
+            const YAML::Node logging_tick_cfg = logging_cfg["tick"];
+            logging.tick.enabled = yamlReadOr<bool>(logging_tick_cfg, "enabled", true);
+            logging.tick.decimation = yamlReadOr<int>(logging_tick_cfg, "decimation", 1);
+            logging.tick.include_observation = yamlReadOr<bool>(logging_tick_cfg, "include_observation", true);
+            logging.tick.include_policy_action = yamlReadOr<bool>(logging_tick_cfg, "include_policy_action", true);
+            logging.tick.include_motor_io = yamlReadOr<bool>(logging_tick_cfg, "include_motor_io", true);
+            logging.tick.include_joint_targets = yamlReadOr<bool>(logging_tick_cfg, "include_joint_targets", true);
+            logging.tick.include_external_observations = yamlReadOr<bool>(logging_tick_cfg, "include_external_observations", false);
+
+            const YAML::Node logging_events_cfg = logging_cfg["events"];
+            logging.events.enabled = yamlReadOr<bool>(logging_events_cfg, "enabled", true);
+
+            const YAML::Node logging_reference_cfg = logging_cfg["reference_motion"];
+            logging.reference_motion.enabled = yamlReadOr<bool>(logging_reference_cfg, "enabled", false);
+
+            const YAML::Node logging_amp_cfg = logging_cfg["amp"];
+            logging.amp.enabled = yamlReadOr<bool>(logging_amp_cfg, "enabled", false);
+
+            const YAML::Node logging_sources_cfg = logging_cfg["source_samples"];
+            logging.source_samples.enabled = yamlReadOr<bool>(logging_sources_cfg, "enabled", true);
+            logging.source_samples.include_base_imu = yamlReadOr<bool>(logging_sources_cfg, "include_base_imu", true);
+            logging.source_samples.include_external_observations = yamlReadOr<bool>(logging_sources_cfg, "include_external_observations", false);
+
+            const YAML::Node logging_export_cfg = logging_cfg["export"];
+            logging.export_config.default_format = yamlReadOr<std::string>(logging_export_cfg, "default_format", "none");
 
             auto parseOnnxInputs = [](const YAML::Node &node) -> std::vector<OnnxInputSpec> {
                 std::vector<OnnxInputSpec> specs;
@@ -947,11 +1059,50 @@ public:
             }
 
             tau_limit = cfg["tau_limit"].as<std::vector<float>>();
-            save_data_flag = cfg["save_data_flag"].as<bool>();
             control_mode = cfg["control_mode"].as<std::string>();
             action_filter = cfg["action_filter"].as<float>();
+            if (cfg["save_data_flag"])
+            {
+                throw std::runtime_error("legacy save_data_flag is no longer supported; use top-level logging.enabled");
+            }
+            if (logging.backend != "mcap")
+            {
+                throw std::runtime_error("logging.backend currently only supports 'mcap'");
+            }
+            if (logging.writer.queue_capacity <= 0)
+            {
+                throw std::runtime_error("logging.writer.queue_capacity must be > 0");
+            }
+            if (logging.writer.flush_period_ms <= 0)
+            {
+                throw std::runtime_error("logging.writer.flush_period_ms must be > 0");
+            }
+            if (logging.tick.decimation <= 0)
+            {
+                throw std::runtime_error("logging.tick.decimation must be > 0");
+            }
 
-            data_path = (std::filesystem::path(humanoid_rl_root_dir) / "data" / (getCurrentTime() + "_" + policy_name)).string();
+            std::string session_name;
+            if (logging.session_name_policy == "custom")
+            {
+                session_name = logging.custom_session_name;
+            }
+            else if (logging.session_name_policy == "timestamp_mode")
+            {
+                session_name = getCurrentTime() + "_" + config_type;
+            }
+            else
+            {
+                session_name = getCurrentTime() + "_" + policy_name;
+            }
+            if (session_name.empty())
+            {
+                session_name = getCurrentTime() + "_" + config_type;
+            }
+
+            data_path = (std::filesystem::path(logging.output_dir) / session_name).string();
+            logging.session_base_path = data_path;
+            logging.output_file_path = data_path + ".mcap";
 
             const YAML::Node robot = cfg["robot"];
             if (!robot)
@@ -1142,6 +1293,11 @@ public:
                   << std::endl;
         std::cout << "External Obs Inputs: " << external_observations.size() << std::endl;
         std::cout << "ONNX Inputs: " << onnx_inputs.size() << std::endl;
+        std::cout << "Logging: enabled=" << (logging.enabled ? "true" : "false")
+                  << ", backend=" << logging.backend
+                  << ", output_file=" << logging.output_file_path
+                  << ", tick_decimation=" << logging.tick.decimation
+                  << std::endl;
         std::cout << "Realtime: enabled=" << (realtime.enabled ? "true" : "false")
                   << ", lock_memory=" << (realtime.lock_memory ? "true" : "false")
                   << ", set_affinity=" << (realtime.set_affinity ? "true" : "false")

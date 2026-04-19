@@ -413,6 +413,43 @@ Use `sim2sim_engineai_python_legacy.sh` only when you need the historical split 
 RL_controller (legacy standalone process) <-> DDS <-> python_interactive backend
 ```
 
+## 9.1 Runtime Logging
+
+The active logging path is now a single-file MCAP runtime recorder:
+
+```text
+fused runtime -> RuntimeRecorder -> <session>.mcap
+```
+
+That means:
+
+- new runs produce one primary `.mcap` runtime log
+- offline analysis should use:
+  - `tools/analysis/analyze_runtime_log.py`
+  - `tools/analysis/export_runtime_log.py`
+
+The top-level `logging:` block in `rl_cfg.yaml` is now the main logging config entry.
+
+`save_data_flag` has been removed. New and existing profiles should use only top-level `logging.enabled`.
+
+当前日志语义建议这样理解：
+
+- `runtime/tick`：控制周期对齐后的主记录
+- `runtime/source/...`：异步来源观测的原始采样节奏
+
+所以如果后面你的 IMU 比本体关节状态更慢，日志里是可以体现出来的，不会被强行伪装成和控制 tick 一样快。
+
+建议重点关注这几个 channel：
+
+- `runtime/tick`
+- `runtime/source/base_imu`
+- `runtime/source/policy_action`
+- `runtime/source/external/<name>`
+
+For the full active/legacy comparison and usage examples, see:
+
+- [runtime_logging_system.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/runtime_logging_system.md)
+
 ## 10. 配置这份文档时，建议记住的最小心智模型
 
 如果你后面继续给仓库加新策略，最稳妥的最小心智模型可以概括成下面 5 句话：

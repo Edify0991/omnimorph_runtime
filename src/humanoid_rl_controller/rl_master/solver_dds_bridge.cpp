@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "rl_master/KinConv.h"
+#include "rl_master/runtime/realtime_utils.h"
 
 namespace
 {
@@ -222,10 +223,27 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
                 rpy_vec.size() > 1 ? rpy_vec[1] : 0.0f,
                 rpy_vec.size() > 2 ? rpy_vec[2] : 0.0f};
 
-            std::lock_guard<std::mutex> lock(imu_mutex_);
-            imu_ang_vel_ = canonical_ang_vel;
-            imu_quat_ = canonical_quat;
-            imu_rpy_ = canonical_rpy;
+            std::function<void(
+                const std::array<float, 3> &,
+                const std::array<float, 4> &,
+                const std::array<float, 3> &,
+                double)> callback;
+            {
+                std::lock_guard<std::mutex> lock(imu_mutex_);
+                imu_ang_vel_ = canonical_ang_vel;
+                imu_quat_ = canonical_quat;
+                imu_rpy_ = canonical_rpy;
+                callback = imu_sample_callback_;
+            }
+
+            if (callback)
+            {
+                callback(
+                    canonical_ang_vel,
+                    canonical_quat,
+                    canonical_rpy,
+                    rl_master::monotonicTimeSec());
+            }
         });
 
     {
@@ -285,6 +303,17 @@ void SolverDdsBridge::updateSourceContract(const SourceContract &source_contract
 {
     std::lock_guard<std::mutex> lock(imu_mutex_);
     source_contract_ = source_contract;
+}
+
+void SolverDdsBridge::setImuSampleCallback(
+    std::function<void(
+        const std::array<float, 3> &ang_vel,
+        const std::array<float, 4> &quat,
+        const std::array<float, 3> &rpy,
+        double monotonic_time_sec)> callback)
+{
+    std::lock_guard<std::mutex> lock(imu_mutex_);
+    imu_sample_callback_ = std::move(callback);
 }
 
 void SolverDdsBridge::executorLoop()

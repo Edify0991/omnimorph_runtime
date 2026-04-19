@@ -32,16 +32,6 @@ struct Mat3
     std::array<float, 9> v{};
 };
 
-std::vector<double> toDoubleVector(const std::vector<float> &values)
-{
-    std::vector<double> out(values.size(), 0.0);
-    for (size_t i = 0; i < values.size(); ++i)
-    {
-        out[i] = static_cast<double>(values[i]);
-    }
-    return out;
-}
-
 std::string toLowerCopy(std::string text)
 {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -522,10 +512,6 @@ RL_controller::RL_controller(std::shared_ptr<const rl_master::ModeProfileRegistr
 
 RL_controller::~RL_controller()
 {
-    if (data_logger_)
-    {
-        data_logger_->close();
-    }
 }
 
 std::unique_ptr<RL_controller> RL_controller::create(std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry)
@@ -810,6 +796,41 @@ int RL_controller::activeModeId() const
 const std::string &RL_controller::activeConfigSection() const
 {
     return activeModeProfile().config_section;
+}
+
+const rl_master::logging::ControllerLogSnapshot &RL_controller::latestLogSnapshot() const
+{
+    return latest_log_snapshot_;
+}
+
+void RL_controller::setExternalObservationFeature(const std::string &name, const std::vector<float> &values)
+{
+    external_observation_provider_.setFeature(name, values);
+}
+
+void RL_controller::setExternalObservationFeature(const std::string &name, const std::vector<float> &values, double monotonic_time_sec)
+{
+    external_observation_provider_.setFeature(name, values, monotonic_time_sec);
+}
+
+std::vector<rl_master::logging::RuntimeSourceSampleRecord> RL_controller::drainExternalObservationSamplesForLogging()
+{
+    std::vector<rl_master::logging::RuntimeSourceSampleRecord> out;
+    const auto samples = external_observation_provider_.drainUpdatedSamples(activePolicyCfg().external_observations);
+    out.reserve(samples.size());
+    for (const auto &sample : samples)
+    {
+        rl_master::logging::RuntimeSourceSampleRecord record;
+        record.monotonic_time_sec = sample.monotonic_time_sec;
+        record.topic = "runtime/source/external/" + sample.name;
+        record.sample_name = sample.name;
+        record.tags["mode_id"] = std::to_string(activeModeId());
+        record.tags["config_section"] = activeConfigSection();
+        record.tags["update_seq"] = std::to_string(sample.update_seq);
+        record.values["value"] = sample.values;
+        out.push_back(std::move(record));
+    }
+    return out;
 }
 
 RL_controller::ModeProfile &RL_controller::activeModeProfile()
@@ -1532,141 +1553,6 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     return feature_context;
 }
 
-void RL_controller::initDataLogger()
-{
-    const auto &runtime_cfg = activeModeProfile().cfg;
-    if (!runtime_cfg.save_data_flag)
-    {
-        return;
-    }
-
-    data_logger_ = std::make_unique<rl_master::logging::StructuredLogger>();
-    rl_master::logging::LoggerMetadata metadata;
-    metadata.string_fields["module"] = "RL_controller";
-    metadata.numeric_fields["profile_count"] = static_cast<double>(mode_profiles_.size());
-
-    auto collectSubModelNames = [](const Sim2realCfg &cfg) {
-        std::vector<std::string> names;
-        for (const auto &sub : cfg.sub_models)
-        {
-            names.push_back(sub.name);
-        }
-        return names;
-    };
-    auto collectSubModelPaths = [](const Sim2realCfg &cfg) {
-        std::vector<std::string> paths;
-        for (const auto &sub : cfg.sub_models)
-        {
-            paths.push_back(sub.policy_path);
-        }
-        return paths;
-    };
-
-    for (size_t i = 0; i < mode_profiles_.size(); ++i)
-    {
-        const auto &profile = mode_profiles_[i];
-        const std::string prefix = "profile_" + std::to_string(i) + "_";
-
-        metadata.numeric_fields[prefix + "mode_id"] = static_cast<double>(profile.mode_id);
-        metadata.numeric_fields[prefix + "obs_dim"] = static_cast<double>(profile.cfg.obs_dim);
-        metadata.numeric_fields[prefix + "action_dim"] = static_cast<double>(profile.cfg.action_dim);
-        metadata.numeric_fields[prefix + "obs_stack"] = static_cast<double>(profile.cfg.obs_stack_N);
-        metadata.numeric_fields[prefix + "control_hz"] = static_cast<double>(profile.cfg.RL_control_f);
-        metadata.numeric_fields[prefix + "amp_discriminator_enabled"] = profile.cfg.amp_discriminator.enabled ? 1.0 : 0.0;
-        metadata.numeric_fields[prefix + "amp_discriminator_warn_below"] = static_cast<double>(profile.cfg.amp_discriminator.warn_below);
-
-        metadata.string_fields[prefix + "tag"] = profile.tag;
-        metadata.string_fields[prefix + "config_section"] = profile.config_section;
-        metadata.string_fields[prefix + "policy_name"] = profile.cfg.policy_name;
-        metadata.string_fields[prefix + "policy_family"] = profile.cfg.policy_family;
-        metadata.string_fields[prefix + "policy_path"] = profile.cfg.policy_path;
-        metadata.string_fields[prefix + "observation_manifest"] = profile.cfg.observation_manifest_path;
-        metadata.string_fields[prefix + "amp_discriminator_path"] = profile.cfg.amp_discriminator.policy_path;
-        metadata.string_fields[prefix + "amp_discriminator_input_source"] = profile.cfg.amp_discriminator.input_source;
-        metadata.string_fields[prefix + "amp_discriminator_score_output"] = profile.cfg.amp_discriminator.score_output_name;
-        metadata.string_fields[prefix + "reference_motion_source"] = profile.cfg.reference_motion_source;
-        metadata.string_fields[prefix + "reference_motion_path"] = profile.cfg.reference_motion_path;
-        metadata.string_fields[prefix + "reference_anchor_body_cfg"] = profile.cfg.reference_anchor_body;
-        metadata.string_fields[prefix + "reference_source_format"] = profile.reference_motion.metadata().source_format;
-        metadata.string_fields[prefix + "reference_anchor_body_loaded"] = profile.reference_motion.metadata().anchor_body;
-
-        metadata.vector_fields[prefix + "kps"] = toDoubleVector(profile.cfg.kps);
-        metadata.vector_fields[prefix + "kds"] = toDoubleVector(profile.cfg.kds);
-        metadata.vector_fields[prefix + "tau_limit"] = toDoubleVector(profile.cfg.tau_limit);
-        metadata.numeric_fields[prefix + "reference_motion_dim_cfg"] = static_cast<double>(profile.cfg.reference_motion_dim);
-        metadata.numeric_fields[prefix + "reference_motion_dim_loaded"] = static_cast<double>(profile.reference_motion.dim());
-        metadata.numeric_fields[prefix + "reference_motion_frames"] = static_cast<double>(profile.reference_motion.frameCount());
-
-        metadata.string_list_fields[prefix + "action_joint_order"] = profile.cfg.action_joint_order;
-        metadata.string_list_fields[prefix + "obs_joint_order"] = profile.cfg.obs_joint_order;
-        metadata.string_list_fields[prefix + "sub_model_names"] = collectSubModelNames(profile.cfg);
-        metadata.string_list_fields[prefix + "sub_model_paths"] = collectSubModelPaths(profile.cfg);
-        metadata.string_list_fields[prefix + "amp_discriminator_extra_outputs"] = profile.cfg.amp_discriminator.extra_output_names;
-        metadata.string_list_fields[prefix + "reference_body_names_cfg"] = profile.cfg.reference_body_names;
-        metadata.string_list_fields[prefix + "reference_body_names_loaded"] = profile.reference_motion.metadata().body_names;
-    }
-
-    if (!data_logger_->open(runtime_cfg.data_path, "controller", metadata))
-    {
-        std::cerr << "[RL_controller] failed to open structured data logger." << std::endl;
-        data_logger_.reset();
-        return;
-    }
-
-    data_logger_->writeEvent(
-        rl_master::monotonicTimeSec(),
-        "controller_initialized",
-        {{"session_base_path", runtime_cfg.data_path}});
-    std::cout << "RL Controller structured log: " << data_logger_->recordsPath() << std::endl;
-}
-
-void RL_controller::logStepRecord(
-    double phase_t,
-    double phase_t_global,
-    int requested_mode_command,
-    const rl_master::DeployStateOutput &deploy_output)
-{
-    if (!data_logger_ || !data_logger_->isOpen())
-    {
-        return;
-    }
-
-    std::map<std::string, double> scalars;
-    scalars["frame_index"] = static_cast<double>(data_log_frame_index_++);
-    scalars["phase_t"] = phase_t;
-    scalars["phase_t_global"] = phase_t_global;
-    scalars["phase_origin_t"] = phase_origin_t_;
-    scalars["requested_mode_command"] = static_cast<double>(requested_mode_command);
-    scalars["active_mode_id"] = static_cast<double>(deploy_output.locomotion_mode);
-    scalars["deploy_state"] = static_cast<double>(static_cast<int>(deploy_output.state));
-    scalars["active_profile_index"] = static_cast<double>(active_profile_index_);
-    scalars["open_rl"] = static_cast<double>(robot->open_rl);
-    scalars["cmd_vx"] = static_cast<double>(cmd.vx);
-    scalars["cmd_vy"] = static_cast<double>(cmd.vy);
-    scalars["cmd_dyaw"] = static_cast<double>(cmd.dyaw);
-
-    std::map<std::string, std::vector<float>> vectors;
-    vectors["joint_q"] = robot->joint_q;
-    vectors["joint_dq"] = robot->joint_dq;
-    vectors["joint_tau"] = robot->joint_tau;
-    vectors["joint_target_q"] = robot->joint_target_q;
-    vectors["joint_target_tau"] = robot->joint_target_tau;
-    vectors["observation"] = obs;
-    vectors["policy_action"] = action;
-    const auto disc_score_key = activeModeProfile().tag + "/amp_discriminator/score";
-    const auto disc_it = latest_policy_extra_outputs_.find(disc_score_key);
-    if (disc_it != latest_policy_extra_outputs_.end())
-    {
-        vectors["amp_discriminator_score"] = disc_it->second;
-        if (!disc_it->second.empty())
-        {
-            scalars["amp_discriminator_score_mean"] = static_cast<double>(meanOf(disc_it->second));
-        }
-    }
-
-    data_logger_->writeRecord(rl_master::monotonicTimeSec(), "controller_step", scalars, vectors);
-}
-
 void RL_controller::RL_controller_Init(int startup_mode_id)
 {
     cmd.vx = 0.0f;
@@ -1699,7 +1585,6 @@ void RL_controller::RL_controller_Init(int startup_mode_id)
     phase_reset_pending_ = true;
 
     start_time = std::chrono::high_resolution_clock::now();
-    initDataLogger();
 }
 
 rl_master::RobotCommandData RL_controller::step(
@@ -1747,13 +1632,6 @@ rl_master::RobotCommandData RL_controller::step(
         std::cout << "[RL_controller] lifecycle -> "
                   << rl_master::DeployStateMachine::stateName(deploy_output.state)
                   << std::endl;
-        if (data_logger_ && data_logger_->isOpen())
-        {
-            data_logger_->writeEvent(
-                rl_master::monotonicTimeSec(),
-                "lifecycle_transition",
-                {{"state", rl_master::DeployStateMachine::stateName(deploy_output.state)}});
-        }
         last_deploy_state_ = deploy_output.state;
     }
 
@@ -1797,7 +1675,52 @@ rl_master::RobotCommandData RL_controller::step(
     out_cmd.joint_target_dq.assign(robot->joint_target_q.size(), 0.0f);
     out_cmd.joint_target_tau = robot->joint_target_tau;
 
-    logStepRecord(local_phase_t, phase_t, mode_command, deploy_output);
+    latest_log_snapshot_.valid = true;
+    latest_log_snapshot_.frame_index = log_frame_index_++;
+    latest_log_snapshot_.monotonic_time_sec = rl_master::monotonicTimeSec();
+    latest_log_snapshot_.phase_t = local_phase_t;
+    latest_log_snapshot_.phase_t_global = phase_t;
+    latest_log_snapshot_.phase_origin_t = phase_origin_t_;
+    latest_log_snapshot_.requested_mode_command = mode_command;
+    latest_log_snapshot_.active_mode_id = deploy_output.locomotion_mode;
+    latest_log_snapshot_.deploy_state = static_cast<int>(deploy_output.state);
+    latest_log_snapshot_.active_profile_index = static_cast<int>(active_profile_index_);
+    latest_log_snapshot_.open_rl = robot->open_rl;
+    latest_log_snapshot_.cmd_vx = cmd.vx;
+    latest_log_snapshot_.cmd_vy = cmd.vy;
+    latest_log_snapshot_.cmd_dyaw = cmd.dyaw;
+    latest_log_snapshot_.active_tag = activeModeProfile().tag;
+    latest_log_snapshot_.active_config_section = activeModeProfile().config_section;
+    latest_log_snapshot_.policy_name = activePolicyCfg().policy_name;
+    latest_log_snapshot_.joint_q = robot->joint_q;
+    latest_log_snapshot_.joint_dq = robot->joint_dq;
+    latest_log_snapshot_.joint_tau = robot->joint_tau;
+    latest_log_snapshot_.joint_target_q = robot->joint_target_q;
+    latest_log_snapshot_.joint_target_tau = robot->joint_target_tau;
+    latest_log_snapshot_.observation = deploy_output.enable_policy ? obs : std::vector<float>{};
+    latest_log_snapshot_.policy_action = deploy_output.enable_policy ? action : std::vector<float>{};
+    latest_log_snapshot_.named_features =
+        deploy_output.enable_policy ? latest_observation_feature_context_.named_features
+                                    : std::unordered_map<std::string, std::vector<float>>{};
+    latest_log_snapshot_.external_feature_names.clear();
+    for (const auto &spec : activePolicyCfg().external_observations)
+    {
+        latest_log_snapshot_.external_feature_names.push_back(spec.name);
+    }
+    latest_log_snapshot_.amp_discriminator_score.clear();
+    latest_log_snapshot_.has_amp_discriminator_score = false;
+    latest_log_snapshot_.amp_discriminator_score_mean = 0.0;
+    const auto disc_score_key = activeModeProfile().tag + "/amp_discriminator/score";
+    const auto disc_it = latest_policy_extra_outputs_.find(disc_score_key);
+    if (disc_it != latest_policy_extra_outputs_.end())
+    {
+        latest_log_snapshot_.amp_discriminator_score = disc_it->second;
+        latest_log_snapshot_.has_amp_discriminator_score = true;
+        if (!disc_it->second.empty())
+        {
+            latest_log_snapshot_.amp_discriminator_score_mean = static_cast<double>(meanOf(disc_it->second));
+        }
+    }
     return out_cmd;
 }
 

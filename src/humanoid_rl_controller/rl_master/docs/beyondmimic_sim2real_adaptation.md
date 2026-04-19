@@ -115,7 +115,9 @@ When enabling body terms, set explicit dimensions:
 
 ## 7. Runtime Metadata Extensions
 
-`controller_metadata.json` now logs reference-motion metadata for run alignment:
+For current runs, the active path is the fused single-file MCAP runtime logger. Equivalent config/profile snapshots now live inside the `.mcap` session file on `runtime/config`.
+
+Current MCAP runtime config snapshot includes the same reference-motion alignment intent as fields such as:
 
 - `reference_motion_source`
 - `reference_motion_path`

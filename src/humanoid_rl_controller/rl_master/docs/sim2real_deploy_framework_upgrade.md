@@ -50,8 +50,8 @@
   - `rl_solver.cpp` 只负责入口初始化/信号处理
   - `solver/robot_solver.cpp` 承载控制主循环
   - `solver/motor_shm_io.cpp` 承载电机共享内存读写
-- 新增结构化日志（JSONL + metadata JSON）替代自由文本日志。
-- 新增分析工具：`tools/analysis/analyze_structured_logs.py`。
+- 新增统一运行时日志（单文件 MCAP）替代旧的 JSONL 结构化日志。
+- 新增分析工具：`tools/analysis/analyze_runtime_log.py` 与 `tools/analysis/export_runtime_log.py`。
 - 新增完整运行清单：`docs/runbooks/runtime_checklist.md`。
 
 ## 关键兼容性说明
