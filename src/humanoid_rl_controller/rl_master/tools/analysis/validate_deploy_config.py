@@ -223,6 +223,82 @@ def find_by_name(seq: Sequence[Tuple[str, Any]], key: str) -> Optional[Any]:
     return None
 
 
+def build_runtime_joint_order(
+    section_cfg: Dict[str, Any],
+    action_order: Sequence[str],
+    obs_order: Sequence[str],
+    reference_order: Sequence[str],
+) -> List[str]:
+    robot_cfg = to_dict(section_cfg.get("robot"))
+    ordered: List[str] = []
+    seen: set[str] = set()
+
+    def append_name(name: Any) -> None:
+        text = str(name).strip()
+        if not text or text in seen:
+            return
+        seen.add(text)
+        ordered.append(text)
+
+    for name in to_list(robot_cfg.get("joint_order")):
+        append_name(name)
+    for name in to_dict(robot_cfg.get("default_joint_angles")).keys():
+        append_name(name)
+    for name in action_order:
+        append_name(name)
+    for name in obs_order:
+        append_name(name)
+    for name in reference_order:
+        append_name(name)
+    return ordered
+
+
+def validate_zero_pose_contract(
+    section_cfg: Dict[str, Any],
+    runtime_joint_order: Sequence[str],
+    issues: IssueCollector,
+    context: str,
+) -> None:
+    if "zero_pose" in section_cfg:
+        issues.error(
+            context,
+            "legacy top-level zero_pose vector is no longer supported; use robot.zero_joint_angles",
+        )
+
+    robot_cfg = to_dict(section_cfg.get("robot"))
+    if not robot_cfg:
+        return
+
+    if "zero_joint_angles" not in robot_cfg:
+        return
+
+    zero_joint_angles = robot_cfg.get("zero_joint_angles")
+    if not isinstance(zero_joint_angles, dict):
+        issues.error(context, "robot.zero_joint_angles must be a map")
+        return
+
+    runtime_joint_set = {str(name) for name in runtime_joint_order}
+    zero_joint_set = {str(name) for name in zero_joint_angles.keys()}
+
+    if not runtime_joint_order:
+        issues.error(context, "failed to resolve runtime joint order for zero pose validation")
+        return
+
+    unknown = sorted(zero_joint_set - runtime_joint_set)
+    if unknown:
+        issues.error(
+            context,
+            "robot.zero_joint_angles contains unknown joints: " + ", ".join(unknown),
+        )
+
+    missing = [name for name in runtime_joint_order if name not in zero_joint_set]
+    if missing:
+        issues.error(
+            context,
+            "robot.zero_joint_angles missing joints: " + ", ".join(missing),
+        )
+
+
 def load_rl_cfg(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
@@ -1153,6 +1229,8 @@ def validate_profile(
         issues,
         context,
     )
+    runtime_joint_order = build_runtime_joint_order(section_cfg, action_order, obs_order, reference_order)
+    validate_zero_pose_contract(section_cfg, runtime_joint_order, issues, context)
     check_source_contract(section_cfg, issues, context)
     check_reference_contract(section_cfg, root_dir, reference_order, issues, context)
     feature_dims = build_feature_dim_map(section_cfg, reference_order)

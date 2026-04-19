@@ -719,10 +719,10 @@ const ReferenceMotionProvider &RL_controller::activeReferenceMotionProvider() co
 
 std::vector<float> RL_controller::activeZeroPose() const
 {
-    const auto &cfg = activePolicyCfg();
-    if (!cfg.zero_pose.empty())
+    const auto &profile = activeModeProfile();
+    if (!profile.zero_pose.empty())
     {
-        return cfg.zero_pose;
+        return profile.zero_pose;
     }
     return robot->default_angle;
 }
@@ -889,6 +889,36 @@ std::vector<float> RL_controller::buildDefaultAnglesFromCfg(
     return out;
 }
 
+std::vector<float> RL_controller::buildZeroPoseFromCfg(
+    const Sim2realCfg::RobotCfg &robot_cfg,
+    const std::vector<std::string> &joint_names) const
+{
+    if (robot_cfg.zero_joint_angles.empty())
+    {
+        return {};
+    }
+
+    std::vector<float> out(joint_names.size(), 0.0f);
+    std::unordered_map<std::string, float> zero_pose_map;
+    zero_pose_map.reserve(robot_cfg.zero_joint_angles.size());
+    for (const auto &entry : robot_cfg.zero_joint_angles)
+    {
+        zero_pose_map[entry.first] = entry.second;
+    }
+
+    for (size_t i = 0; i < joint_names.size(); ++i)
+    {
+        const auto it = zero_pose_map.find(joint_names[i]);
+        if (it == zero_pose_map.end())
+        {
+            throw std::runtime_error(
+                "robot.zero_joint_angles missing joint for runtime order: " + joint_names[i]);
+        }
+        out[i] = it->second;
+    }
+    return out;
+}
+
 std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsFromYaml() const
 {
     std::shared_ptr<const rl_master::ModeProfileRegistry> registry = mode_registry_;
@@ -965,6 +995,7 @@ void RL_controller::initModeProfiles()
         profile.cfg = cfg;
         profile.joint_names = joint_order_;
         profile.default_angle = buildDefaultAnglesFromCfg(profile.cfg.robotCfg, joint_order_);
+        profile.zero_pose = buildZeroPoseFromCfg(profile.cfg.robotCfg, joint_order_);
         profile.action_robot_indices = buildActionRobotIndices(profile.cfg, joint_order_, profile.config_section);
         profile.obs_index_map = buildObsIndexMap(profile.cfg, joint_order_, profile.config_section);
         profile.reference_index_map = buildReferenceIndexMap(profile.cfg, joint_order_, profile.config_section);

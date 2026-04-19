@@ -89,6 +89,7 @@ private:
         Sim2realCfg cfg;
         std::vector<std::string> joint_names;
         std::vector<float> default_angle;
+        std::vector<float> zero_pose;
         std::vector<int> action_robot_indices;
         std::vector<int> obs_index_map;
         std::vector<int> reference_index_map;
@@ -152,6 +153,9 @@ private:
     void initModeProfiles();
     std::vector<ModeProfileSpec> loadModeProfileSpecsFromYaml() const;
     std::vector<float> buildDefaultAnglesFromCfg(
+        const Sim2realCfg::RobotCfg &robot_cfg,
+        const std::vector<std::string> &joint_names) const;
+    std::vector<float> buildZeroPoseFromCfg(
         const Sim2realCfg::RobotCfg &robot_cfg,
         const std::vector<std::string> &joint_names) const;
     size_t profileIndexForMode(int mode_id, bool sanitize_invalid_mode) const;

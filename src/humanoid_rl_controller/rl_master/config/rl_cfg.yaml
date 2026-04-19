@@ -242,7 +242,6 @@ engineai_walk:
   state_telemetry_hz: 50.0
   auto_start_policy: true
   zeroing_duration_s: 2.0
-  # zero_pose: [0.0, 0.0, -0.24, 0.48, -0.24, 0.0, 0.0, 0.0, -0.24, 0.48, -0.24, 0.0]
   
   tau_limit: [130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0]
   
@@ -251,6 +250,22 @@ engineai_walk:
   action_filter: 0.5
   
   robot:
+    # Optional zeroing target pose, resolved by joint name.
+    # If omitted, zeroing falls back to default_joint_angles.
+    # If provided, it must cover the full runtime joint set for this mode.
+    # zero_joint_angles:
+    #   right_hip_roll: 0.0
+    #   right_hip_yaw: 0.0
+    #   right_hip_pitch: -0.24
+    #   right_knee_pitch: 0.48
+    #   right_ankle_pitch: -0.24
+    #   right_ankle_roll: 0.0
+    #   left_hip_roll: 0.0
+    #   left_hip_yaw: 0.0
+    #   left_hip_pitch: -0.24
+    #   left_knee_pitch: 0.48
+    #   left_ankle_pitch: -0.24
+    #   left_ankle_roll: 0.0
     default_joint_angles:
       right_hip_roll: 0.0
       right_hip_yaw: 0.0
@@ -442,6 +457,29 @@ engineai_full_body_example:
       - right_shoulder_roll
       - right_shoulder_yaw
       - right_elbow_pitch
+    # Optional zeroing target pose.
+    # When present, cover every joint in joint_order explicitly.
+    # zero_joint_angles:
+    #   right_hip_roll: 0.0
+    #   right_hip_yaw: 0.0
+    #   right_hip_pitch: -0.24
+    #   right_knee_pitch: 0.48
+    #   right_ankle_pitch: -0.24
+    #   right_ankle_roll: 0.0
+    #   left_hip_roll: 0.0
+    #   left_hip_yaw: 0.0
+    #   left_hip_pitch: -0.24
+    #   left_knee_pitch: 0.48
+    #   left_ankle_pitch: -0.24
+    #   left_ankle_roll: 0.0
+    #   left_shoulder_pitch: 0.0
+    #   left_shoulder_roll: 0.15
+    #   left_shoulder_yaw: 0.0
+    #   left_elbow_pitch: 0.3
+    #   right_shoulder_pitch: 0.0
+    #   right_shoulder_roll: -0.15
+    #   right_shoulder_yaw: 0.0
+    #   right_elbow_pitch: 0.3
     default_joint_angles:
       right_hip_roll: 0.0
       right_hip_yaw: 0.0
@@ -652,7 +690,6 @@ stand_sim2real:
   state_telemetry_hz: 50.0
   auto_start_policy: true
   zeroing_duration_s: 2.0
-  # zero_pose: [0.0, 0.0, -0.24, 0.48, -0.24, 0.0, 0.0, 0.0, -0.24, 0.48, -0.24, 0.0]
   
   tau_limit: [130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0, 130.0]
   
@@ -661,6 +698,22 @@ stand_sim2real:
   action_filter: 0.5
   
   robot:
+    # Optional zeroing target pose, resolved by joint name.
+    # If omitted, zeroing falls back to default_joint_angles.
+    # If provided, it must cover the full runtime joint set for this mode.
+    # zero_joint_angles:
+    #   left_hip_roll: 0.0
+    #   left_hip_yaw: 0.0
+    #   left_hip_pitch: -0.24
+    #   left_knee_pitch: 0.48
+    #   left_ankle_pitch: -0.24
+    #   left_ankle_roll: 0.0
+    #   right_hip_roll: 0.0
+    #   right_hip_yaw: 0.0
+    #   right_hip_pitch: -0.24
+    #   right_knee_pitch: 0.48
+    #   right_ankle_pitch: -0.24
+    #   right_ankle_roll: 0.0
     default_joint_angles:
       left_hip_roll: 0.0
       left_hip_yaw: 0.0

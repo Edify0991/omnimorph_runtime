@@ -9,6 +9,7 @@ Current architecture:
 - controller maps policy action indices by joint name
 - non-controlled joints stay at the active mode's `default_angle`
 - mode registry builds one global joint order across all configured deploy profiles
+- if you configure `robot.zero_joint_angles`, it must cover the full runtime joint set; otherwise leave it unset and zeroing will fall back to `default_angle`
 
 This means adding a full-body policy is now mainly a configuration job, not a protocol rewrite.
 

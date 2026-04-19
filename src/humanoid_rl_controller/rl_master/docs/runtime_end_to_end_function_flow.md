@@ -9,6 +9,12 @@ It focuses on four things:
 3. how mode switching works after startup
 4. which parts are shared between sim2real and sim2sim
 
+For the conceptual distinction between `mode` / `config_section` / `ModeProfile` / `policy_group`, see:
+
+- [engineai_gym_policy_deploy_guide.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/engineai_gym_policy_deploy_guide.md)
+
+This document focuses on call flow and runtime sequencing, while the deploy guide explains how those concepts map to configuration.
+
 ## 1. High-Level Structure
 
 There are now two standard runtime paths:

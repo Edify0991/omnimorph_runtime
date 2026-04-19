@@ -370,7 +370,6 @@ public:
 
     bool auto_start_policy = true;
     double zeroing_duration_s = 2.0;
-    std::vector<float> zero_pose;
 
     bool enable_cmd_watchdog = true;
     double cmd_timeout_s = 0.12;
@@ -392,6 +391,7 @@ public:
     public:
         std::vector<std::string> joint_order;
         std::vector<std::pair<std::string, float>> default_joint_angles;
+        std::vector<std::pair<std::string, float>> zero_joint_angles;
         std::map<std::string, std::vector<float>> joint_limit_range;
         std::map<std::string, float> motor_torque_limit;
     };
@@ -421,6 +421,7 @@ public:
             }
 
             robotCfg.default_joint_angles.clear();
+            robotCfg.zero_joint_angles.clear();
             robotCfg.joint_order.clear();
             robotCfg.joint_limit_range.clear();
             robotCfg.motor_torque_limit.clear();
@@ -887,7 +888,12 @@ public:
 
             auto_start_policy = yamlReadOr<bool>(cfg, "auto_start_policy", true);
             zeroing_duration_s = yamlReadOr<double>(cfg, "zeroing_duration_s", 2.0);
-            zero_pose = yamlReadOr<std::vector<float>>(cfg, "zero_pose", {});
+            if (cfg["zero_pose"])
+            {
+                throw std::runtime_error(
+                    "legacy top-level zero_pose vector is no longer supported; "
+                    "use robot.zero_joint_angles instead");
+            }
 
             enable_cmd_watchdog = yamlReadOr<bool>(cfg, "enable_cmd_watchdog", true);
             cmd_timeout_s = yamlReadOr<double>(cfg, "cmd_timeout_s", 0.12);
@@ -925,6 +931,21 @@ public:
                 robotCfg.default_joint_angles.push_back({
                     it->first.as<std::string>(),
                     it->second.as<float>()});
+            }
+
+            if (robot["zero_joint_angles"])
+            {
+                const YAML::Node zero_angles = robot["zero_joint_angles"];
+                if (!zero_angles.IsMap())
+                {
+                    throw std::runtime_error("robot.zero_joint_angles must be a map in " + config_type);
+                }
+                for (auto it = zero_angles.begin(); it != zero_angles.end(); ++it)
+                {
+                    robotCfg.zero_joint_angles.push_back({
+                        it->first.as<std::string>(),
+                        it->second.as<float>()});
+                }
             }
 
             if (robot["joint_order"])
@@ -988,6 +1009,70 @@ public:
                 throw std::runtime_error("failed to resolve robot joint order from config: " + config_type);
             }
 
+            if (!robotCfg.zero_joint_angles.empty())
+            {
+                std::unordered_set<std::string> known_joint_names;
+                known_joint_names.reserve(robot_joint_order.size());
+                for (const auto &name : robot_joint_order)
+                {
+                    known_joint_names.insert(name);
+                }
+
+                std::unordered_set<std::string> zero_joint_names;
+                zero_joint_names.reserve(robotCfg.zero_joint_angles.size());
+                std::vector<std::string> unknown_zero_joints;
+                for (const auto &entry : robotCfg.zero_joint_angles)
+                {
+                    const std::string &name = entry.first;
+                    if (!zero_joint_names.insert(name).second)
+                    {
+                        throw std::runtime_error("robot.zero_joint_angles contains duplicate joint: " + name);
+                    }
+                    if (known_joint_names.find(name) == known_joint_names.end())
+                    {
+                        unknown_zero_joints.push_back(name);
+                    }
+                }
+
+                if (!unknown_zero_joints.empty())
+                {
+                    std::ostringstream oss;
+                    for (size_t i = 0; i < unknown_zero_joints.size(); ++i)
+                    {
+                        if (i > 0)
+                        {
+                            oss << ", ";
+                        }
+                        oss << unknown_zero_joints[i];
+                    }
+                    throw std::runtime_error(
+                        "robot.zero_joint_angles contains unknown joints in " + config_type + ": " + oss.str());
+                }
+
+                std::vector<std::string> missing_zero_joints;
+                for (const auto &name : robot_joint_order)
+                {
+                    if (zero_joint_names.find(name) == zero_joint_names.end())
+                    {
+                        missing_zero_joints.push_back(name);
+                    }
+                }
+                if (!missing_zero_joints.empty())
+                {
+                    std::ostringstream oss;
+                    for (size_t i = 0; i < missing_zero_joints.size(); ++i)
+                    {
+                        if (i > 0)
+                        {
+                            oss << ", ";
+                        }
+                        oss << missing_zero_joints[i];
+                    }
+                    throw std::runtime_error(
+                        "robot.zero_joint_angles missing joints in " + config_type + ": " + oss.str());
+                }
+            }
+
             return true;
         }
         catch (const std::exception &e)
@@ -1005,6 +1090,7 @@ public:
         std::cout << "Policy Path: " << policy_path << std::endl;
         std::cout << "Obs Stack N: " << obs_stack_N << std::endl;
         std::cout << "Action Scale: " << action_scale << std::endl;
+        std::cout << "Zero Joint Angles: " << robotCfg.zero_joint_angles.size() << std::endl;
         std::cout << "Control Mode: " << control_mode << std::endl;
         std::cout << "RL Control Frequency: " << RL_control_f << std::endl;
         std::cout << "Sub Models: " << sub_models.size() << std::endl;
