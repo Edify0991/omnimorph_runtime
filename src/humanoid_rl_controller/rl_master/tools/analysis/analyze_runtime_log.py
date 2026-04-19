@@ -277,6 +277,7 @@ def command_timing(args: argparse.Namespace) -> None:
     topics = split_topics(args.topics) if args.topics else [
         "runtime/tick",
         "runtime/source/base_imu",
+        "runtime/source/policy_observation",
         "runtime/source/policy_action",
     ]
     topic_to_messages = {

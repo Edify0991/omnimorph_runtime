@@ -750,7 +750,7 @@ void RL_controller::handlePolicySwitch()
     joint_target_q.assign(joint_order_.size(), 0.0f);
     joint_target_torque.assign(joint_order_.size(), 0.0f);
     latest_policy_extra_outputs_.clear();
-    deploy_step_counter_ = 0;
+    resetPolicyScheduler();
     phase_reset_pending_ = true;
     auto &profile = activeModeProfile();
     profile.reference_alignment_initialized = false;
@@ -781,6 +781,15 @@ void RL_controller::handlePolicySwitch()
     std::cout << "[RL_controller] switch policy to "
               << activeModeProfile().tag
               << ", mode_id=" << active_mode_id_ << std::endl;
+}
+
+void RL_controller::resetPolicyScheduler()
+{
+    policy_step_counter_ = 0;
+    policy_schedule_initialized_ = false;
+    next_policy_phase_t_ = 0.0;
+    last_policy_sample_time_sec_ = 0.0;
+    last_policy_sample_phase_t_ = 0.0;
 }
 
 const Sim2realCfg &RL_controller::runtimeCfg() const
@@ -1227,7 +1236,7 @@ void RL_controller::runAmpDiscriminator(
 
     if (cfg.amp_discriminator.warn_below > -1.0e8f &&
         !disc_result.action.empty() &&
-        (deploy_step_counter_ % 100 == 0))
+        (policy_step_counter_ % 100 == 0))
     {
         const float score_mean = meanOf(disc_result.action);
         if (score_mean < cfg.amp_discriminator.warn_below)
@@ -1357,7 +1366,7 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
         const auto &provider = activeReferenceMotionProvider();
         const ReferenceMotionFrame sampled_frame =
             (cfg.reference_motion_sampling == "step")
-                ? provider.sampleFrameByStep(deploy_step_counter_, reference_motion_dim)
+                ? provider.sampleFrameByStep(policy_step_counter_, reference_motion_dim)
                 : provider.sampleFrameByPhase(phase_t, cfg.cycle_time, reference_motion_dim);
 
         if (!sampled_frame.reference_motion.empty())
@@ -1579,7 +1588,7 @@ void RL_controller::RL_controller_Init(int startup_mode_id)
     handlePolicySwitch();
     deploy_state_machine_initialized_ = false;
     last_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
-    deploy_step_counter_ = 0;
+    resetPolicyScheduler();
     phase_origin_t_ = 0.0;
     phase_origin_initialized_ = false;
     phase_reset_pending_ = true;
@@ -1622,7 +1631,7 @@ rl_master::RobotCommandData RL_controller::step(
         phase_reset_pending_ = false;
         if (entered_running)
         {
-            deploy_step_counter_ = 0;
+            resetPolicyScheduler();
         }
     }
     const double local_phase_t = std::max(0.0, phase_t - phase_origin_t_);
@@ -1635,16 +1644,64 @@ rl_master::RobotCommandData RL_controller::step(
         last_deploy_state_ = deploy_output.state;
     }
 
+    bool policy_ran_this_tick = false;
     if (deploy_output.enable_policy)
     {
-        std::vector<float> current_obs = get_robot_observation(local_phase_t);
-        update_obs_deque(current_obs);
+        const int policy_hz = std::max(1, activePolicyCfg().RL_control_f);
+        const double policy_period_s = 1.0 / static_cast<double>(policy_hz);
+        if (!policy_schedule_initialized_)
+        {
+            next_policy_phase_t_ = local_phase_t;
+        }
 
-        const std::vector<float> policy_action = run_policy();
-        robot->joint_target_q = get_joint_target_q(policy_action);
-        robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
+        constexpr double kPolicyScheduleEps = 1.0e-9;
+        const bool should_run_policy =
+            !policy_schedule_initialized_ ||
+            (local_phase_t + kPolicyScheduleEps >= next_policy_phase_t_);
+
+        if (should_run_policy)
+        {
+            std::vector<float> current_obs = get_robot_observation(local_phase_t);
+            update_obs_deque(current_obs);
+
+            const std::vector<float> policy_action = run_policy();
+            robot->joint_target_q = get_joint_target_q(policy_action);
+            robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
+            last_policy_sample_time_sec_ = now_s;
+            last_policy_sample_phase_t_ = local_phase_t;
+            policy_ran_this_tick = true;
+            ++policy_step_counter_;
+
+            if (!policy_schedule_initialized_)
+            {
+                next_policy_phase_t_ = local_phase_t + policy_period_s;
+            }
+            else
+            {
+                while (next_policy_phase_t_ <= local_phase_t + kPolicyScheduleEps)
+                {
+                    next_policy_phase_t_ += policy_period_s;
+                }
+            }
+            policy_schedule_initialized_ = true;
+        }
+        else
+        {
+            if (robot->joint_target_q.size() != joint_order_.size())
+            {
+                if (!action.empty())
+                {
+                    robot->joint_target_q = get_joint_target_q(action);
+                    robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
+                }
+                else
+                {
+                    robot->joint_target_q = robot->default_angle;
+                    robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
+                }
+            }
+        }
         robot->open_rl = rl_master::kOpenRlPolicyEnabled;
-        ++deploy_step_counter_;
     }
     else if (deploy_output.enable_command_stream)
     {
@@ -1685,6 +1742,11 @@ rl_master::RobotCommandData RL_controller::step(
     latest_log_snapshot_.active_mode_id = deploy_output.locomotion_mode;
     latest_log_snapshot_.deploy_state = static_cast<int>(deploy_output.state);
     latest_log_snapshot_.active_profile_index = static_cast<int>(active_profile_index_);
+    latest_log_snapshot_.policy_step_index = static_cast<uint64_t>(policy_step_counter_);
+    latest_log_snapshot_.policy_ran_this_tick = policy_ran_this_tick;
+    latest_log_snapshot_.policy_sample_time_sec = last_policy_sample_time_sec_;
+    latest_log_snapshot_.policy_sample_age_sec =
+        last_policy_sample_time_sec_ > 0.0 ? std::max(0.0, now_s - last_policy_sample_time_sec_) : 0.0;
     latest_log_snapshot_.open_rl = robot->open_rl;
     latest_log_snapshot_.cmd_vx = cmd.vx;
     latest_log_snapshot_.cmd_vy = cmd.vy;

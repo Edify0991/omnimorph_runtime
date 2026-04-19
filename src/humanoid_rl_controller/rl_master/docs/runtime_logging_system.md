@@ -41,6 +41,7 @@ Current active channels are:
 - `runtime/event`
 - `runtime/tick`
 - `runtime/source/base_imu` when base IMU source-sample logging is enabled
+- `runtime/source/policy_observation`
 - `runtime/source/policy_action`
 - `runtime/source/external/<name>` when external observation source-sample logging is enabled
 - `runtime/amp` when AMP score logging is enabled
@@ -54,6 +55,17 @@ Current active channels are:
 - `runtime/tick` is control-loop aligned
 - `runtime/source/...` preserves raw source arrival cadence
 - if IMU is slower than proprioception, that difference is visible in the log as different message timestamps and message counts
+
+`RL_control_f` is now the active policy scheduler frequency:
+
+- the low-level control loop keeps running at its own control tick
+- policy observation assembly and ONNX inference only run when the policy scheduler is due
+- between two policy ticks, the runtime keeps executing the last policy output in the high-rate control loop
+
+So the runtime now exposes two separate timing layers on purpose:
+
+- control-loop rate: `runtime/tick`
+- policy-sample rate: `runtime/source/policy_observation` and `runtime/source/policy_action`
 
 ## 4. Main Logged Content
 
@@ -71,6 +83,10 @@ Typical `runtime/tick` payload includes:
 - `motor_cmd_mode`
 - `observation`
 - `policy_action`
+- `policy_step_index`
+- `policy_ran_this_tick`
+- `policy_sample_time_sec`
+- `policy_sample_age_sec`
 - optional AMP score
 - optional named features / external observations
 
@@ -140,7 +156,7 @@ Analyze timing / jitter / hold-alignment:
 python3 src/humanoid_rl_controller/rl_master/tools/analysis/analyze_runtime_log.py \
   timing \
   --mcap /abs/path/to/session.mcap \
-  --topics runtime/tick runtime/source/base_imu runtime/source/policy_action \
+  --topics runtime/tick runtime/source/base_imu runtime/source/policy_observation runtime/source/policy_action \
   --reference-topic runtime/tick
 ```
 
@@ -181,7 +197,49 @@ That means a slower IMU and a faster proprioceptive stream are not forced into t
   - resample source channels onto control ticks
   - or analyze true source latency / jitter directly from raw source timestamps
 
-## 8. Active Tooling
+## 8. Policy Scheduling And Alignment Semantics
+
+The fused runtime now treats `RL_control_f` as the real policy scheduler, not as a passive config field.
+
+Example:
+
+- solver control loop: `1000 Hz`
+- policy scheduler: `100 Hz`
+- IMU callback: `200 Hz`
+
+Then the intended logging picture is:
+
+- `runtime/tick` at about `1000 Hz`
+- `runtime/source/policy_observation` at about `100 Hz`
+- `runtime/source/policy_action` at about `100 Hz`
+- `runtime/source/base_imu` at about `200 Hz`
+
+When the controller constructs a policy input, it uses the latest available sample of each source at that policy tick.
+That means offline analysis should interpret alignment as last-sample-hold alignment, not as "every source was natively sampled on the same clock".
+
+In practice:
+
+- multiple control ticks can reuse the same policy action
+- multiple control ticks can also reuse the same slower IMU sample
+- the exact reuse count is visible in the log and may vary slightly if there is loop jitter
+
+Use these fields and channels together:
+
+- `runtime/tick.policy_ran_this_tick`
+- `runtime/tick.policy_sample_age_sec`
+- `runtime/source/policy_observation`
+- `runtime/source/policy_action`
+- `runtime/source/base_imu`
+- `runtime/source/external/<name>`
+
+The `timing` subcommand reports:
+
+- actual channel frequency
+- dt jitter
+- hold age relative to a reference topic
+- reuse run length in reference ticks
+
+## 9. Active Tooling
 
 Current active path:
 

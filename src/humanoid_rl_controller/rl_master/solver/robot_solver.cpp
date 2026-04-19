@@ -780,7 +780,8 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
         oss << ",\"obs_dim\":" << cfg.obs_dim << ",";
         oss << "\"action_dim\":" << cfg.action_dim << ",";
         oss << "\"obs_stack_n\":" << cfg.obs_stack_N << ",";
-        oss << "\"control_hz\":" << cfg.RL_control_f << ",";
+        oss << "\"policy_hz\":" << cfg.RL_control_f << ",";
+        oss << "\"solver_control_hz\":1000,";
         oss << "\"action_joint_order\":";
         appendStringVector(oss, cfg.action_joint_order);
         oss << ",\"obs_joint_order\":";
@@ -917,6 +918,10 @@ void RobotSolver::logLoopData(const rl_master::logging::ControllerLogSnapshot &c
     record.active_mode_id = controller_snapshot.active_mode_id;
     record.deploy_state = controller_snapshot.deploy_state;
     record.active_profile_index = controller_snapshot.active_profile_index;
+    record.policy_step_index = controller_snapshot.policy_step_index;
+    record.policy_ran_this_tick = controller_snapshot.policy_ran_this_tick;
+    record.policy_sample_time_sec = controller_snapshot.policy_sample_time_sec;
+    record.policy_sample_age_sec = controller_snapshot.policy_sample_age_sec;
     record.open_rl = controller_snapshot.open_rl;
     record.cmd_vx = controller_snapshot.cmd_vx;
     record.cmd_vy = controller_snapshot.cmd_vy;
@@ -955,7 +960,7 @@ void RobotSolver::logLoopData(const rl_master::logging::ControllerLogSnapshot &c
 
     runtime_recorder_.recordTick(record);
 
-    if (!controller_snapshot.policy_action.empty())
+    if (controller_snapshot.policy_ran_this_tick && !controller_snapshot.policy_action.empty())
     {
         rl_master::logging::RuntimeSourceSampleRecord sample;
         sample.monotonic_time_sec = record.monotonic_time_sec;
@@ -964,6 +969,21 @@ void RobotSolver::logLoopData(const rl_master::logging::ControllerLogSnapshot &c
         sample.tags["backend"] = "sim2real";
         sample.tags["mode_id"] = std::to_string(record.active_mode_id);
         sample.values["action"] = controller_snapshot.policy_action;
+        runtime_recorder_.recordSourceSample(sample);
+    }
+
+    if (controller_snapshot.policy_ran_this_tick && !controller_snapshot.observation.empty())
+    {
+        rl_master::logging::RuntimeSourceSampleRecord sample;
+        sample.monotonic_time_sec = controller_snapshot.policy_sample_time_sec > 0.0
+                                        ? controller_snapshot.policy_sample_time_sec
+                                        : record.monotonic_time_sec;
+        sample.topic = "runtime/source/policy_observation";
+        sample.sample_name = "policy_observation";
+        sample.tags["backend"] = "sim2real";
+        sample.tags["mode_id"] = std::to_string(record.active_mode_id);
+        sample.tags["policy_step_index"] = std::to_string(record.policy_step_index);
+        sample.values["observation"] = controller_snapshot.observation;
         runtime_recorder_.recordSourceSample(sample);
     }
 

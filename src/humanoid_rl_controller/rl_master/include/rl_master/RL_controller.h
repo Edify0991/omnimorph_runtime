@@ -140,6 +140,7 @@ private:
         OnnxPolicyRunner *runner,
         const std::vector<float> &current_observation,
         const std::vector<float> &stacked_observation);
+    void resetPolicyScheduler();
     PolicyRunOutput runPolicyGroup(
         PolicyRuntimeGroup *group,
         const std::vector<float> &stacked_obs,
@@ -175,7 +176,11 @@ private:
     rl_master::DeployStateMachine deploy_state_machine_;
     rl_master::DeployLifecycleState last_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
     bool deploy_state_machine_initialized_ = false;
-    size_t deploy_step_counter_ = 0;
+    size_t policy_step_counter_ = 0;
+    bool policy_schedule_initialized_ = false;
+    double next_policy_phase_t_ = 0.0;
+    double last_policy_sample_time_sec_ = 0.0;
+    double last_policy_sample_phase_t_ = 0.0;
     double phase_origin_t_ = 0.0;
     bool phase_origin_initialized_ = false;
     bool phase_reset_pending_ = true;

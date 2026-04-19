@@ -437,12 +437,34 @@ The top-level `logging:` block in `rl_cfg.yaml` is now the main logging config e
 - `runtime/tick`：控制周期对齐后的主记录
 - `runtime/source/...`：异步来源观测的原始采样节奏
 
+`RL_control_f` 现在也应该这样理解：
+
+- 它已经不是“只存在于配置里的一个频率参数”
+- 它现在是真正的策略调度频率，也就是构造 policy observation 和执行 ONNX 推理的频率
+- 在两个 policy tick 之间，系统会在更高频的控制循环里持续执行上一次策略输出
+
 所以如果后面你的 IMU 比本体关节状态更慢，日志里是可以体现出来的，不会被强行伪装成和控制 tick 一样快。
+
+如果你以 `1000 Hz` 底层控制、`100 Hz` 策略推理、`200 Hz` IMU 为例，那么你应该预期看到：
+
+- `runtime/tick` 约 `1000 Hz`
+- `runtime/source/policy_observation` 约 `100 Hz`
+- `runtime/source/policy_action` 约 `100 Hz`
+- `runtime/source/base_imu` 约 `200 Hz`
+
+分析时不要假设“每 5 个 proprio tick 一定严格对应同一个 IMU，或每 10 个 proprio tick 一定严格对应同一个 action”。
+更准确的理解是：
+
+- 控制器在每个时刻都使用“当时最新的一份样本”
+- 如果系统时钟很稳定，统计上通常会接近 `5:1` 和 `10:1`
+- 如果存在调度抖动，复用长度会有轻微波动
+- 这种真实波动现在可以通过 `analyze_runtime_log.py timing` 直接量化出来
 
 建议重点关注这几个 channel：
 
 - `runtime/tick`
 - `runtime/source/base_imu`
+- `runtime/source/policy_observation`
 - `runtime/source/policy_action`
 - `runtime/source/external/<name>`
 

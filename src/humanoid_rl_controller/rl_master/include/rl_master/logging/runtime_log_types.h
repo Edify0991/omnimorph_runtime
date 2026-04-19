@@ -38,6 +38,10 @@ struct ControllerLogSnapshot
     int active_mode_id = 0;
     int deploy_state = 0;
     int active_profile_index = 0;
+    uint64_t policy_step_index = 0;
+    bool policy_ran_this_tick = false;
+    double policy_sample_time_sec = 0.0;
+    double policy_sample_age_sec = 0.0;
     float open_rl = 0.0f;
     float cmd_vx = 0.0f;
     float cmd_vy = 0.0f;
@@ -70,6 +74,10 @@ struct RuntimeTickLogRecord
     int active_mode_id = 0;
     int deploy_state = 0;
     int active_profile_index = 0;
+    uint64_t policy_step_index = 0;
+    bool policy_ran_this_tick = false;
+    double policy_sample_time_sec = 0.0;
+    double policy_sample_age_sec = 0.0;
     float open_rl = 0.0f;
     float cmd_vx = 0.0f;
     float cmd_vy = 0.0f;

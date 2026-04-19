@@ -818,6 +818,7 @@ void MujocoSimBridge::initRuntimeRecorder()
              << "\"policy_family\":\"" << runtime_cfg.policy_family << "\","
              << "\"model_path\":\"" << model_path_ << "\","
              << "\"control_hz\":" << control_hz_ << ","
+             << "\"policy_hz\":" << runtime_cfg.RL_control_f << ","
              << "\"sim_dt\":" << sim_dt_
              << "}";
 
@@ -941,6 +942,10 @@ void MujocoSimBridge::logLoopData(
     record.active_mode_id = controller_snapshot.active_mode_id;
     record.deploy_state = controller_snapshot.deploy_state;
     record.active_profile_index = controller_snapshot.active_profile_index;
+    record.policy_step_index = controller_snapshot.policy_step_index;
+    record.policy_ran_this_tick = controller_snapshot.policy_ran_this_tick;
+    record.policy_sample_time_sec = controller_snapshot.policy_sample_time_sec;
+    record.policy_sample_age_sec = controller_snapshot.policy_sample_age_sec;
     record.open_rl = controller_snapshot.open_rl;
     record.cmd_vx = controller_snapshot.cmd_vx;
     record.cmd_vy = controller_snapshot.cmd_vy;
@@ -983,7 +988,7 @@ void MujocoSimBridge::logLoopData(
 
     runtime_recorder_.recordTick(record);
 
-    if (!controller_snapshot.policy_action.empty())
+    if (controller_snapshot.policy_ran_this_tick && !controller_snapshot.policy_action.empty())
     {
         rl_master::logging::RuntimeSourceSampleRecord sample;
         sample.monotonic_time_sec = record.monotonic_time_sec;
@@ -992,6 +997,21 @@ void MujocoSimBridge::logLoopData(
         sample.tags["backend"] = "sim2sim";
         sample.tags["mode_id"] = std::to_string(record.active_mode_id);
         sample.values["action"] = controller_snapshot.policy_action;
+        runtime_recorder_.recordSourceSample(sample);
+    }
+
+    if (controller_snapshot.policy_ran_this_tick && !controller_snapshot.observation.empty())
+    {
+        rl_master::logging::RuntimeSourceSampleRecord sample;
+        sample.monotonic_time_sec = controller_snapshot.policy_sample_time_sec > 0.0
+                                        ? controller_snapshot.policy_sample_time_sec
+                                        : record.monotonic_time_sec;
+        sample.topic = "runtime/source/policy_observation";
+        sample.sample_name = "policy_observation";
+        sample.tags["backend"] = "sim2sim";
+        sample.tags["mode_id"] = std::to_string(record.active_mode_id);
+        sample.tags["policy_step_index"] = std::to_string(record.policy_step_index);
+        sample.values["observation"] = controller_snapshot.observation;
         runtime_recorder_.recordSourceSample(sample);
     }
 

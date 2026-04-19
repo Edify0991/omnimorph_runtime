@@ -1277,7 +1277,7 @@ public:
         std::cout << "Action Scale: " << action_scale << std::endl;
         std::cout << "Zero Joint Angles: " << robotCfg.zero_joint_angles.size() << std::endl;
         std::cout << "Control Mode: " << control_mode << std::endl;
-        std::cout << "RL Control Frequency: " << RL_control_f << std::endl;
+        std::cout << "Policy Frequency: " << RL_control_f << std::endl;
         std::cout << "Sub Models: " << sub_models.size() << std::endl;
         std::cout << "AMP Discriminator Enabled: " << (amp_discriminator.enabled ? "true" : "false") << std::endl;
         std::cout << "AMP Discriminator Path: " << amp_discriminator.policy_path << std::endl;

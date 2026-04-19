@@ -188,6 +188,10 @@ std::string serializeTick(const RuntimeTickLogRecord &record, const RuntimeLoggi
     oss << "\"active_mode_id\":" << record.active_mode_id << ",";
     oss << "\"deploy_state\":" << record.deploy_state << ",";
     oss << "\"active_profile_index\":" << record.active_profile_index << ",";
+    oss << "\"policy_step_index\":" << record.policy_step_index << ",";
+    oss << "\"policy_ran_this_tick\":" << (record.policy_ran_this_tick ? "true" : "false") << ",";
+    oss << "\"policy_sample_time_sec\":" << formatDouble(record.policy_sample_time_sec) << ",";
+    oss << "\"policy_sample_age_sec\":" << formatDouble(record.policy_sample_age_sec) << ",";
     oss << "\"open_rl\":" << formatDouble(record.open_rl) << ",";
     oss << "\"cmd_vx\":" << formatDouble(record.cmd_vx) << ",";
     oss << "\"cmd_vy\":" << formatDouble(record.cmd_vy) << ",";
