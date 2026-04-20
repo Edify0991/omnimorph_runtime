@@ -1,0 +1,281 @@
+engineai_full_body_example:
+  policy_name: replace_with_full_body_policy
+  policy_family: custom
+  obs_stack_N: 15
+  cycle_time: 1.0
+  kps:
+    - 200
+    - 120
+    - 150
+    - 300
+    - 20
+    - 20
+    - 200
+    - 120
+    - 150
+    - 300
+    - 20
+    - 20
+    - 80
+    - 60
+    - 60
+    - 40
+    - 80
+    - 60
+    - 60
+    - 40
+  kds:
+    - 5
+    - 3
+    - 5
+    - 10
+    - 2
+    - 2
+    - 5
+    - 3
+    - 5
+    - 10
+    - 2
+    - 2
+    - 3
+    - 2
+    - 2
+    - 1
+    - 3
+    - 2
+    - 2
+    - 1
+  clip_observations: 100.0
+  clip_actions: 100.0
+  action_scale: 0.5
+  device_id: 0
+  obs_dim: 71
+  action_dim: 20
+  motor_N: 20
+  RL_control_f: 100
+  observation_manifest_file: observation_manifest_full_body_example.yaml
+  action_joint_order:
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+    - left_shoulder_pitch
+    - left_shoulder_roll
+    - left_shoulder_yaw
+    - left_elbow_pitch
+    - right_shoulder_pitch
+    - right_shoulder_roll
+    - right_shoulder_yaw
+    - right_elbow_pitch
+  obs_joint_order:
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+    - left_shoulder_pitch
+    - left_shoulder_roll
+    - left_shoulder_yaw
+    - left_elbow_pitch
+    - right_shoulder_pitch
+    - right_shoulder_roll
+    - right_shoulder_yaw
+    - right_elbow_pitch
+  onnx_intra_threads: 1
+  onnx_inter_threads: 1
+  policy_io:
+    obs_input_name: obs
+    action_output_name: actions
+    enable_time_step_input: false
+    time_step_input_name: time_step
+    time_step_start: 0
+    strict_model_io: false
+    enable_metadata_check: true
+    metadata_check_strict: true
+    required_metadata_keys:
+      - obs_dim
+      - action_dim
+    expected_metadata:
+      obs_dim: "71"
+      action_dim: "20"
+    reset_policy_on_mode_switch: true
+    extra_output_names: []
+  enable_reference_motion: false
+  reference_motion_dim: 0
+  reference_motion_sampling: phase
+  reference_motion_source: auto
+  reference_anchor_body: base
+  reference_body_names: []
+  reference_joint_order:
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+    - left_shoulder_pitch
+    - left_shoulder_roll
+    - left_shoulder_yaw
+    - left_elbow_pitch
+    - right_shoulder_pitch
+    - right_shoulder_roll
+    - right_shoulder_yaw
+    - right_elbow_pitch
+  source_contract:
+    imu_input:
+      payload: euler_compat
+      euler_order: [roll, pitch, yaw]
+      euler_unit: rad
+      quat_order: xyzw
+      ang_vel_order: [x, y, z]
+      frame_alignment_rpy: [0.0, 0.0, 0.0]
+    sim_base:
+      quat_source_order: wxyz
+    reference_file:
+      body_quat_order: wxyz
+    policy_extra_outputs:
+      body_quat_order: wxyz
+  external_observations: []
+  enable_cmd_watchdog: true
+  cmd_timeout_s: 0.12
+  loop_overrun_warn_us: 2000
+  enable_state_telemetry: true
+  state_telemetry_hz: 50.0
+  auto_start_policy: true
+  zeroing_duration_s: 2.0
+  tau_limit:
+    - 130
+    - 130
+    - 130
+    - 130
+    - 130
+    - 130
+    - 130
+    - 130
+    - 130
+    - 130
+    - 130
+    - 130
+    - 60
+    - 60
+    - 60
+    - 40
+    - 60
+    - 60
+    - 60
+    - 40
+  control_mode: sim2real
+  action_filter: 0.2
+  robot:
+    joint_order:
+      - right_hip_roll
+      - right_hip_yaw
+      - right_hip_pitch
+      - right_knee_pitch
+      - right_ankle_pitch
+      - right_ankle_roll
+      - left_hip_roll
+      - left_hip_yaw
+      - left_hip_pitch
+      - left_knee_pitch
+      - left_ankle_pitch
+      - left_ankle_roll
+      - left_shoulder_pitch
+      - left_shoulder_roll
+      - left_shoulder_yaw
+      - left_elbow_pitch
+      - right_shoulder_pitch
+      - right_shoulder_roll
+      - right_shoulder_yaw
+      - right_elbow_pitch
+    default_joint_angles:
+      right_hip_roll: 0.0
+      right_hip_yaw: 0.0
+      right_hip_pitch: -0.24
+      right_knee_pitch: 0.48
+      right_ankle_pitch: -0.24
+      right_ankle_roll: 0.0
+      left_hip_roll: 0.0
+      left_hip_yaw: 0.0
+      left_hip_pitch: -0.24
+      left_knee_pitch: 0.48
+      left_ankle_pitch: -0.24
+      left_ankle_roll: 0.0
+      left_shoulder_pitch: 0.0
+      left_shoulder_roll: 0.15
+      left_shoulder_yaw: 0.0
+      left_elbow_pitch: 0.3
+      right_shoulder_pitch: 0.0
+      right_shoulder_roll: -0.15
+      right_shoulder_yaw: 0.0
+      right_elbow_pitch: 0.3
+    joint_limit_range:
+      right_hip_roll: [-0.2, 0.2]
+      right_hip_yaw: [-1.05, 1.05]
+      right_hip_pitch: [-0.45, 0.38]
+      right_knee_pitch: [0.0, 1.48]
+      right_ankle_pitch: [-0.64, 0.4]
+      right_ankle_roll: [-0.26, 0.26]
+      left_hip_roll: [-0.2, 0.2]
+      left_hip_yaw: [-1.05, 1.05]
+      left_hip_pitch: [-0.45, 0.38]
+      left_knee_pitch: [0.0, 1.48]
+      left_ankle_pitch: [-0.64, 0.4]
+      left_ankle_roll: [-0.26, 0.26]
+      left_shoulder_pitch: [-1.5, 1.5]
+      left_shoulder_roll: [-1.2, 1.2]
+      left_shoulder_yaw: [-1.5, 1.5]
+      left_elbow_pitch: [0.0, 2.4]
+      right_shoulder_pitch: [-1.5, 1.5]
+      right_shoulder_roll: [-1.2, 1.2]
+      right_shoulder_yaw: [-1.5, 1.5]
+      right_elbow_pitch: [0.0, 2.4]
+    motor_torque_limit:
+      right_hip_roll: 330
+      right_hip_yaw: 150
+      right_hip_pitch: 330
+      right_knee_pitch: 330
+      right_ankle_pitch: 90
+      right_ankle_roll: 90
+      left_hip_roll: 330
+      left_hip_yaw: 150
+      left_hip_pitch: 330
+      left_knee_pitch: 330
+      left_ankle_pitch: 90
+      left_ankle_roll: 90
+      left_shoulder_pitch: 60
+      left_shoulder_roll: 60
+      left_shoulder_yaw: 60
+      left_elbow_pitch: 40
+      right_shoulder_pitch: 60
+      right_shoulder_roll: 60
+      right_shoulder_yaw: 60
+      right_elbow_pitch: 40
+  scales:
+    lin_vel: 2.0
+    ang_vel: 1.0
+    dof_pos: 1.0
+    dof_vel: 0.05
+    quat: 1.0
+    height_measurements: 5.0

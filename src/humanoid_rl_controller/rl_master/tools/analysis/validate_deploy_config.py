@@ -410,6 +410,79 @@ def load_rl_cfg(path: Path) -> Dict[str, Any]:
     return data
 
 
+def get_config_file_map(
+    root_cfg: Dict[str, Any],
+    cfg_path: Path,
+    issues: IssueCollector,
+) -> Dict[str, Path]:
+    raw = root_cfg.get("config_files")
+    if raw is None:
+        issues.error("global", "config_files is required in root rl config")
+        return {}
+    if not isinstance(raw, dict):
+        issues.error("global", "config_files must be a map")
+        return {}
+
+    out: Dict[str, Path] = {}
+    seen_paths: Dict[Path, str] = {}
+    for key, value in raw.items():
+        section = str(key).strip()
+        raw_path = str(value).strip()
+        if not section:
+            issues.error("global", "config_files contains an empty config_section key")
+            continue
+        if not raw_path:
+            issues.error("global", f"config_files['{section}'] must not be empty")
+            continue
+
+        resolved = resolve_path(raw_path, cfg_path.parent).resolve()
+        if resolved in seen_paths and seen_paths[resolved] != section:
+            issues.error(
+                "global",
+                f"config_files maps both '{seen_paths[resolved]}' and '{section}' to the same file: {resolved}",
+            )
+            continue
+        seen_paths[resolved] = section
+        out[section] = resolved
+    return out
+
+
+def load_profile_section_cfg(
+    cfg_path: Path,
+    root_cfg: Dict[str, Any],
+    section_name: str,
+    issues: IssueCollector,
+    context: str,
+) -> Tuple[Dict[str, Any], Optional[Path]]:
+    config_files = get_config_file_map(root_cfg, cfg_path, issues)
+    profile_path = config_files.get(section_name)
+    if profile_path is None:
+        issues.error(context, f"config_files is missing mapping for config section '{section_name}'")
+        return {}, None
+    if not profile_path.exists():
+        issues.error(context, f"profile file not found: {profile_path}")
+        return {}, profile_path
+
+    try:
+        profile_root = load_rl_cfg(profile_path)
+    except Exception as exc:
+        issues.error(context, f"failed to parse profile YAML '{profile_path}': {exc}")
+        return {}, profile_path
+
+    if len(profile_root) != 1 or section_name not in profile_root:
+        issues.error(
+            context,
+            f"profile file must contain exactly one top-level section named '{section_name}': {profile_path}",
+        )
+        return {}, profile_path
+
+    section_cfg = to_dict(profile_root.get(section_name))
+    if not section_cfg:
+        issues.error(context, f"profile section '{section_name}' must be a non-empty map: {profile_path}")
+        return {}, profile_path
+    return section_cfg, profile_path
+
+
 def get_mode_profile_specs(root_cfg: Dict[str, Any]) -> List[Tuple[int, str, str]]:
     raw = root_cfg.get("deploy_mode_profiles")
     specs: List[Tuple[int, str, str]] = []
@@ -586,10 +659,6 @@ def check_joint_order(
         issues.error(context, "action_dim must be > 0")
     if motor_n <= 0:
         issues.error(context, "motor_N must be > 0")
-    if action_dim > len(CANONICAL_JOINT_ORDER):
-        issues.error(context, "action_dim exceeds canonical joint count")
-    if motor_n > len(CANONICAL_JOINT_ORDER):
-        issues.error(context, "motor_N exceeds canonical joint count")
 
     if action_order:
         if len(action_order) != action_dim:
@@ -599,9 +668,6 @@ def check_joint_order(
         for name in action_order:
             if name not in CANONICAL_JOINT_ORDER:
                 issues.warn(context, f"action_joint_order contains non-canonical joint name '{name}'")
-        for canonical_name in CANONICAL_JOINT_ORDER[: max(action_dim, 0)]:
-            if canonical_name not in action_order:
-                issues.error(context, f"action_joint_order missing required canonical joint '{canonical_name}'")
 
     obs_order = list(obs_order_raw) if obs_order_raw else list(action_order)
     if obs_order:
@@ -611,7 +677,7 @@ def check_joint_order(
             issues.error(context, "obs_joint_order contains duplicates")
         for name in obs_order:
             if name not in CANONICAL_JOINT_ORDER:
-                issues.error(context, f"obs_joint_order contains unknown joint '{name}'")
+                issues.warn(context, f"obs_joint_order contains non-canonical joint name '{name}'")
 
 
 def check_reference_joint_order(
@@ -631,7 +697,7 @@ def check_reference_joint_order(
         issues.error(context, "reference_joint_order contains duplicates")
     for name in reference_order:
         if name not in CANONICAL_JOINT_ORDER:
-            issues.error(context, f"reference_joint_order contains unknown joint '{name}'")
+            issues.warn(context, f"reference_joint_order contains non-canonical joint name '{name}'")
     return reference_order
 
 
@@ -1298,6 +1364,7 @@ def merge_policy_io(base_cfg: Dict[str, Any], node: Dict[str, Any]) -> Dict[str,
 
 
 def validate_profile(
+    cfg_path: Path,
     root_cfg: Dict[str, Any],
     root_dir: Path,
     mode_id: int,
@@ -1307,10 +1374,14 @@ def validate_profile(
     skip_onnx: bool,
 ) -> None:
     context = f"profile(mode_id={mode_id}, tag={tag}, section={section_name})"
-    section_cfg = to_dict(root_cfg.get(section_name))
+    section_cfg, _ = load_profile_section_cfg(cfg_path, root_cfg, section_name, issues, context)
     if not section_cfg:
-        issues.error(context, f"config section not found: '{section_name}'")
         return
+    if "save_data_flag" in section_cfg:
+        issues.error(
+            context,
+            "legacy save_data_flag is no longer supported; use top-level logging.enabled",
+        )
 
     obs_dim = as_int(section_cfg.get("obs_dim"), 0)
     action_dim = as_int(section_cfg.get("action_dim"), 0)
@@ -1522,19 +1593,32 @@ def main() -> int:
     if not specs:
         issues.error("global", "no deploy mode profiles resolved")
 
+    config_files = get_config_file_map(root_cfg, cfg_path, issues)
     selected_specs: List[Tuple[int, str, str]] = []
+    selected_sections: set[str] = set()
     for mode_id, section, tag in specs:
         if args.mode_ids and mode_id not in args.mode_ids:
             continue
         if args.sections and section not in args.sections:
             continue
         selected_specs.append((mode_id, section, tag))
+        selected_sections.add(section)
+
+    for section in args.sections:
+        if section in selected_sections:
+            continue
+        if section not in config_files:
+            issues.error("global", f"config section not found in config_files: '{section}'")
+            continue
+        selected_specs.append((-1, section, section))
+        selected_sections.add(section)
 
     if not selected_specs:
         issues.error("global", "no profiles matched the filters")
 
     for mode_id, section, tag in selected_specs:
         validate_profile(
+            cfg_path=cfg_path,
             root_cfg=root_cfg,
             root_dir=root_dir,
             mode_id=mode_id,
@@ -1543,14 +1627,6 @@ def main() -> int:
             issues=issues,
             skip_onnx=args.skip_onnx,
         )
-
-    for _, section, _ in selected_specs:
-        section_cfg = to_dict(root_cfg.get(section))
-        if "save_data_flag" in section_cfg:
-            issues.error(
-                f"profile(section={section})",
-                "legacy save_data_flag is no longer supported; use top-level logging.enabled",
-            )
 
     issues.print()
     print(

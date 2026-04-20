@@ -77,6 +77,145 @@ inline rl_master::runtime::RealtimeConfig parseRealtimeConfigNode(
     return config;
 }
 
+struct DeployModeProfileSpec
+{
+    int mode_id = 0;
+    std::string config_section;
+    std::string tag;
+};
+
+struct RootConfigDocument
+{
+    std::filesystem::path root_path;
+    std::filesystem::path root_dir;
+    YAML::Node root;
+};
+
+struct ProfileConfigDocument
+{
+    RootConfigDocument root_doc;
+    std::filesystem::path profile_path;
+    YAML::Node profile_root;
+    YAML::Node section;
+};
+
+inline RootConfigDocument loadRootConfigDocument(const std::string &yaml_file)
+{
+    RootConfigDocument out;
+    out.root_path = std::filesystem::absolute(std::filesystem::path(yaml_file));
+    out.root_dir = out.root_path.parent_path();
+    out.root = YAML::LoadFile(out.root_path.string());
+    if (!out.root || !out.root.IsMap())
+    {
+        throw std::runtime_error("top-level YAML must be a map: " + out.root_path.string());
+    }
+    return out;
+}
+
+inline std::map<std::string, std::string> loadConfigFileMapFromRoot(const YAML::Node &root)
+{
+    if (!root || !root["config_files"])
+    {
+        throw std::runtime_error("config_files is required in root rl config");
+    }
+    const YAML::Node config_files = root["config_files"];
+    if (!config_files.IsMap())
+    {
+        throw std::runtime_error("config_files must be a map");
+    }
+
+    std::map<std::string, std::string> out;
+    for (auto it = config_files.begin(); it != config_files.end(); ++it)
+    {
+        const std::string section = it->first.as<std::string>();
+        const std::string raw_path = it->second.as<std::string>();
+        if (section.empty())
+        {
+            throw std::runtime_error("config_files contains empty config_section key");
+        }
+        if (raw_path.empty())
+        {
+            throw std::runtime_error("config_files entry has empty path for section: " + section);
+        }
+        out[section] = raw_path;
+    }
+    return out;
+}
+
+inline std::filesystem::path resolveConfigSectionPath(
+    const RootConfigDocument &root_doc,
+    const std::string &config_section)
+{
+    const auto config_files = loadConfigFileMapFromRoot(root_doc.root);
+    std::map<std::string, std::string> resolved_path_to_section;
+    std::filesystem::path profile_path;
+    bool found = false;
+    for (const auto &entry : config_files)
+    {
+        std::filesystem::path resolved_path = std::filesystem::path(entry.second);
+        if (resolved_path.is_relative())
+        {
+            resolved_path = root_doc.root_dir / resolved_path;
+        }
+        resolved_path = std::filesystem::absolute(resolved_path);
+
+        const std::string resolved_key = resolved_path.lexically_normal().string();
+        const auto duplicate_it = resolved_path_to_section.find(resolved_key);
+        if (duplicate_it != resolved_path_to_section.end() && duplicate_it->second != entry.first)
+        {
+            throw std::runtime_error(
+                "config_files maps both '" + duplicate_it->second + "' and '" + entry.first +
+                "' to the same profile file: " + resolved_key);
+        }
+        resolved_path_to_section[resolved_key] = entry.first;
+
+        if (entry.first == config_section)
+        {
+            profile_path = resolved_path;
+            found = true;
+        }
+    }
+    if (!found)
+    {
+        throw std::runtime_error("config_files is missing mapping for config section: " + config_section);
+    }
+    if (!std::filesystem::exists(profile_path))
+    {
+        throw std::runtime_error(
+            "profile file not found for config section '" + config_section + "': " +
+            profile_path.string());
+    }
+    return profile_path;
+}
+
+inline ProfileConfigDocument loadProfileConfigDocument(
+    const std::string &yaml_file,
+    const std::string &config_section)
+{
+    ProfileConfigDocument out;
+    out.root_doc = loadRootConfigDocument(yaml_file);
+    out.profile_path = resolveConfigSectionPath(out.root_doc, config_section);
+    out.profile_root = YAML::LoadFile(out.profile_path.string());
+    if (!out.profile_root || !out.profile_root.IsMap())
+    {
+        throw std::runtime_error("profile YAML must be a map: " + out.profile_path.string());
+    }
+    if (out.profile_root.size() != 1 || !out.profile_root[config_section])
+    {
+        throw std::runtime_error(
+            "profile file must contain exactly one top-level section named '" +
+            config_section + "': " + out.profile_path.string());
+    }
+    out.section = out.profile_root[config_section];
+    if (!out.section || !out.section.IsMap())
+    {
+        throw std::runtime_error(
+            "profile section must be a map for config section '" + config_section +
+            "': " + out.profile_path.string());
+    }
+    return out;
+}
+
 inline bool loadProcessRealtimeConfigFromYAML(
     const std::string &yaml_file,
     const std::string &process_name,
@@ -90,7 +229,7 @@ inline bool loadProcessRealtimeConfigFromYAML(
 
     try
     {
-        const YAML::Node config = YAML::LoadFile(yaml_file);
+        const YAML::Node config = loadRootConfigDocument(yaml_file).root;
         const YAML::Node process_node = config[group_name] ? config[group_name][process_name] : YAML::Node();
         if (!process_node)
         {
@@ -105,18 +244,11 @@ inline bool loadProcessRealtimeConfigFromYAML(
     }
 }
 
-struct DeployModeProfileSpec
-{
-    int mode_id = 0;
-    std::string config_section;
-    std::string tag;
-};
-
 inline std::vector<DeployModeProfileSpec> loadDeployModeProfilesFromYAML(
     const std::string &yaml_file)
 {
     std::vector<DeployModeProfileSpec> specs;
-    const YAML::Node root = YAML::LoadFile(yaml_file);
+    const YAML::Node root = loadRootConfigDocument(yaml_file).root;
     const YAML::Node profiles = root["deploy_mode_profiles"];
     if (!profiles || !profiles.IsSequence())
     {
@@ -144,7 +276,7 @@ inline std::vector<DeployModeProfileSpec> loadDeployModeProfilesFromYAML(
 inline std::vector<std::string> loadRobotGlobalJointOrderFromYAML(
     const std::string &yaml_file)
 {
-    const YAML::Node root = YAML::LoadFile(yaml_file);
+    const YAML::Node root = loadRootConfigDocument(yaml_file).root;
     const YAML::Node joint_order = root["robot_global_joint_order"];
     if (!joint_order)
     {
@@ -512,11 +644,9 @@ public:
     {
         try
         {
-            const YAML::Node config = YAML::LoadFile(yaml_file);
-            if (!config[config_type])
-            {
-                throw std::runtime_error("missing config section: " + config_type);
-            }
+            const ProfileConfigDocument config_doc = loadProfileConfigDocument(yaml_file, config_type);
+            const YAML::Node config = config_doc.root_doc.root;
+            const YAML::Node cfg = config_doc.section;
 
             robotCfg.default_joint_angles.clear();
             robotCfg.zero_joint_angles.clear();
@@ -532,7 +662,7 @@ public:
             logging = RuntimeLoggingConfig{};
 
             const std::string configured_root_raw = yamlReadOr<std::string>(config, "humanoid_rl_root_dir", "");
-            const std::filesystem::path cfg_parent_dir = std::filesystem::path(yaml_file).parent_path();
+            const std::filesystem::path cfg_parent_dir = config_doc.root_doc.root_dir;
             const std::filesystem::path default_root_path = std::filesystem::path(RL_MASTER_ROOT_DIR);
             std::filesystem::path resolved_root_path = default_root_path;
             if (!configured_root_raw.empty())
@@ -560,7 +690,6 @@ public:
                           << default_root_path << std::endl;
             }
             humanoid_rl_root_dir = resolved_root_path.string();
-            const YAML::Node cfg = config[config_type];
 
             auto resolvePath = [&](const std::string &raw) -> std::string {
                 if (raw.empty())
