@@ -181,6 +181,19 @@ engineai_walk:
       left_knee_pitch: 0.48
       left_ankle_pitch: -0.24
       left_ankle_roll: 0.0
+    zero_joint_angles:
+      right_hip_roll: 0.0
+      right_hip_yaw: 0.0
+      right_hip_pitch: -0.24
+      right_knee_pitch: 0.48
+      right_ankle_pitch: -0.24
+      right_ankle_roll: 0.0
+      left_hip_roll: 0.0
+      left_hip_yaw: 0.0
+      left_hip_pitch: -0.24
+      left_knee_pitch: 0.48
+      left_ankle_pitch: -0.24
+      left_ankle_roll: 0.0
     joint_limit_range:
       right_hip_roll: [-0.2, 0.2]
       right_hip_yaw: [-1.05, 1.05]

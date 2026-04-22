@@ -359,14 +359,7 @@ void JointMotorTestRunner::resolveJointLayout()
     {
         auto registry = rl_master::ModeProfileRegistry::loadFromYaml(config_.deploy_config_path, "engineai_walk");
         const auto &cfg = registry->cfgForMode(config_.test_mode_id, true);
-        if (!cfg.action_joint_order.empty())
-        {
-            joint_names_ = cfg.action_joint_order;
-        }
-        else
-        {
-            joint_names_ = cfg.robot_joint_order;
-        }
+        joint_names_ = cfg.action_joint_order;
     }
 
     if (joint_names_.empty())

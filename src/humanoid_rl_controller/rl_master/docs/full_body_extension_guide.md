@@ -9,7 +9,7 @@ Current architecture:
 - controller maps policy action indices by joint name
 - non-controlled joints stay at the active mode's `default_angle`
 - mode registry uses required top-level `robot_global_joint_order` as the single runtime joint space
-- if you configure `robot.zero_joint_angles`, it must cover the full runtime joint set; otherwise leave it unset and zeroing will fall back to `default_angle`
+- `robot.zero_joint_angles` is required and must cover the full `robot_global_joint_order`
 
 This means adding a full-body policy is now mainly a configuration job, not a protocol rewrite.
 
@@ -31,7 +31,7 @@ So full-body deploy is already supported at the runtime/config layer, while hard
 
 For a new full-body mode, keep these fields aligned:
 
-1. `robot.joint_order`
+1. root `robot_global_joint_order`
 2. `action_joint_order`
 3. `obs_joint_order`
 4. `action_dim`
@@ -41,7 +41,7 @@ For a new full-body mode, keep these fields aligned:
 
 The easiest safe rule is:
 
-- `robot.joint_order`: full runtime joint layout for this mode
+- root `robot_global_joint_order`: full robot joint space shared by all modes
 - `action_joint_order`: exactly the ONNX action output order
 - `obs_joint_order`: exactly the joint order expected by the observation builder for joint-based terms
 - `action_dim == len(action_joint_order)`
@@ -73,13 +73,14 @@ If you change the active joint count from `20` to `M`, the common velloco-style 
 ## Practical Workflow
 
 1. Copy `engineai_full_body_example` to a new config section.
-2. Replace `policy_name`, `policy_path` or `policy_file`.
-3. Replace upper-body joint names with your robot's real names.
-4. Keep `robot.joint_order`, `action_joint_order`, `obs_joint_order` mutually consistent.
-5. Update the observation manifest joint-related `count` fields.
-6. Recompute `obs_dim`.
-7. Add the new section into `deploy_mode_profiles`.
-8. Run config validation and sim2sim before real deployment.
+2. Extend root `robot_global_joint_order` so it covers the full robot joints used by this mode.
+3. Replace `policy_name`, `policy_path` or `policy_file`.
+4. Replace upper-body joint names with your robot's real names.
+5. Keep `action_joint_order`, `obs_joint_order`, `reference_joint_order` mutually consistent with training.
+6. Update the observation manifest joint-related `count` fields.
+7. Recompute `obs_dim`.
+8. Add the new section into `deploy_mode_profiles`.
+9. Run config validation and sim2sim before real deployment.
 
 ## Lower-Body Policy in a Full-Body Robot
 

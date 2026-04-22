@@ -188,28 +188,28 @@ engineai_full_body_example:
   control_mode: sim2real
   action_filter: 0.2
   robot:
-    joint_order:
-      - right_hip_roll
-      - right_hip_yaw
-      - right_hip_pitch
-      - right_knee_pitch
-      - right_ankle_pitch
-      - right_ankle_roll
-      - left_hip_roll
-      - left_hip_yaw
-      - left_hip_pitch
-      - left_knee_pitch
-      - left_ankle_pitch
-      - left_ankle_roll
-      - left_shoulder_pitch
-      - left_shoulder_roll
-      - left_shoulder_yaw
-      - left_elbow_pitch
-      - right_shoulder_pitch
-      - right_shoulder_roll
-      - right_shoulder_yaw
-      - right_elbow_pitch
     default_joint_angles:
+      right_hip_roll: 0.0
+      right_hip_yaw: 0.0
+      right_hip_pitch: -0.24
+      right_knee_pitch: 0.48
+      right_ankle_pitch: -0.24
+      right_ankle_roll: 0.0
+      left_hip_roll: 0.0
+      left_hip_yaw: 0.0
+      left_hip_pitch: -0.24
+      left_knee_pitch: 0.48
+      left_ankle_pitch: -0.24
+      left_ankle_roll: 0.0
+      left_shoulder_pitch: 0.0
+      left_shoulder_roll: 0.15
+      left_shoulder_yaw: 0.0
+      left_elbow_pitch: 0.3
+      right_shoulder_pitch: 0.0
+      right_shoulder_roll: -0.15
+      right_shoulder_yaw: 0.0
+      right_elbow_pitch: 0.3
+    zero_joint_angles:
       right_hip_roll: 0.0
       right_hip_yaw: 0.0
       right_hip_pitch: -0.24

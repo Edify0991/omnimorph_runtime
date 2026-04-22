@@ -494,41 +494,19 @@ void RobotSolver::applyRuntimeCommand(
             return false;
         }
 
-        if (!sim2real_cfg_.action_joint_order.empty())
-        {
-            if (static_cast<size_t>(global_idx) >= runtime_joint_names_.size())
-            {
-                return false;
-            }
-            const std::string &joint_name = runtime_joint_names_[static_cast<size_t>(global_idx)];
-            return std::find(
-                       sim2real_cfg_.action_joint_order.begin(),
-                       sim2real_cfg_.action_joint_order.end(),
-                       joint_name) != sim2real_cfg_.action_joint_order.end();
-        }
-
-        if (sim2real_cfg_.action_dim <= 0)
+        if (sim2real_cfg_.action_joint_order.empty())
         {
             return false;
-        }
-        if (sim2real_cfg_.robot_joint_order.empty())
-        {
-            return static_cast<size_t>(global_idx) < static_cast<size_t>(sim2real_cfg_.action_dim);
         }
         if (static_cast<size_t>(global_idx) >= runtime_joint_names_.size())
         {
             return false;
         }
         const std::string &joint_name = runtime_joint_names_[static_cast<size_t>(global_idx)];
-        const auto it = std::find(
-            sim2real_cfg_.robot_joint_order.begin(),
-            sim2real_cfg_.robot_joint_order.end(),
-            joint_name);
-        if (it == sim2real_cfg_.robot_joint_order.end())
-        {
-            return false;
-        }
-        return static_cast<int>(std::distance(sim2real_cfg_.robot_joint_order.begin(), it)) < sim2real_cfg_.action_dim;
+        return std::find(
+                   sim2real_cfg_.action_joint_order.begin(),
+                   sim2real_cfg_.action_joint_order.end(),
+                   joint_name) != sim2real_cfg_.action_joint_order.end();
     };
 
     const double now_s = rl_master::monotonicTimeSec();

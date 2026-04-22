@@ -260,10 +260,10 @@ Edit:
 对应当前代码行为：
 
 - runtime 会使用顶层 `robot_global_joint_order` 作为全局 joint 顺序
-- 如果没有配置 `robot.zero_joint_angles`，zeroing 会回退到 `default_angle`
-- 如果配置了 `robot.zero_joint_angles`，就必须完整覆盖该 mode 的运行时 joint 集合
+- `robot.zero_joint_angles` 现在是必配项
+- `robot.zero_joint_angles` 必须完整覆盖 `robot_global_joint_order`
 
-这样做的目的，是避免全身模式下只写下半身时，把未写关节错误补成 `0.0`。
+这样做的目的，是避免 zeroing 目标姿态存在隐式回退或漏配关节。
 
 ### 3.4 典型设计示例
 

@@ -534,16 +534,6 @@ std::vector<int> RL_controller::buildActionRobotIndices(
     }
 
     std::vector<std::string> action_joint_names = cfg.action_joint_order;
-    if (action_joint_names.empty())
-    {
-        if (cfg.robot_joint_order.size() < static_cast<size_t>(cfg.action_dim))
-        {
-            throw std::runtime_error(cfg_name + ": robot_joint_order is shorter than action_dim");
-        }
-        action_joint_names.assign(
-            cfg.robot_joint_order.begin(),
-            cfg.robot_joint_order.begin() + static_cast<std::ptrdiff_t>(cfg.action_dim));
-    }
     if (action_joint_names.size() != static_cast<size_t>(cfg.action_dim))
     {
         throw std::runtime_error(cfg_name + ": action_joint_order length must equal action_dim");
@@ -594,16 +584,6 @@ std::vector<int> RL_controller::buildObsIndexMap(
 
     std::vector<int> map_policy_idx_to_robot_idx(static_cast<size_t>(cfg.motor_N), 0);
     std::vector<std::string> obs_joint_names = cfg.obs_joint_order;
-    if (obs_joint_names.empty())
-    {
-        if (cfg.robot_joint_order.size() < static_cast<size_t>(cfg.motor_N))
-        {
-            throw std::runtime_error(cfg_name + ": robot_joint_order is shorter than motor_N");
-        }
-        obs_joint_names.assign(
-            cfg.robot_joint_order.begin(),
-            cfg.robot_joint_order.begin() + static_cast<std::ptrdiff_t>(cfg.motor_N));
-    }
     if (obs_joint_names.size() != static_cast<size_t>(cfg.motor_N))
     {
         throw std::runtime_error(cfg_name + ": obs_joint_order length must equal motor_N");
@@ -925,7 +905,7 @@ std::vector<float> RL_controller::buildZeroPoseFromCfg(
 {
     if (robot_cfg.zero_joint_angles.empty())
     {
-        return {};
+        throw std::runtime_error("robot.zero_joint_angles must not be empty");
     }
 
     std::vector<float> out(joint_names.size(), 0.0f);

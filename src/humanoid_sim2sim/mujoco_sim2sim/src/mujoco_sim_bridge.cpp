@@ -1773,31 +1773,14 @@ void MujocoSimBridge::updateControlInput(
         }
         const std::string &joint_name = joint_names_[idx];
 
-        if (!active_cfg.action_joint_order.empty())
-        {
-            return std::find(
-                       active_cfg.action_joint_order.begin(),
-                       active_cfg.action_joint_order.end(),
-                       joint_name) != active_cfg.action_joint_order.end();
-        }
-
-        if (active_cfg.action_dim <= 0)
+        if (active_cfg.action_joint_order.empty())
         {
             return false;
         }
-        if (active_cfg.robot_joint_order.empty())
-        {
-            return idx < static_cast<size_t>(active_cfg.action_dim);
-        }
-        const auto it = std::find(
-            active_cfg.robot_joint_order.begin(),
-            active_cfg.robot_joint_order.end(),
-            joint_name);
-        if (it == active_cfg.robot_joint_order.end())
-        {
-            return false;
-        }
-        return static_cast<int>(std::distance(active_cfg.robot_joint_order.begin(), it)) < active_cfg.action_dim;
+        return std::find(
+                   active_cfg.action_joint_order.begin(),
+                   active_cfg.action_joint_order.end(),
+                   joint_name) != active_cfg.action_joint_order.end();
     };
 
     if (runtime_mode.unknown_open_rl_mode &&

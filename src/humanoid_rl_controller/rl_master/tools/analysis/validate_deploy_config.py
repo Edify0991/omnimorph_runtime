@@ -279,36 +279,6 @@ def find_by_name(seq: Sequence[Tuple[str, Any]], key: str) -> Optional[Any]:
     return None
 
 
-def build_runtime_joint_order(
-    section_cfg: Dict[str, Any],
-    action_order: Sequence[str],
-    obs_order: Sequence[str],
-    reference_order: Sequence[str],
-) -> List[str]:
-    robot_cfg = to_dict(section_cfg.get("robot"))
-    ordered: List[str] = []
-    seen: set[str] = set()
-
-    def append_name(name: Any) -> None:
-        text = str(name).strip()
-        if not text or text in seen:
-            return
-        seen.add(text)
-        ordered.append(text)
-
-    for name in to_list(robot_cfg.get("joint_order")):
-        append_name(name)
-    for name in to_dict(robot_cfg.get("default_joint_angles")).keys():
-        append_name(name)
-    for name in action_order:
-        append_name(name)
-    for name in obs_order:
-        append_name(name)
-    for name in reference_order:
-        append_name(name)
-    return ordered
-
-
 def get_global_robot_joint_order(
     root_cfg: Dict[str, Any],
     issues: IssueCollector,
@@ -338,7 +308,7 @@ def get_global_robot_joint_order(
 
 def validate_zero_pose_contract(
     section_cfg: Dict[str, Any],
-    runtime_joint_order: Sequence[str],
+    global_joint_order: Sequence[str],
     issues: IssueCollector,
     context: str,
 ) -> None:
@@ -353,28 +323,38 @@ def validate_zero_pose_contract(
         return
 
     if "zero_joint_angles" not in robot_cfg:
+        issues.error(
+            context,
+            "robot.zero_joint_angles is required and must cover robot_global_joint_order",
+        )
         return
 
     zero_joint_angles = robot_cfg.get("zero_joint_angles")
     if not isinstance(zero_joint_angles, dict):
         issues.error(context, "robot.zero_joint_angles must be a map")
         return
-
-    runtime_joint_set = {str(name) for name in runtime_joint_order}
-    zero_joint_set = {str(name) for name in zero_joint_angles.keys()}
-
-    if not runtime_joint_order:
-        issues.error(context, "failed to resolve runtime joint order for zero pose validation")
+    if not zero_joint_angles:
+        issues.error(
+            context,
+            "robot.zero_joint_angles must not be empty and must cover robot_global_joint_order",
+        )
         return
 
-    unknown = sorted(zero_joint_set - runtime_joint_set)
+    global_joint_set = {str(name) for name in global_joint_order}
+    zero_joint_set = {str(name) for name in zero_joint_angles.keys()}
+
+    if not global_joint_order:
+        issues.error(context, "robot_global_joint_order is required for zero pose validation")
+        return
+
+    unknown = sorted(zero_joint_set - global_joint_set)
     if unknown:
         issues.error(
             context,
             "robot.zero_joint_angles contains unknown joints: " + ", ".join(unknown),
         )
 
-    missing = [name for name in runtime_joint_order if name not in zero_joint_set]
+    missing = [name for name in global_joint_order if name not in zero_joint_set]
     if missing:
         issues.error(
             context,
@@ -382,24 +362,55 @@ def validate_zero_pose_contract(
         )
 
 
-def validate_against_global_joint_order(
-    section_cfg: Dict[str, Any],
-    runtime_joint_order: Sequence[str],
+def validate_named_joints_against_global_joint_order(
+    field_name: str,
+    names: Sequence[str],
     global_joint_order: Sequence[str],
     issues: IssueCollector,
     context: str,
-) -> Sequence[str]:
+) -> None:
     if not global_joint_order:
-        return runtime_joint_order
+        return
 
     global_joint_set = {str(name) for name in global_joint_order}
-    unknown = sorted({str(name) for name in runtime_joint_order} - global_joint_set)
+    unknown = sorted({str(name) for name in names} - global_joint_set)
     if unknown:
         issues.error(
             context,
-            "mode joint set contains joints not present in robot_global_joint_order: " + ", ".join(unknown),
+            f"{field_name} contains joints not present in robot_global_joint_order: " + ", ".join(unknown),
         )
-    return list(global_joint_order)
+
+
+def validate_robot_cfg_against_global_joint_order(
+    section_cfg: Dict[str, Any],
+    global_joint_order: Sequence[str],
+    issues: IssueCollector,
+    context: str,
+) -> None:
+    robot_cfg = to_dict(section_cfg.get("robot"))
+    if not robot_cfg:
+        return
+
+    if "joint_order" in robot_cfg:
+        issues.error(
+            context,
+            "legacy robot.joint_order is no longer supported; use root robot_global_joint_order plus explicit action/obs/reference orders",
+        )
+
+    for field_name in ("default_joint_angles", "zero_joint_angles", "joint_limit_range", "motor_torque_limit"):
+        raw = robot_cfg.get(field_name)
+        if raw is None:
+            continue
+        if not isinstance(raw, dict):
+            issues.error(context, f"robot.{field_name} must be a map")
+            continue
+        validate_named_joints_against_global_joint_order(
+            f"robot.{field_name}",
+            [str(name) for name in raw.keys()],
+            global_joint_order,
+            issues,
+            context,
+        )
 
 
 def load_rl_cfg(path: Path) -> Dict[str, Any]:
@@ -660,6 +671,8 @@ def check_joint_order(
     if motor_n <= 0:
         issues.error(context, "motor_N must be > 0")
 
+    if not action_order:
+        issues.error(context, "action_joint_order must not be empty")
     if action_order:
         if len(action_order) != action_dim:
             issues.error(context, "action_joint_order length must equal action_dim")
@@ -670,6 +683,8 @@ def check_joint_order(
                 issues.warn(context, f"action_joint_order contains non-canonical joint name '{name}'")
 
     obs_order = list(obs_order_raw) if obs_order_raw else list(action_order)
+    if not obs_order:
+        issues.error(context, "obs_joint_order must not be empty")
     if obs_order:
         if len(obs_order) != motor_n:
             issues.error(context, "obs_joint_order length must equal motor_N")
@@ -1403,15 +1418,22 @@ def validate_profile(
         issues,
         context,
     )
-    runtime_joint_order = build_runtime_joint_order(section_cfg, action_order, obs_order, reference_order)
-    runtime_joint_order = validate_against_global_joint_order(
-        section_cfg,
-        runtime_joint_order,
-        get_global_robot_joint_order(root_cfg, issues),
+    global_joint_order = get_global_robot_joint_order(root_cfg, issues)
+    validate_named_joints_against_global_joint_order(
+        "action_joint_order", action_order, global_joint_order, issues, context
+    )
+    validate_named_joints_against_global_joint_order(
+        "obs_joint_order",
+        obs_order if obs_order else action_order,
+        global_joint_order,
         issues,
         context,
     )
-    validate_zero_pose_contract(section_cfg, runtime_joint_order, issues, context)
+    validate_named_joints_against_global_joint_order(
+        "reference_joint_order", reference_order, global_joint_order, issues, context
+    )
+    validate_robot_cfg_against_global_joint_order(section_cfg, global_joint_order, issues, context)
+    validate_zero_pose_contract(section_cfg, global_joint_order, issues, context)
     check_source_contract(section_cfg, issues, context)
     check_reference_contract(section_cfg, root_dir, reference_order, issues, context)
     feature_dims = build_feature_dim_map(section_cfg, reference_order)

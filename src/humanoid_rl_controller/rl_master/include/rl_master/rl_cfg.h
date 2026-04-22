@@ -361,21 +361,6 @@ inline int readDeployModeIdFromEnv(
 #define RL_CFG_PATH RL_MASTER_ROOT_DIR "/config/rl_cfg.yaml"
 #define OBS_MANIFEST_PATH RL_MASTER_ROOT_DIR "/config/observation_manifest.yaml"
 
-inline void appendUniqueName(
-    std::vector<std::string> *out,
-    std::unordered_set<std::string> *seen,
-    const std::string &name)
-{
-    if (!out || !seen || name.empty())
-    {
-        return;
-    }
-    if (seen->insert(name).second)
-    {
-        out->push_back(name);
-    }
-}
-
 struct ExternalObservationSpec
 {
     std::string name;
@@ -608,7 +593,6 @@ public:
     double state_telemetry_hz = 50.0;
 
     std::vector<float> tau_limit;
-    std::vector<std::string> robot_joint_order;
 
     RuntimeLoggingConfig logging;
     std::string data_path;
@@ -619,7 +603,6 @@ public:
     class RobotCfg
     {
     public:
-        std::vector<std::string> joint_order;
         std::vector<std::pair<std::string, float>> default_joint_angles;
         std::vector<std::pair<std::string, float>> zero_joint_angles;
         std::map<std::string, std::vector<float>> joint_limit_range;
@@ -650,7 +633,6 @@ public:
 
             robotCfg.default_joint_angles.clear();
             robotCfg.zero_joint_angles.clear();
-            robotCfg.joint_order.clear();
             robotCfg.joint_limit_range.clear();
             robotCfg.motor_torque_limit.clear();
             sub_models.clear();
@@ -877,6 +859,44 @@ public:
             if (obs_joint_order.empty())
             {
                 obs_joint_order = action_joint_order;
+            }
+            if (action_joint_order.empty())
+            {
+                throw std::runtime_error("action_joint_order must not be empty");
+            }
+            if (action_joint_order.size() != static_cast<size_t>(action_dim))
+            {
+                throw std::runtime_error("action_joint_order length must equal action_dim");
+            }
+            {
+                std::unordered_set<std::string> seen_action_joint_names;
+                seen_action_joint_names.reserve(action_joint_order.size());
+                for (const auto &name : action_joint_order)
+                {
+                    if (!seen_action_joint_names.insert(name).second)
+                    {
+                        throw std::runtime_error("action_joint_order contains duplicate joint: " + name);
+                    }
+                }
+            }
+            if (obs_joint_order.empty())
+            {
+                throw std::runtime_error("obs_joint_order must not be empty");
+            }
+            if (obs_joint_order.size() != static_cast<size_t>(motor_N))
+            {
+                throw std::runtime_error("obs_joint_order length must equal motor_N");
+            }
+            {
+                std::unordered_set<std::string> seen_obs_joint_names;
+                seen_obs_joint_names.reserve(obs_joint_order.size());
+                for (const auto &name : obs_joint_order)
+                {
+                    if (!seen_obs_joint_names.insert(name).second)
+                    {
+                        throw std::runtime_error("obs_joint_order contains duplicate joint: " + name);
+                    }
+                }
             }
 
             const std::string policy_file = yamlReadOr<std::string>(cfg, "policy_file", "");
@@ -1247,7 +1267,12 @@ public:
                     it->second.as<float>()});
             }
 
-            if (robot["zero_joint_angles"])
+            if (!robot["zero_joint_angles"])
+            {
+                throw std::runtime_error(
+                    "robot.zero_joint_angles is required in " + config_type +
+                    "; it must cover robot_global_joint_order");
+            }
             {
                 const YAML::Node zero_angles = robot["zero_joint_angles"];
                 if (!zero_angles.IsMap())
@@ -1260,11 +1285,11 @@ public:
                         it->first.as<std::string>(),
                         it->second.as<float>()});
                 }
-            }
-
-            if (robot["joint_order"])
-            {
-                robotCfg.joint_order = robot["joint_order"].as<std::vector<std::string>>();
+                if (robotCfg.zero_joint_angles.empty())
+                {
+                    throw std::runtime_error(
+                        "robot.zero_joint_angles must not be empty in " + config_type);
+                }
             }
 
             const YAML::Node limits = robot["joint_limit_range"];
@@ -1288,104 +1313,6 @@ public:
             scales.dof_vel = scale["dof_vel"].as<float>();
             scales.quat = scale["quat"].as<float>();
             scales.height_measurements = scale["height_measurements"].as<float>();
-
-            robot_joint_order.clear();
-            std::unordered_set<std::string> seen_joint_names;
-            seen_joint_names.reserve(
-                robotCfg.joint_order.size() +
-                robotCfg.default_joint_angles.size() +
-                action_joint_order.size() +
-                obs_joint_order.size() +
-                reference_joint_order.size());
-
-            for (const auto &name : robotCfg.joint_order)
-            {
-                appendUniqueName(&robot_joint_order, &seen_joint_names, name);
-            }
-            for (const auto &entry : robotCfg.default_joint_angles)
-            {
-                appendUniqueName(&robot_joint_order, &seen_joint_names, entry.first);
-            }
-            for (const auto &name : action_joint_order)
-            {
-                appendUniqueName(&robot_joint_order, &seen_joint_names, name);
-            }
-            for (const auto &name : obs_joint_order)
-            {
-                appendUniqueName(&robot_joint_order, &seen_joint_names, name);
-            }
-            for (const auto &name : reference_joint_order)
-            {
-                appendUniqueName(&robot_joint_order, &seen_joint_names, name);
-            }
-            if (robot_joint_order.empty())
-            {
-                throw std::runtime_error("failed to resolve robot joint order from config: " + config_type);
-            }
-
-            if (!robotCfg.zero_joint_angles.empty())
-            {
-                std::unordered_set<std::string> known_joint_names;
-                known_joint_names.reserve(robot_joint_order.size());
-                for (const auto &name : robot_joint_order)
-                {
-                    known_joint_names.insert(name);
-                }
-
-                std::unordered_set<std::string> zero_joint_names;
-                zero_joint_names.reserve(robotCfg.zero_joint_angles.size());
-                std::vector<std::string> unknown_zero_joints;
-                for (const auto &entry : robotCfg.zero_joint_angles)
-                {
-                    const std::string &name = entry.first;
-                    if (!zero_joint_names.insert(name).second)
-                    {
-                        throw std::runtime_error("robot.zero_joint_angles contains duplicate joint: " + name);
-                    }
-                    if (known_joint_names.find(name) == known_joint_names.end())
-                    {
-                        unknown_zero_joints.push_back(name);
-                    }
-                }
-
-                if (!unknown_zero_joints.empty())
-                {
-                    std::ostringstream oss;
-                    for (size_t i = 0; i < unknown_zero_joints.size(); ++i)
-                    {
-                        if (i > 0)
-                        {
-                            oss << ", ";
-                        }
-                        oss << unknown_zero_joints[i];
-                    }
-                    throw std::runtime_error(
-                        "robot.zero_joint_angles contains unknown joints in " + config_type + ": " + oss.str());
-                }
-
-                std::vector<std::string> missing_zero_joints;
-                for (const auto &name : robot_joint_order)
-                {
-                    if (zero_joint_names.find(name) == zero_joint_names.end())
-                    {
-                        missing_zero_joints.push_back(name);
-                    }
-                }
-                if (!missing_zero_joints.empty())
-                {
-                    std::ostringstream oss;
-                    for (size_t i = 0; i < missing_zero_joints.size(); ++i)
-                    {
-                        if (i > 0)
-                        {
-                            oss << ", ";
-                        }
-                        oss << missing_zero_joints[i];
-                    }
-                    throw std::runtime_error(
-                        "robot.zero_joint_angles missing joints in " + config_type + ": " + oss.str());
-                }
-            }
 
             return true;
         }
