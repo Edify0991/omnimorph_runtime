@@ -36,11 +36,9 @@ This starts only `mujoco_sim_bridge` with `backend:=cpp`.
 - `common.sh`: shared helpers
 - `run_ros_executable.sh`: generic ROS executable launcher
 - `solver.sh`: low-level launcher for `rl_master/RL_solver`
-- `controller.sh`: legacy standalone `RL_controller` launcher
 - `sim2real_engineai.sh`: recommended one-command real-robot startup
 - `sim2sim_engineai.sh`: recommended one-command MuJoCo fused sim2sim startup
 - `sim2sim_engineai_python.sh`: recommended Python GUI frontend for fused sim2sim
-- `sim2sim_engineai_python_legacy.sh`: legacy split-runtime Python interactive sim2sim startup
 - `publish_walk_mode.sh`: publish lifecycle / mode control words
 - `imu.sh`: IMU node launcher
 - `joyLaunch.py`: joystick bridge publishing teleop + `walk_mode`
@@ -84,8 +82,7 @@ Useful helper:
 
 ## Compatibility Notes
 
-- `controller.sh` exists only for compatibility / standalone debugging and is not part of the recommended deploy path anymore.
-- The standard sim2sim path no longer requires `start_rl_controller:=true`.
+- The supported sim2sim paths no longer launch a standalone controller process.
 
 ## Python GUI Path
 
@@ -104,13 +101,4 @@ This path uses:
 C++ fused backend (physics + controller) -> ROS2 frame stream -> Python MuJoCo viewer frontend
 ```
 
-It is still much closer to the real fused runtime than the old legacy split backend.
-
-If you explicitly need the historical split topology for regression comparison, use:
-
-```bash
-./script/sim2sim_engineai_python_legacy.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --auto-start-mode
-```
+It is the only supported Python GUI path now.

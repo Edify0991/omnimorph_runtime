@@ -162,7 +162,6 @@ LAUNCH_CMD=(
   ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py
   "model_path:=${MODEL_PATH}"
   "backend:=cpp"
-  "start_rl_controller:=false"
   "mode_id:=${MODE_ID}"
   "control_hz:=${CONTROL_HZ}"
   "fixed_base:=${FIXED_BASE}"

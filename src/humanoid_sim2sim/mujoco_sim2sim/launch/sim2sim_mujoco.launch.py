@@ -113,66 +113,6 @@ def generate_launch_description():
         default_value="true",
         description="Python interactive backend only: show right UI panel.",
     )
-    start_controller_arg = DeclareLaunchArgument(
-        "start_rl_controller",
-        default_value="false",
-        description="Legacy option for python_interactive backend only. C++ sim2sim now runs fused single-process.",
-    )
-    controller_rt_enabled_arg = DeclareLaunchArgument(
-        "controller_rt_enabled",
-        default_value="",
-        description="Optional override for RL_MASTER_CONTROLLER_RT_ENABLED env (empty keeps yaml/default).",
-    )
-    controller_rt_lock_memory_arg = DeclareLaunchArgument(
-        "controller_rt_lock_memory",
-        default_value="",
-        description="Optional override for RL_MASTER_CONTROLLER_RT_LOCK_MEMORY env.",
-    )
-    controller_rt_set_affinity_arg = DeclareLaunchArgument(
-        "controller_rt_set_affinity",
-        default_value="",
-        description="Optional override for RL_MASTER_CONTROLLER_RT_SET_AFFINITY env.",
-    )
-    controller_rt_cpu_id_arg = DeclareLaunchArgument(
-        "controller_rt_cpu_id",
-        default_value="",
-        description="Optional override for RL_MASTER_CONTROLLER_RT_CPU_ID env.",
-    )
-    controller_rt_use_fifo_arg = DeclareLaunchArgument(
-        "controller_rt_use_fifo",
-        default_value="",
-        description="Optional override for RL_MASTER_CONTROLLER_RT_USE_FIFO env.",
-    )
-    controller_rt_fifo_priority_arg = DeclareLaunchArgument(
-        "controller_rt_fifo_priority",
-        default_value="",
-        description="Optional override for RL_MASTER_CONTROLLER_RT_FIFO_PRIORITY env.",
-    )
-
-    rl_controller = Node(
-        package="rl_master",
-        executable="RL_controller",
-        name="rl_controller",
-        output="screen",
-        condition=IfCondition(
-            PythonExpression([
-                "'",
-                LaunchConfiguration("backend"),
-                "' == 'python_interactive' and '",
-                LaunchConfiguration("start_rl_controller"),
-                "' == 'true'",
-            ])
-        ),
-        additional_env={
-            "RL_MASTER_CONTROLLER_RT_ENABLED": LaunchConfiguration("controller_rt_enabled"),
-            "RL_MASTER_CONTROLLER_RT_LOCK_MEMORY": LaunchConfiguration("controller_rt_lock_memory"),
-            "RL_MASTER_CONTROLLER_RT_SET_AFFINITY": LaunchConfiguration("controller_rt_set_affinity"),
-            "RL_MASTER_CONTROLLER_RT_CPU_ID": LaunchConfiguration("controller_rt_cpu_id"),
-            "RL_MASTER_CONTROLLER_RT_USE_FIFO": LaunchConfiguration("controller_rt_use_fifo"),
-            "RL_MASTER_CONTROLLER_RT_FIFO_PRIORITY": LaunchConfiguration("controller_rt_fifo_priority"),
-        },
-    )
-
     common_bridge_parameters = [
         LaunchConfiguration("bridge_config"),
         {
@@ -277,14 +217,6 @@ def generate_launch_description():
             state_telemetry_hz_arg,
             show_left_ui_arg,
             show_right_ui_arg,
-            start_controller_arg,
-            controller_rt_enabled_arg,
-            controller_rt_lock_memory_arg,
-            controller_rt_set_affinity_arg,
-            controller_rt_cpu_id_arg,
-            controller_rt_use_fifo_arg,
-            controller_rt_fifo_priority_arg,
-            rl_controller,
             cpp_bridge,
             python_frontend_bridge,
             python_frontend_viewer,

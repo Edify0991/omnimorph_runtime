@@ -11,13 +11,13 @@ mujoco_sim_bridge (C++)
   |- ONNX inference
 ```
 
-### Python interactive sim2sim
+### Historical Python interactive sim2sim
 
 ```text
 RL_controller (legacy standalone process) <-> DDS <-> python_interactive backend
 ```
 
-So the Python backend is still split across two processes, while the C++ backend is fused.
+That historical path has now been removed. The rest of this document is kept only as design history for why the repo moved toward the fused backend plus viewer-frontend architecture.
 
 ## Why It Cannot Be "Just Switched" To SHM Immediately
 
@@ -80,10 +80,10 @@ That means the next serious refactor would be:
 2. add a sim2sim SHM block for state snapshots and optional UI commands
 3. convert Python interactive backend into a GUI client instead of the control owner
 
-## What Was Done In This Round
+## What Was Done In That Round
 
-- kept Python backend available as a supported legacy path
-- kept fused C++ backend as the standard path
-- separated standalone controller glue into `rl_master/legacy/`
+- the old Python split backend was still present at that time
+- the fused C++ backend was already the standard path
+- standalone controller glue had been isolated under `rl_master/legacy/`
 
 So the repo is now in a cleaner state for doing Option B next, if you want me to continue.

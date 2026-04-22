@@ -133,7 +133,6 @@ done
 
 print_banner "EngineAI Sim2Sim (Python GUI Frontend)"
 log_info "This path keeps the friendly Python MuJoCo GUI, while the fused C++ backend owns both physics and policy/control loop."
-log_info "If you need the old split runtime, use ./script/sim2sim_engineai_python_legacy.sh."
 
 CURRENT_PYTHON="$(command -v python3 || true)"
 [[ -n "${CURRENT_PYTHON}" ]] || die "python3 not found in PATH"
@@ -191,7 +190,6 @@ LAUNCH_CMD=(
   ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py
   "model_path:=${MODEL_PATH}"
   "backend:=python_frontend"
-  "start_rl_controller:=false"
   "mode_id:=${MODE_ID}"
   "control_hz:=${CONTROL_HZ}"
   "fixed_base:=${FIXED_BASE}"

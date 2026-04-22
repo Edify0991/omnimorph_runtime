@@ -90,7 +90,6 @@ def generate_launch_description():
         launch_arguments={
             "model_path": LaunchConfiguration("model_path"),
             "backend": LaunchConfiguration("backend"),
-            "start_rl_controller": "false",
             "fixed_base": LaunchConfiguration("fixed_base"),
             "fixed_base_height": LaunchConfiguration("fixed_base_height"),
             "actuator_control_mode": LaunchConfiguration("actuator_control_mode"),

@@ -23,7 +23,6 @@ add_executable(joint_motor_test_runner
   src/joint_motor_test_runner.cpp
   ../rl_master/dds_protocol.cpp
   ../rl_master/deploy_state_machine.cpp
-  ../rl_master/logging/structured_logger.cpp
 )
 
 target_include_directories(joint_motor_test_runner PUBLIC

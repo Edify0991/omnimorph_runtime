@@ -46,7 +46,7 @@ sudo python3 ./script/joyLaunch.py
 Notes:
 
 - `solver.sh` now launches the standard fused runtime.
-- `controller.sh` is no longer required for standard deployment.
+- the old standalone controller launcher has been removed.
 
 ## 3. External Topics Still Used
 
@@ -158,6 +158,6 @@ Check these in order:
 
 ## 8. Compatibility
 
-The standalone `RL_controller` executable is still available for compatibility and isolated debugging, but it is no longer the recommended production startup method.
+The old standalone `RL_controller` executable and its split-runtime path have been removed.
 
-The old `/humanoid/rl/command` topic now belongs only to that legacy split-runtime path.
+The standard supported deploy path is now only the fused `RL_solver` runtime.

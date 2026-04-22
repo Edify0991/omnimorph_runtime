@@ -191,33 +191,6 @@ if(RL_MASTER_RPATH)
   )
 endif()
 
-add_executable(RL_controller
-  legacy/dds_robot_io.cpp
-  legacy/sim2real_rl_controller_main.cpp
-)
-target_include_directories(RL_controller PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-ament_target_dependencies(RL_controller
-  rclcpp
-  std_msgs
-  sensor_msgs
-  geometry_msgs
-)
-target_link_libraries(RL_controller
-  rl_master_runtime
-  yaml-cpp
-)
-target_compile_features(RL_controller PRIVATE cxx_std_17)
-
-if(RL_MASTER_RPATH)
-  set_target_properties(RL_controller PROPERTIES
-    BUILD_RPATH "${RL_MASTER_RPATH}"
-    INSTALL_RPATH "${RL_MASTER_RPATH}"
-  )
-endif()
-
 add_executable(test_kine
   test_kine.cpp
   Ankle_Kinematics.cpp
@@ -293,7 +266,6 @@ install(TARGETS
 )
 
 install(TARGETS
-  RL_controller
   RL_solver
   test_kine
   KinConv

@@ -422,12 +422,6 @@ Use `sim2sim_engineai_python.sh` when you want the friendlier Python MuJoCo GUI 
 C++ fused backend (physics + controller) -> ROS2 frame stream -> Python MuJoCo viewer frontend
 ```
 
-Use `sim2sim_engineai_python_legacy.sh` only when you need the historical split runtime for comparison:
-
-```text
-RL_controller (legacy standalone process) <-> DDS <-> python_interactive backend
-```
-
 ## 9.1 Runtime Logging
 
 The active logging path is now a single-file MCAP runtime recorder:

@@ -35,7 +35,6 @@ Equivalent raw launch command:
 ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
   model_path:=/abs/path/to/robot.xml \
   backend:=cpp \
-  start_rl_controller:=false \
   mode_id:=0 \
   control_hz:=100.0 \
   enable_viewer:=true
@@ -58,18 +57,13 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
 - `state_telemetry_hz`: publish rate for asynchronous `/humanoid/rl/state`
 - `viewer_inspector_hz`: asynchronous publish rate for Python viewer inspector text
 
-### Compatibility argument
-
-- `start_rl_controller`: legacy argument kept only for the old Python interactive backend path
-
 ## 4. External Topics Still Used
 
 - `/humanoid/rl/teleop`
 - `/humanoid/rl/walk_mode`
 - `/humanoid/rl/state` (debug / monitoring)
 
-The bridge does not need `/humanoid/rl/command` anymore in the standard C++ path.
-That topic now belongs only to the legacy split runtime.
+There is no standalone `/humanoid/rl/command` control hop in the supported fused path anymore.
 
 ## 5. Internal Function Chain
 
@@ -157,21 +151,6 @@ If `enable_viewer:=false` and Python frontend is still enabled, the frontend fal
 So this path keeps the friendly Python viewer while still reusing the same fused control/runtime logic as the C++ sim2sim backend.
 Those two topics are now published by a dedicated non-real-time viewer telemetry thread rather than directly from the control tick.
 
-If you explicitly need the old split runtime for comparison, use:
-
-```bash
-./script/sim2sim_engineai_python_legacy.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --auto-start-mode
-```
-
-That legacy path still uses:
-
-```text
-/humanoid/rl/command
-```
-
-For a complete topic summary across fused, legacy, and Python frontend paths, see:
+For a complete topic summary across fused and Python frontend paths, see:
 
 - [topic_interface_matrix.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/topic_interface_matrix.md)

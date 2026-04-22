@@ -125,11 +125,4 @@ export RL_MASTER_SOLVER_RT_CPU_ID=4
 export RL_MASTER_SOLVER_RT_FIFO_PRIORITY=92
 ```
 
-In `sim2sim_mujoco.launch.py`, when `start_rl_controller:=true`, you can override controller realtime settings directly via launch args:
-
-```bash
-ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  start_rl_controller:=true \
-  controller_rt_cpu_id:=4 \
-  controller_rt_fifo_priority:=92
-```
+The supported sim2sim launch no longer starts a standalone controller process.

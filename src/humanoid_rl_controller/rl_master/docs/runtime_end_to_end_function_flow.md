@@ -342,19 +342,6 @@ For a topic-by-topic active vs legacy summary, see:
 
 ## 9. Legacy Python Interactive Sim2Sim Flow
 
-This path is still available only for compatibility and comparison.
+The historical split-runtime Python interactive path has been removed.
 
-1. launch standalone `rl_master/RL_controller`
-2. launch `mujoco_sim_interactive_backend.py`
-3. Python backend publishes `/humanoid/rl/state`
-4. standalone controller reads state + teleop + `walk_mode`
-5. standalone controller publishes legacy `/humanoid/rl/command`
-6. Python backend subscribes command and applies it to MuJoCo
-
-Topology:
-
-```text
-RL_controller (legacy standalone process) <-> DDS <-> python_interactive backend
-```
-
-This is no longer the standard validation path.
+The supported Python GUI flow is now the fused backend plus Python viewer frontend path documented earlier in this file.

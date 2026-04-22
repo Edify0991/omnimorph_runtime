@@ -109,7 +109,6 @@ log_info "[1/4] Checking required topic types"
 FAIL_COUNT=0
 check_topic_type "/imu/yesense" "sensor_msgs/msg/Imu" || FAIL_COUNT=$((FAIL_COUNT + 1))
 check_topic_type "/humanoid/rl/state" "std_msgs/msg/Float32MultiArray" || FAIL_COUNT=$((FAIL_COUNT + 1))
-check_topic_type "/humanoid/rl/command" "std_msgs/msg/Float32MultiArray" || FAIL_COUNT=$((FAIL_COUNT + 1))
 check_topic_type "/humanoid/rl/teleop" "geometry_msgs/msg/Twist" || FAIL_COUNT=$((FAIL_COUNT + 1))
 check_topic_type "/humanoid/rl/walk_mode" "std_msgs/msg/Int32" || FAIL_COUNT=$((FAIL_COUNT + 1))
 
@@ -118,7 +117,6 @@ log_info "[2/4] Checking endpoint connectivity"
 for topic in \
   "/imu/yesense" \
   "/humanoid/rl/state" \
-  "/humanoid/rl/command" \
   "/humanoid/rl/teleop" \
   "/humanoid/rl/walk_mode"; do
   echo "--- ${topic} ---"

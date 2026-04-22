@@ -45,31 +45,31 @@ engineai_walk:
     use_fifo: true
     fifo_priority: 90
   action_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
     - left_hip_roll
     - left_hip_yaw
     - left_hip_pitch
     - left_knee_pitch
     - left_ankle_pitch
     - left_ankle_roll
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
   obs_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
     - left_hip_roll
     - left_hip_yaw
     - left_hip_pitch
     - left_knee_pitch
     - left_ankle_pitch
     - left_ankle_roll
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
   observation_manifest_file: observation_manifest_velloco.yaml
   enable_reference_motion: false
   reference_motion_dim: 24

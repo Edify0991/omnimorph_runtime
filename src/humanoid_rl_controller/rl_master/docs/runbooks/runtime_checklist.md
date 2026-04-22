@@ -91,14 +91,12 @@ Check in this order:
 5. sim2sim: actuator mapping and joint names are correct
 6. sim2real: IMU and motor feedback are alive
 
-## 6. Compatibility Reminder
+## 6. Runtime Reminder
 
-The standard runtime is now single-process in both paths:
+The supported runtime is now single-process in both paths:
 
 - real robot: `RL_solver`
 - MuJoCo sim: `mujoco_sim_bridge` with `backend:=cpp`
-
-`RL_controller` standalone remains only for compatibility and isolated debugging.
 
 ## 7. Python GUI Compatibility Path
 
@@ -109,9 +107,3 @@ If you specifically want the Python MuJoCo GUI, run:
 ```
 
 This now runs the fused C++ runtime with a separate Python MuJoCo viewer frontend.
-
-If you need the historical split runtime for regression comparison, use:
-
-```bash
-./script/sim2sim_engineai_python_legacy.sh --model-path /abs/path/to/robot.xml --mode-id 0
-```
