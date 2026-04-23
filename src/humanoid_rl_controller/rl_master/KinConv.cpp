@@ -84,18 +84,6 @@ void KinConv::validateLegGroupSize() const
     }
 }
 
-std::vector<JointData> KinConv::passThroughJointToMotor(
-    const std::vector<JointData> &joint_cmd)
-{
-    return joint_cmd;
-}
-
-std::vector<JointData> KinConv::passThroughMotorToJoint(
-    const std::vector<JointData> &motor_state)
-{
-    return motor_state;
-}
-
 std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& joint_state, const std::vector<JointData>& joint_cmd)
 {
     if (joint_state.size() != LEG_MOTOR_COUNT || joint_cmd.size() != LEG_MOTOR_COUNT)
@@ -314,12 +302,12 @@ std::vector<JointData> KinConv::armJointToMotor(
     {
         throw std::runtime_error("KinConv::armJointToMotor requires matching joint_state and joint_cmd sizes");
     }
-    return passThroughJointToMotor(joint_cmd);
+    return joint_cmd;
 }
 
 std::vector<JointData> KinConv::armMotorToJoint(const std::vector<JointData> &motor_state) const
 {
-    return passThroughMotorToJoint(motor_state);
+    return motor_state;
 }
 
 std::vector<JointData> KinConv::waistJointToMotor(
@@ -330,10 +318,10 @@ std::vector<JointData> KinConv::waistJointToMotor(
     {
         throw std::runtime_error("KinConv::waistJointToMotor requires matching joint_state and joint_cmd sizes");
     }
-    return passThroughJointToMotor(joint_cmd);
+    return joint_cmd;
 }
 
 std::vector<JointData> KinConv::waistMotorToJoint(const std::vector<JointData> &motor_state) const
 {
-    return passThroughMotorToJoint(motor_state);
+    return motor_state;
 }

@@ -138,10 +138,6 @@ public:
 
 private:
     void validateLegGroupSize() const;
-    static std::vector<JointData> passThroughJointToMotor(
-        const std::vector<JointData> &joint_cmd);
-    static std::vector<JointData> passThroughMotorToJoint(
-        const std::vector<JointData> &motor_state);
 
     // 调用运动学类
     Ankle_Kinematics ankle_kinematics;
