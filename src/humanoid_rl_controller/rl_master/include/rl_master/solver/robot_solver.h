@@ -61,7 +61,6 @@ private:
         const std::array<float, 3> &rpy,
         double monotonic_time_sec);
 
-    void moveToPosition(const std::vector<float> &target_positions);
     void holdCurrentPose();
     void applyControlGainsFromCfg();
     void cacheInstalledZeroPoseFromCfg();

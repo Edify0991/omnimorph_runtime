@@ -1215,66 +1215,6 @@ void RobotSolver::logLoopData(const rl_master::logging::ControllerLogSnapshot &c
     }
 }
 
-void RobotSolver::moveToPosition(const std::vector<float> &target_positions)
-{
-    getMotorState();
-
-    const size_t installed_count = installedJointCount();
-    if (target_positions.size() != installed_count)
-    {
-        throw std::runtime_error(
-            "RobotSolver::moveToPosition target size mismatch: expected " +
-            std::to_string(installed_count) + ", got " + std::to_string(target_positions.size()));
-    }
-
-    std::vector<float> current_positions(installed_count, 0.0f);
-    for (size_t i = 0; i < installed_count; ++i)
-    {
-        current_positions[i] = joint_state_[i].q;
-        std::cout << "Joint " << i << " current position: " << current_positions[i] << std::endl;
-    }
-
-    const double total_time = 5.0;
-    const double target_period = 1.0 / 1000.0;
-    const int total_steps = static_cast<int>(total_time / target_period);
-
-    std::cout << "Starting linear interpolation to home position..." << std::endl;
-    std::cout << "Total time: " << total_time << "s, Steps: " << total_steps << std::endl;
-
-    std::vector<float> step_increments(installed_count, 0.0f);
-    for (size_t i = 0; i < installed_count; ++i)
-    {
-        step_increments[i] = (target_positions[i] - current_positions[i]) / static_cast<float>(total_steps);
-    }
-
-    for (int step = 0; step <= total_steps; ++step)
-    {
-        const auto frame_start = std::chrono::high_resolution_clock::now();
-
-        for (size_t i = 0; i < installed_count; ++i)
-        {
-            const float interpolated_pos = current_positions[i] + static_cast<float>(step) * step_increments[i];
-            joint_cmd_[i].q = interpolated_pos;
-            joint_cmd_[i].dq = 0.0;
-            joint_cmd_[i].tau = 0.0;
-            joint_cmd_[i].mode = RUN_MODE_CSP;
-        }
-
-        sendMotorCmd();
-        getMotorState();
-
-        const auto frame_end = std::chrono::high_resolution_clock::now();
-        const double execution_time = std::chrono::duration<double>(frame_end - frame_start).count();
-        const double sleep_time = target_period - execution_time;
-        if (sleep_time > 0.0)
-        {
-            std::this_thread::sleep_for(std::chrono::duration<double>(sleep_time));
-        }
-    }
-
-    std::cout << "Linear interpolation to home position completed." << std::endl;
-}
-
 void RobotSolver::holdCurrentPose()
 {
     getMotorState();
@@ -1296,11 +1236,6 @@ void RobotSolver::run()
     getMotorState();
     sendRLState();
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-    std::cout << "Move to Home Position!" << std::endl;
-    moveToPosition(installed_zero_joint_q_);
-    std::cout << "Move to Home Position Done!" << std::endl;
-    sleep(2);
     std::cout << "Start RL Solver Loop!" << std::endl;
 
     getMotorState();

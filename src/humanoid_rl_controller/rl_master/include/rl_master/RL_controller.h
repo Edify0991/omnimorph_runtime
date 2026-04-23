@@ -135,6 +135,8 @@ private:
         const ObservationFeatureContext &feature_context);
     void initReferenceMotionProvider(const Sim2realCfg &cfg, ReferenceMotionProvider *provider, const std::string &tag);
     ObservationFeatureContext buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t);
+    bool canHotSwitch(int from_mode, int to_mode) const;
+    const ModeProfile &modeProfileForModeId(int mode_id) const;
 
     void initModeProfiles();
     std::vector<ModeProfileSpec> loadModeProfileSpecsFromYaml() const;

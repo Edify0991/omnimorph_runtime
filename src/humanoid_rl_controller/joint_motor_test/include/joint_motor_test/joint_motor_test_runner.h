@@ -64,7 +64,7 @@ struct JointMotorTestConfig
     bool loop_trajectory = true;
     bool restart_trajectory_on_enter_running = true;
 
-    bool auto_start_policy = false;
+    std::string startup_completion_action = "hold";
     double zeroing_duration_s = 2.0;
     std::vector<float> zero_pose;
 

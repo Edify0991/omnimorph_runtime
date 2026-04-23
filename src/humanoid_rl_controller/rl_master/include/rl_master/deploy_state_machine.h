@@ -1,6 +1,7 @@
 #ifndef RL_MASTER_DEPLOY_STATE_MACHINE_H
 #define RL_MASTER_DEPLOY_STATE_MACHINE_H
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -28,8 +29,8 @@ constexpr int kLegacyCtrlWordZeroing = kLegacyCtrlWordLifecycleBase + 3;
 constexpr int kLegacyCtrlWordEstop = kLegacyCtrlWordLifecycleBase + 4;
 
 // Generic extended mode control:
-// - [1000, 1999]: set mode=(code-1000) and request start.
-// - [2000, 2999]: set mode=(code-2000), do not change lifecycle.
+// - [1000, 1999]: request start for mode=(code-1000).
+// - [2000, 2999]: set pending mode=(code-2000), do not change lifecycle.
 constexpr int kCtrlWordStartModeBase = 1000;
 constexpr int kCtrlWordSetModeBase = 2000;
 constexpr int kCtrlWordModeRange = 1000;
@@ -69,6 +70,7 @@ public:
     void configure(const Sim2realCfg &cfg);
     void initialize(const std::vector<float> &current_q, const std::vector<float> &zero_pose, int initial_mode);
     void setZeroPose(const std::vector<float> &zero_pose);
+    void setHotSwitchPredicate(std::function<bool(int, int)> predicate);
     DeployStateOutput update(int control_word, double now_s, const std::vector<float> &current_q);
 
     DeployLifecycleState state() const { return state_; }
@@ -79,18 +81,26 @@ public:
     static const char *stateName(DeployLifecycleState state);
 
 private:
-    void startZeroing(double now_s, const std::vector<float> &current_q);
+    void startZeroing(
+        double now_s,
+        const std::vector<float> &current_q,
+        DeployLifecycleState completion_state);
+    bool canHotSwitchToMode(int target_mode) const;
 
     bool initialized_ = false;
-    bool auto_start_policy_ = true;
     double zeroing_duration_s_ = 2.0;
+    bool startup_zeroing_pending_ = true;
 
     int active_locomotion_mode_ = kModeCodeMin;
+    int pending_locomotion_mode_ = kModeCodeMin;
     DeployLifecycleState state_ = DeployLifecycleState::kInitializing;
+    DeployLifecycleState startup_completion_state_ = DeployLifecycleState::kHold;
+    DeployLifecycleState post_zeroing_state_ = DeployLifecycleState::kHold;
 
     double zeroing_start_time_s_ = 0.0;
     std::vector<float> zeroing_start_pose_;
     std::vector<float> zeroing_target_pose_;
+    std::function<bool(int, int)> hot_switch_predicate_;
 };
 
 } // namespace rl_master

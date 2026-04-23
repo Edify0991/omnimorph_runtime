@@ -125,12 +125,12 @@ public:
         const std::vector<std::string> &global_joint_order,
         const JointGroupsConfig &joint_groups);
 
-    std::vector<JointData> legJointToMotor(const std::vector<JointData> &joint_state, const std::vector<JointData> &joint_cmd);
-    std::vector<JointData> legMotorToJoint(const std::vector<JointData> &motor_state);
-    std::vector<JointData> armJointToMotor(const std::vector<JointData> &joint_state, const std::vector<JointData> &joint_cmd);
-    std::vector<JointData> armMotorToJoint(const std::vector<JointData> &motor_state);
-    std::vector<JointData> waistJointToMotor(const std::vector<JointData> &joint_state, const std::vector<JointData> &joint_cmd);
-    std::vector<JointData> waistMotorToJoint(const std::vector<JointData> &motor_state);
+    std::vector<JointData> legJointToMotor(const std::vector<JointData> &joint_state, const std::vector<JointData> &joint_cmd) const;
+    std::vector<JointData> legMotorToJoint(const std::vector<JointData> &motor_state) const;
+    std::vector<JointData> armJointToMotor(const std::vector<JointData> &joint_state, const std::vector<JointData> &joint_cmd) const;
+    std::vector<JointData> armMotorToJoint(const std::vector<JointData> &motor_state) const;
+    std::vector<JointData> waistJointToMotor(const std::vector<JointData> &joint_state, const std::vector<JointData> &joint_cmd) const;
+    std::vector<JointData> waistMotorToJoint(const std::vector<JointData> &motor_state) const;
 
     const std::vector<int> &legGlobalIndices() const;
     const std::vector<int> &armGlobalIndices() const;

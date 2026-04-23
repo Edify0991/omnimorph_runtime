@@ -102,14 +102,17 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 
 #### `policy_family`
 
-`policy_family` 更像是策略家族或语义标签，用来表达这个策略大致属于哪一类，比如：
+`policy_family` 现在既是策略家族标签，也是热切兼容分组，用来表达这个策略大致属于哪一类，以及它是否有资格和另一个 mode 做直接热切，比如：
 
 - `amp`
 - `beyondmimic`
 - `velloco`
 - `custom`
 
-它的作用主要是表达“这是什么类型的策略”，而不是自动决定整个运行时结构。
+它的作用现在有两层：
+
+- 表达“这是什么类型的策略”
+- 作为热切的第一层门槛。只有 `policy_family` 相同的两个 mode，才有资格继续做热切兼容判断
 
 当前真正决定运行时结构的，仍然是该 `mode` 配置里是否启用了这些能力：
 
@@ -119,7 +122,18 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 - `reference_motion`
 - 对应的 observation manifest
 
-所以不要把 `policy_family` 理解成“结构开关总控”。
+但仍然不要把 `policy_family` 理解成“只要相同就一定能热切”。
+
+当前实现里，`policy_family` 相同只是必要条件，不是充分条件。运行时还会继续检查：
+
+- `action_joint_order`
+- `installed_joint_run_modes`
+- `obs_joint_order`
+- `reference_joint_order`
+- `observation_manifest_path`
+- `control_mode`
+
+这些合同不一致时，即使 `policy_family` 相同，也不会直接热切，而是会退回 `HOLD`。
 
 ### 0.3 推荐理解方式 / 非推荐理解方式
 
@@ -128,6 +142,7 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 - 一个 `mode` = 一个具体可部署、可切换的单策略配置实例
 - 多个 `mode` 可以属于同一种策略形态
 - 多个 `mode` 也可以拥有相同的 `policy_family`
+- 只有同 `policy_family` 且合同兼容的 mode，才允许直接热切
 - 这些 mode 可以有相似的 `policy_group` 结构
 
 可以半抽象地理解为：
@@ -212,6 +227,10 @@ Edit:
   同样按 policy joint name 写成 map，runtime 会按 `action_joint_order` 自动重排
 - `installed_joint_run_modes`
   按 installed joint name 写成 map，runtime 会直接按接线关节名缓存控制模式
+- `policy_family`
+  既是策略家族标签，也是热切兼容分组
+- `startup_completion_action`
+  控制冷启动 zeroing 完成后进入 `hold` 还是 `running`
 - `obs_joint_order`
 - `observation_manifest_file` / `observation_manifest_path`
 - `policy_io.obs_input_name`
@@ -245,6 +264,8 @@ Edit:
 - reference motion 设定
 - 子模型组合
 - 默认姿态与关节映射
+- 启动 zeroing 完成后的进入动作
+- 与其他 mode 的热切兼容合同
 
 所以最稳妥的工程化做法，就是把“一个可部署策略实例”收口成“一个独立 section + 一个独立 mode_id”。
 
@@ -499,6 +520,6 @@ For the full active/legacy comparison and usage examples, see:
 - 一个 `config_section` 定义这个策略实例的静态配置
 - 一个 `ModeProfile` 是这段配置在运行时的实例化结果
 - 一个 `policy_group` 只是这个 mode 内部实际参与推理的模型集合
-- 一个 `policy_family` 只是语义分类标签，不是完整结构开关
+- 一个 `policy_family` 同时是语义分类标签和热切兼容分组，但仍不是“只要相同就一定能热切”的总开关
 
 按这个模型去写根 `rl_cfg.yaml` 和各 profile 文件，一般就不会再把 `mode`、`group`、`family` 这几层混淆。

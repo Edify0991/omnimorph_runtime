@@ -508,6 +508,10 @@ RL_controller::RL_controller(std::shared_ptr<const rl_master::ModeProfileRegistr
     {
         throw std::runtime_error("Failed to create RobotState object!");
     }
+    deploy_state_machine_.setHotSwitchPredicate(
+        [this](int from_mode, int to_mode) {
+            return this->canHotSwitch(from_mode, to_mode);
+        });
 }
 
 RL_controller::~RL_controller()
@@ -728,6 +732,105 @@ void RL_controller::syncActiveProfileToRobotState()
     const auto &profile = mode_profiles_[active_profile_index_];
     robot->joint_names = joint_order_;
     robot->default_angle = profile.default_angle;
+}
+
+const RL_controller::ModeProfile &RL_controller::modeProfileForModeId(int mode_id) const
+{
+    const size_t profile_index = profileIndexForMode(mode_id, false);
+    if (profile_index >= mode_profiles_.size())
+    {
+        throw std::runtime_error("Resolved mode profile index is invalid");
+    }
+    return mode_profiles_[profile_index];
+}
+
+bool RL_controller::canHotSwitch(int from_mode, int to_mode) const
+{
+    if (from_mode == to_mode)
+    {
+        return true;
+    }
+
+    const auto from_it = mode_to_profile_index_.find(from_mode);
+    const auto to_it = mode_to_profile_index_.find(to_mode);
+    if (from_it == mode_to_profile_index_.end() ||
+        to_it == mode_to_profile_index_.end())
+    {
+        std::cout << "[RL_controller] hot switch rejected: unknown mode id transition from "
+                  << from_mode << " to " << to_mode << std::endl;
+        return false;
+    }
+
+    const auto &from_profile = modeProfileForModeId(from_mode);
+    const auto &to_profile = modeProfileForModeId(to_mode);
+    const auto &from_cfg = from_profile.cfg;
+    const auto &to_cfg = to_profile.cfg;
+
+    auto reject = [&](const std::string &reason) {
+        std::cout << "[RL_controller] hot switch rejected: from mode_id=" << from_mode
+                  << " (" << from_profile.tag << ")"
+                  << " to mode_id=" << to_mode
+                  << " (" << to_profile.tag << ")"
+                  << ", reason=" << reason << std::endl;
+        return false;
+    };
+
+    if (from_cfg.policy_family != to_cfg.policy_family)
+    {
+        return reject(
+            "policy_family mismatch: '" + from_cfg.policy_family +
+            "' vs '" + to_cfg.policy_family + "'");
+    }
+    if (from_cfg.action_dim != to_cfg.action_dim)
+    {
+        return reject("action_dim mismatch");
+    }
+    if (from_cfg.control_mode != to_cfg.control_mode)
+    {
+        return reject(
+            "control_mode mismatch: '" + from_cfg.control_mode +
+            "' vs '" + to_cfg.control_mode + "'");
+    }
+    if (from_cfg.action_joint_order != to_cfg.action_joint_order)
+    {
+        return reject("action_joint_order mismatch");
+    }
+    if (from_cfg.installed_joint_run_modes != to_cfg.installed_joint_run_modes)
+    {
+        return reject("installed_joint_run_modes mismatch");
+    }
+    if (from_cfg.obs_joint_order != to_cfg.obs_joint_order)
+    {
+        return reject("obs_joint_order mismatch");
+    }
+    if (from_cfg.reference_joint_order != to_cfg.reference_joint_order)
+    {
+        return reject("reference_joint_order mismatch");
+    }
+    if (from_cfg.enable_reference_motion != to_cfg.enable_reference_motion)
+    {
+        return reject("enable_reference_motion mismatch");
+    }
+    if (from_cfg.observation_manifest_path != to_cfg.observation_manifest_path)
+    {
+        return reject("observation_manifest_path mismatch");
+    }
+    if (from_cfg.external_observations.size() != to_cfg.external_observations.size())
+    {
+        return reject("external_observations size mismatch");
+    }
+    for (size_t i = 0; i < from_cfg.external_observations.size(); ++i)
+    {
+        const auto &from_spec = from_cfg.external_observations[i];
+        const auto &to_spec = to_cfg.external_observations[i];
+        if (from_spec.name != to_spec.name ||
+            from_spec.dim != to_spec.dim ||
+            from_spec.required != to_spec.required)
+        {
+            return reject("external_observations contract mismatch");
+        }
+    }
+    return true;
 }
 
 size_t RL_controller::profileIndexForMode(int mode_id, bool sanitize_invalid_mode) const

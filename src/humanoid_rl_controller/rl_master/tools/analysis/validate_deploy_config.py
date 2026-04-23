@@ -123,6 +123,7 @@ SUPPORTED_LOGGING_BACKENDS = {"mcap"}
 SUPPORTED_SESSION_NAME_POLICIES = {"timestamp_policy", "timestamp_mode", "custom"}
 SUPPORTED_LOGGING_EXPORT_FORMATS = {"none", "parquet"}
 SUPPORTED_LOGGING_COMPRESSIONS = {"none", "lz4", "zstd"}
+SUPPORTED_STARTUP_COMPLETION_ACTIONS = {"hold", "running"}
 
 
 @dataclass
@@ -1581,6 +1582,26 @@ def validate_profile(
             context,
             "legacy policy_control_run_modes is no longer supported; use installed_joint_run_modes",
         )
+    if "auto_start_policy" in section_cfg:
+        issues.error(
+            context,
+            "auto_start_policy is no longer supported; use startup_completion_action: hold|running",
+        )
+
+    policy_family = str(section_cfg.get("policy_family", "")).strip()
+    if not policy_family:
+        issues.error(context, "policy_family is required")
+
+    startup_completion_action = normalize_token(
+        section_cfg.get("startup_completion_action", "hold")
+    )
+    if startup_completion_action not in SUPPORTED_STARTUP_COMPLETION_ACTIONS:
+        issues.error(
+            context,
+            "startup_completion_action must be one of "
+            + str(sorted(SUPPORTED_STARTUP_COMPLETION_ACTIONS)),
+        )
+
     check_joint_order(
         action_dim,
         motor_n,

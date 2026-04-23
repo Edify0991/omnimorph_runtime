@@ -64,6 +64,7 @@
 - `amp_discriminator`
 - `external_observations`
 - `reference_motion`
+- `startup_completion_action`
 - `robot`
 - `scales`
 
@@ -85,6 +86,7 @@
 
 - 多个 `mode` 可以结构相似
 - 多个 `mode` 也可以拥有相同的 `policy_family`
+- 但只有同 `policy_family` 且运行时合同兼容的 mode，才允许热切
 - 但它们不会共享同一个 runtime `policy_group` 实例
 
 换句话说：
@@ -93,6 +95,12 @@
 - 不等于“共用同一份运行时 group 对象”
 
 当前实现里，仍然是每个 `mode` 各自构造自己的 `ModeProfile`、自己的 `policy_group`。
+
+另外要特别注意，`policy_family` 现在不再只是描述性标签：
+
+- 它同时也是热切兼容分组
+- 同 `policy_family` 只是“有资格热切”的第一层条件
+- 真正是否允许热切，还要继续经过 `action_joint_order`、`installed_joint_run_modes`、`obs_joint_order`、`observation_manifest_path` 等合同一致性检查
 
 ## 4. 目录结构示例
 
@@ -149,6 +157,15 @@ walk_with_vision:
 - 可以让它们保持相同的结构风格
 - 也可以让它们拥有相同的 `policy_family`
 - 但仍然建议写成两个独立 profile 文件
+
+如果这两个 mode 希望支持运行中直接热切，还应尽量保持下面这些合同一致：
+
+- `action_joint_order`
+- `installed_joint_run_modes`
+- `obs_joint_order`
+- `reference_joint_order`
+- `observation_manifest_file` / `observation_manifest_path`
+- `control_mode`
 
 推荐这样做的原因是：
 

@@ -267,7 +267,21 @@ void JointMotorTestRunner::loadConfig()
     config_.loop_trajectory = readBool("loop_trajectory", true);
     config_.restart_trajectory_on_enter_running = readBool("restart_trajectory_on_enter_running", true);
 
-    config_.auto_start_policy = readBool("auto_start_policy", false);
+    config_.startup_completion_action = readString("startup_completion_action", "hold");
+    std::transform(
+        config_.startup_completion_action.begin(),
+        config_.startup_completion_action.end(),
+        config_.startup_completion_action.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (cfg["auto_start_policy"] && !cfg["startup_completion_action"])
+    {
+        config_.startup_completion_action = readBool("auto_start_policy", false) ? "running" : "hold";
+    }
+    if (config_.startup_completion_action != "hold" &&
+        config_.startup_completion_action != "running")
+    {
+        throw std::runtime_error("startup_completion_action must be 'hold' or 'running'");
+    }
     config_.zeroing_duration_s = std::max(0.05, readDouble("zeroing_duration_s", 2.0));
 
     if (cfg["zero_pose"])
@@ -738,7 +752,7 @@ void JointMotorTestRunner::initializeStateMachineIfNeeded()
     }
 
     Sim2realCfg cfg;
-    cfg.auto_start_policy = config_.auto_start_policy;
+    cfg.startup_completion_action = config_.startup_completion_action;
     cfg.zeroing_duration_s = config_.zeroing_duration_s;
 
     state_machine_.configure(cfg);

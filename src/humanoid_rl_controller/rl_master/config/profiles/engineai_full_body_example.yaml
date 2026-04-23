@@ -183,7 +183,7 @@ engineai_full_body_example:
   loop_overrun_warn_us: 2000
   enable_state_telemetry: true
   state_telemetry_hz: 50.0
-  auto_start_policy: true
+  startup_completion_action: hold
   zeroing_duration_s: 2.0
   tau_limit:
     right_hip_roll: 130

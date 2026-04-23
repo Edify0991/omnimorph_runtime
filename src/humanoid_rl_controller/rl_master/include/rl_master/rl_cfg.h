@@ -683,7 +683,7 @@ public:
     std::vector<ExternalObservationSpec> external_observations;
     SourceContract source_contract;
 
-    bool auto_start_policy = true;
+    std::string startup_completion_action = "hold";
     double zeroing_duration_s = 2.0;
 
     bool enable_cmd_watchdog = true;
@@ -1358,7 +1358,24 @@ public:
                 }
             }
 
-            auto_start_policy = yamlReadOr<bool>(cfg, "auto_start_policy", true);
+            if (cfg["auto_start_policy"])
+            {
+                throw std::runtime_error(
+                    "auto_start_policy is no longer supported; "
+                    "use startup_completion_action: hold|running instead");
+            }
+            startup_completion_action = yamlReadOr<std::string>(cfg, "startup_completion_action", "hold");
+            std::transform(
+                startup_completion_action.begin(),
+                startup_completion_action.end(),
+                startup_completion_action.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (startup_completion_action != "hold" &&
+                startup_completion_action != "running")
+            {
+                throw std::runtime_error(
+                    "startup_completion_action must be 'hold' or 'running'");
+            }
             zeroing_duration_s = yamlReadOr<double>(cfg, "zeroing_duration_s", 2.0);
             if (cfg["zero_pose"])
             {
@@ -1510,6 +1527,7 @@ public:
         std::cout << "Zero Joint Angles: " << robotCfg.zero_joint_angles.size() << std::endl;
         std::cout << "Control Mode: " << control_mode << std::endl;
         std::cout << "Installed Joint Run Modes: " << installed_joint_run_modes.size() << std::endl;
+        std::cout << "Startup Completion Action: " << startup_completion_action << std::endl;
         std::cout << "Policy Frequency: " << RL_control_f << std::endl;
         std::cout << "Sub Models: " << sub_models.size() << std::endl;
         std::cout << "AMP Discriminator Enabled: " << (amp_discriminator.enabled ? "true" : "false") << std::endl;

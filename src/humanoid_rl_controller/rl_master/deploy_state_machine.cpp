@@ -7,8 +7,11 @@ namespace rl_master
 
 void DeployStateMachine::configure(const Sim2realCfg &cfg)
 {
-    auto_start_policy_ = cfg.auto_start_policy;
     zeroing_duration_s_ = std::max(0.05, cfg.zeroing_duration_s);
+    startup_completion_state_ =
+        (cfg.startup_completion_action == "running")
+            ? DeployLifecycleState::kRunning
+            : DeployLifecycleState::kHold;
 }
 
 void DeployStateMachine::initialize(const std::vector<float> &current_q, const std::vector<float> &zero_pose, int initial_mode)
@@ -23,7 +26,10 @@ void DeployStateMachine::initialize(const std::vector<float> &current_q, const s
     zeroing_start_pose_ = current_q;
     zeroing_target_pose_ = zero_pose;
     active_locomotion_mode_ = initial_mode;
-    state_ = auto_start_policy_ ? DeployLifecycleState::kRunning : DeployLifecycleState::kHold;
+    pending_locomotion_mode_ = initial_mode;
+    startup_zeroing_pending_ = true;
+    post_zeroing_state_ = startup_completion_state_;
+    state_ = DeployLifecycleState::kInitializing;
     initialized_ = true;
 }
 
@@ -39,6 +45,11 @@ void DeployStateMachine::setZeroPose(const std::vector<float> &zero_pose)
     zeroing_target_pose_ = zero_pose;
 }
 
+void DeployStateMachine::setHotSwitchPredicate(std::function<bool(int, int)> predicate)
+{
+    hot_switch_predicate_ = std::move(predicate);
+}
+
 DeployStateOutput DeployStateMachine::update(int control_word, double now_s, const std::vector<float> &current_q)
 {
     if (!initialized_)
@@ -46,8 +57,8 @@ DeployStateOutput DeployStateMachine::update(int control_word, double now_s, con
         initialize(current_q, current_q, active_locomotion_mode_);
     }
 
-    const DecodedControlWord command = decodeControlWord(control_word, active_locomotion_mode_);
-    active_locomotion_mode_ = command.locomotion_mode;
+    const DecodedControlWord command = decodeControlWord(control_word, pending_locomotion_mode_);
+    pending_locomotion_mode_ = command.locomotion_mode;
 
     if (command.request_estop)
     {
@@ -57,7 +68,36 @@ DeployStateOutput DeployStateMachine::update(int control_word, double now_s, con
     {
         if (command.request_zero)
         {
-            startZeroing(now_s, current_q);
+            startup_zeroing_pending_ = false;
+            startZeroing(now_s, current_q, DeployLifecycleState::kHold);
+        }
+        else if (state_ == DeployLifecycleState::kInitializing)
+        {
+            if (command.request_start)
+            {
+                post_zeroing_state_ = DeployLifecycleState::kRunning;
+            }
+            else if (command.request_stop)
+            {
+                post_zeroing_state_ = DeployLifecycleState::kHold;
+            }
+
+            if (startup_zeroing_pending_)
+            {
+                startup_zeroing_pending_ = false;
+                startZeroing(now_s, current_q, post_zeroing_state_);
+            }
+        }
+        else if (state_ == DeployLifecycleState::kZeroing)
+        {
+            if (command.request_start)
+            {
+                post_zeroing_state_ = DeployLifecycleState::kRunning;
+            }
+            else if (command.request_stop)
+            {
+                post_zeroing_state_ = DeployLifecycleState::kHold;
+            }
         }
         else if (command.request_stop)
         {
@@ -65,7 +105,26 @@ DeployStateOutput DeployStateMachine::update(int control_word, double now_s, con
         }
         else if (command.request_start)
         {
-            state_ = DeployLifecycleState::kRunning;
+            const int target_mode = pending_locomotion_mode_;
+            if (state_ == DeployLifecycleState::kRunning &&
+                target_mode != active_locomotion_mode_)
+            {
+                if (canHotSwitchToMode(target_mode))
+                {
+                    active_locomotion_mode_ = target_mode;
+                    state_ = DeployLifecycleState::kRunning;
+                }
+                else
+                {
+                    active_locomotion_mode_ = target_mode;
+                    state_ = DeployLifecycleState::kHold;
+                }
+            }
+            else
+            {
+                active_locomotion_mode_ = target_mode;
+                state_ = DeployLifecycleState::kRunning;
+            }
         }
     }
 
@@ -108,8 +167,19 @@ DeployStateOutput DeployStateMachine::update(int control_word, double now_s, con
 
         if (alpha >= 1.0)
         {
-            state_ = DeployLifecycleState::kHold;
+            const bool mode_changed_during_zeroing =
+                (pending_locomotion_mode_ != active_locomotion_mode_);
+            active_locomotion_mode_ = pending_locomotion_mode_;
+            DeployLifecycleState completion_state = post_zeroing_state_;
+            if (mode_changed_during_zeroing &&
+                completion_state == DeployLifecycleState::kRunning)
+            {
+                completion_state = DeployLifecycleState::kHold;
+            }
+            state_ = completion_state;
             output.state = state_;
+            output.locomotion_mode = active_locomotion_mode_;
+            output.enable_policy = false;
             output.enable_command_stream = false;
             output.target_q = current_q;
         }
@@ -214,7 +284,10 @@ const char *DeployStateMachine::stateName(DeployLifecycleState state)
     }
 }
 
-void DeployStateMachine::startZeroing(double now_s, const std::vector<float> &current_q)
+void DeployStateMachine::startZeroing(
+    double now_s,
+    const std::vector<float> &current_q,
+    DeployLifecycleState completion_state)
 {
     zeroing_start_time_s_ = now_s;
     zeroing_start_pose_ = current_q;
@@ -225,7 +298,21 @@ void DeployStateMachine::startZeroing(double now_s, const std::vector<float> &cu
             std::to_string(zeroing_target_pose_.size()) +
             ", current=" + std::to_string(current_q.size()));
     }
+    post_zeroing_state_ = completion_state;
     state_ = DeployLifecycleState::kZeroing;
+}
+
+bool DeployStateMachine::canHotSwitchToMode(int target_mode) const
+{
+    if (target_mode == active_locomotion_mode_)
+    {
+        return true;
+    }
+    if (!hot_switch_predicate_)
+    {
+        return false;
+    }
+    return hot_switch_predicate_(active_locomotion_mode_, target_mode);
 }
 
 } // namespace rl_master
