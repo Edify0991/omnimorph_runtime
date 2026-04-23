@@ -1358,12 +1358,6 @@ public:
                 }
             }
 
-            if (cfg["auto_start_policy"])
-            {
-                throw std::runtime_error(
-                    "auto_start_policy is no longer supported; "
-                    "use startup_completion_action: hold|running instead");
-            }
             startup_completion_action = yamlReadOr<std::string>(cfg, "startup_completion_action", "hold");
             std::transform(
                 startup_completion_action.begin(),
