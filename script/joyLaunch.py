@@ -108,7 +108,7 @@ class DdsCommandWriter:
 
         self._node = rclpy.create_node("joylaunch_dds_writer")
         self._cmd_pub = self._node.create_publisher(Twist, "/humanoid/rl/teleop", 20)
-        self._walk_mode_pub = self._node.create_publisher(Int32, "/humanoid/rl/walk_mode", 20)
+        self._mode_control_pub = self._node.create_publisher(Int32, "/humanoid/rl/mode_control", 20)
 
     @property
     def arm_enabled(self) -> bool:
@@ -126,7 +126,7 @@ class DdsCommandWriter:
             self._cmd_pub.publish(msg)
             self._spin_once()
 
-    def write_walk_mode(self, mode) -> None:
+    def write_mode_control(self, mode) -> None:
         if isinstance(mode, DeployControlWord):
             mode_value = int(mode.value)
             mode_label = mode.name
@@ -137,7 +137,7 @@ class DdsCommandWriter:
         msg = Int32()
         msg.data = mode_value
         with self._lock:
-            self._walk_mode_pub.publish(msg)
+            self._mode_control_pub.publish(msg)
             self._spin_once()
         log(f"[MODE] Mode command -> {mode_label}")
 
@@ -395,14 +395,14 @@ class JoyLaunchApp:
             (["btn_l1", "btn_x"], lambda: self.process_mgr.launch_script(sdir / "imu.sh", use_sudo=True)),
             (["btn_l1", "btn_r1"], self.process_mgr.stop_all),
             (["lt", "btn_y"], lambda: self.process_mgr.launch_script(sdir / "driver.sh", use_sudo=True)),
-            (["btn_l1", "dpad_y:-1"], lambda: self.shared.write_walk_mode(2000 + self.cfg.primary_mode_id)),
-            (["btn_l1", "btn_b"], lambda: self.shared.write_walk_mode(2000 + self.cfg.secondary_mode_id)),
-            (["btn_l1", "dpad_y:1"], lambda: self.shared.write_walk_mode(1000 + self.cfg.primary_mode_id)),
+            (["btn_l1", "dpad_y:-1"], lambda: self.shared.write_mode_control(2000 + self.cfg.primary_mode_id)),
+            (["btn_l1", "btn_b"], lambda: self.shared.write_mode_control(2000 + self.cfg.secondary_mode_id)),
+            (["btn_l1", "dpad_y:1"], lambda: self.shared.write_mode_control(1000 + self.cfg.primary_mode_id)),
             # "Fix stand" semantics: stop policy and let solver hold current pose in CSP.
-            (["btn_l1", "btn_y"], lambda: self.shared.write_walk_mode(DeployControlWord.STOP_POLICY)),
-            (["btn_l1", "btn_ls"], lambda: self.shared.write_walk_mode(DeployControlWord.STOP_POLICY)),
-            (["btn_l1", "btn_rs"], lambda: self.shared.write_walk_mode(DeployControlWord.ZEROING)),
-            (["lt", "btn_b"], lambda: self.shared.write_walk_mode(DeployControlWord.ESTOP)),
+            (["btn_l1", "btn_y"], lambda: self.shared.write_mode_control(DeployControlWord.STOP_POLICY)),
+            (["btn_l1", "btn_ls"], lambda: self.shared.write_mode_control(DeployControlWord.STOP_POLICY)),
+            (["btn_l1", "btn_rs"], lambda: self.shared.write_mode_control(DeployControlWord.ZEROING)),
+            (["lt", "btn_b"], lambda: self.shared.write_mode_control(DeployControlWord.ESTOP)),
             (["btn_l1", "dpad_x:1"], lambda: self._set_control_mode(RobotControlMode.JOYSTICK)),
             (["btn_l1", "dpad_x:-1"], lambda: self._set_control_mode(RobotControlMode.NAVIGATOR)),
         ]
@@ -433,7 +433,7 @@ class JoyLaunchApp:
         self.control_mode = mode
         log(f"[MODE] Control mode -> {mode.name}")
         if mode == RobotControlMode.NAVIGATOR:
-            self.shared.write_walk_mode(2000 + self.cfg.primary_mode_id)
+            self.shared.write_mode_control(2000 + self.cfg.primary_mode_id)
 
     def _receiver_cmd_callback(self, cmd: CmdDataStruct) -> None:
         if self.control_mode != RobotControlMode.NAVIGATOR:
@@ -452,7 +452,7 @@ class JoyLaunchApp:
             if navi_state == 3:
                 log("[NAV] target reached, STOP_POLICY -> hold pose")
                 self.shared.write_cmd(0.0, 0.0, 0.0)
-                self.shared.write_walk_mode(DeployControlWord.STOP_POLICY)
+                self.shared.write_mode_control(DeployControlWord.STOP_POLICY)
         except Exception as exc:
             log(f"[NAV][WARN] status check failed: {exc}")
 

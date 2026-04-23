@@ -39,9 +39,9 @@ This starts only `mujoco_sim_bridge` with `backend:=cpp`.
 - `sim2real_engineai.sh`: recommended one-command real-robot startup
 - `sim2sim_engineai.sh`: recommended one-command MuJoCo fused sim2sim startup
 - `sim2sim_engineai_python.sh`: recommended Python GUI frontend for fused sim2sim
-- `publish_walk_mode.sh`: publish lifecycle / mode control words
+- `publish_mode_control.sh`: publish lifecycle / mode control words
 - `imu.sh`: IMU node launcher
-- `joyLaunch.py`: joystick bridge publishing teleop + `walk_mode`
+- `joyLaunch.py`: joystick bridge publishing teleop + `mode_control`
 - `dds_selfcheck.sh`: DDS topic smoke test for operator-facing topics
 
 ## Recommended Runtime Order
@@ -70,14 +70,14 @@ sudo python3 ./script/joyLaunch.py
 The fused runtime still listens to the same operator topics:
 
 - `/humanoid/rl/teleop` (`geometry_msgs/msg/Twist`)
-- `/humanoid/rl/walk_mode` (`std_msgs/msg/Int32`)
+- `/humanoid/rl/mode_control` (`std_msgs/msg/Int32`)
 
 Useful helper:
 
 ```bash
-./script/publish_walk_mode.sh start --mode-id 0
-./script/publish_walk_mode.sh switch --mode-id 1
-./script/publish_walk_mode.sh stop
+./script/publish_mode_control.sh start --mode-id 0
+./script/publish_mode_control.sh switch --mode-id 1
+./script/publish_mode_control.sh stop
 ```
 
 ## Compatibility Notes

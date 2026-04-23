@@ -8,7 +8,7 @@ source "${SCRIPT_DIR}/common.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  publish_walk_mode.sh <action> [--mode-id N]
+  publish_mode_control.sh <action> [--mode-id N]
 
 Actions:
   start      -> 1000 + mode_id
@@ -19,9 +19,9 @@ Actions:
   estop      -> 13
 
 Examples:
-  ./publish_walk_mode.sh start --mode-id 2
-  ./publish_walk_mode.sh switch --mode-id 1
-  ./publish_walk_mode.sh stop
+  ./publish_mode_control.sh start --mode-id 2
+  ./publish_mode_control.sh switch --mode-id 1
+  ./publish_mode_control.sh stop
 EOF
 }
 
@@ -80,5 +80,5 @@ case "${ACTION}" in
 esac
 
 source_ros_workspace
-log_info "Publishing /humanoid/rl/walk_mode = ${CONTROL_WORD}"
-exec ros2 topic pub --once /humanoid/rl/walk_mode std_msgs/msg/Int32 "{data: ${CONTROL_WORD}}"
+log_info "Publishing /humanoid/rl/mode_control = ${CONTROL_WORD}"
+exec ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: ${CONTROL_WORD}}"

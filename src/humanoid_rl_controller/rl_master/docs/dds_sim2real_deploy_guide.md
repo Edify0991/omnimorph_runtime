@@ -13,7 +13,7 @@ It is now:
 ```text
 RL_solver (single process)
   |- read motor state via SHM
-  |- read IMU / teleop / walk_mode via DDS
+  |- read IMU / teleop / mode_control via DDS
   |- run RL_controller::step(...)
   |- write motor command via SHM
 ```
@@ -53,7 +53,7 @@ Notes:
 ### 3.1 Inputs
 
 - `/humanoid/rl/teleop` (`geometry_msgs/msg/Twist`)
-- `/humanoid/rl/walk_mode` (`std_msgs/msg/Int32`)
+- `/humanoid/rl/mode_control` (`std_msgs/msg/Int32`)
 - `/imu/yesense` (`sensor_msgs/msg/Imu`)
 
 ### 3.2 Optional debug output
@@ -77,9 +77,9 @@ Supported control words are unchanged:
 Helper examples:
 
 ```bash
-./script/publish_walk_mode.sh start --mode-id 0
-./script/publish_walk_mode.sh switch --mode-id 1
-./script/publish_walk_mode.sh stop
+./script/publish_mode_control.sh start --mode-id 0
+./script/publish_mode_control.sh switch --mode-id 1
+./script/publish_mode_control.sh stop
 ```
 
 ## 5. Internal Function Chain
@@ -103,7 +103,7 @@ Real-robot runtime path:
 15. `SolverDdsBridge` starts asynchronous low-frequency state telemetry thread
 16. `RobotSolver::run()` loop
 17. `motor_shm_io_.readFeedback(...)`
-18. sample cached teleop / walk_mode / imu
+18. sample cached teleop / mode_control / imu
 19. `dds_bridge_.buildRobotStateData(...)`
 20. `IntegratedControllerRuntime::step(...)`
 21. `RL_controller::step(...)`
@@ -132,7 +132,7 @@ Compared with the old two-process runtime, this path:
 ### 7.1 Verify mode input
 
 ```bash
-ros2 topic echo /humanoid/rl/walk_mode --once
+ros2 topic echo /humanoid/rl/mode_control --once
 ```
 
 ### 7.2 Verify teleop input
@@ -151,7 +151,7 @@ ros2 topic echo /humanoid/rl/state --once
 
 Check these in order:
 
-1. `walk_mode` control word was actually published
+1. `mode_control` control word was actually published
 2. selected `mode_id` exists in `deploy_mode_profiles`
 3. deploy precheck passes for that mode
 4. IMU topic is alive on real robot path

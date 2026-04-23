@@ -62,7 +62,7 @@ Optional auto-start:
 ### Operator topics
 
 ```bash
-ros2 topic echo /humanoid/rl/walk_mode --once
+ros2 topic echo /humanoid/rl/mode_control --once
 ros2 topic echo /humanoid/rl/teleop --once
 ```
 
@@ -75,9 +75,9 @@ ros2 topic echo /humanoid/rl/state --once
 ### Manual mode control
 
 ```bash
-./script/publish_walk_mode.sh start --mode-id 0
-./script/publish_walk_mode.sh stop
-./script/publish_walk_mode.sh switch --mode-id 1
+./script/publish_mode_control.sh start --mode-id 0
+./script/publish_mode_control.sh stop
+./script/publish_mode_control.sh switch --mode-id 1
 ```
 
 ## 5. If the Policy Does Not Move
@@ -87,7 +87,7 @@ Check in this order:
 1. mode profile exists for that `mode_id`
 2. ONNX loads without I/O mismatch
 3. observation manifest matches expected dimension
-4. `walk_mode` start word was actually published
+4. `mode_control` start word was actually published
 5. sim2sim: actuator mapping and joint names are correct
 6. sim2real: IMU and motor feedback are alive
 

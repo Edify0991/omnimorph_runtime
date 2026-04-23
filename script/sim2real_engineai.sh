@@ -101,7 +101,7 @@ mkdir -p "${ROS_LOG_DIR}" >/dev/null 2>&1 || true
 if [[ "${AUTO_START_MODE}" == "true" ]]; then
   (
     sleep "${AUTO_START_DELAY}"
-    ros2 topic pub --once /humanoid/rl/walk_mode std_msgs/msg/Int32 \
+    ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 \
       "{data: $((1000 + MODE_ID))}" >/dev/null 2>&1 || true
   ) &
   log_info "Scheduled START control word: $((1000 + MODE_ID)) after ${AUTO_START_DELAY}s"

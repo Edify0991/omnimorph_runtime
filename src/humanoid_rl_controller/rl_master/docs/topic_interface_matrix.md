@@ -14,7 +14,7 @@ These topics are part of the current supported external interface.
 | Topic | Direction | Producer | Consumer | Used In | Purpose |
 | --- | --- | --- | --- | --- | --- |
 | `/humanoid/rl/teleop` | input | joystick / teleop tools | fused `RL_solver`, fused `MujocoSimBridge` | sim2real, sim2sim | desired `vx / vy / yaw_rate` command |
-| `/humanoid/rl/walk_mode` | input | operator tools / scripts | fused `RL_solver`, fused `MujocoSimBridge` | sim2real, sim2sim | deploy mode switch + lifecycle control words |
+| `/humanoid/rl/mode_control` | input | operator tools / scripts | fused `RL_solver`, fused `MujocoSimBridge` | sim2real, sim2sim | deploy mode switch + lifecycle control words |
 | `/imu/yesense` | input | IMU node | fused `RL_solver` | sim2real | base angular velocity / orientation input |
 | `/humanoid/rl/state` | output | fused `RL_solver`, fused `MujocoSimBridge` | external monitors / bags / debug tools | sim2real, sim2sim | low-frequency runtime telemetry / state observability |
 
@@ -43,7 +43,7 @@ Notes:
 ### 4.1 Sim2Real fused runtime
 
 ```text
-external teleop/walk_mode/imu topics
+external teleop/mode_control/imu topics
   -> RL_solver edge IO
   -> IntegratedControllerRuntime
   -> motor SHM
@@ -55,7 +55,7 @@ low-frequency telemetry:
 ### 4.2 Sim2Sim fused runtime
 
 ```text
-external teleop/walk_mode topics
+external teleop/mode_control topics
   -> MujocoSimBridge edge IO
   -> IntegratedControllerRuntime
   -> MuJoCo actuators
@@ -72,7 +72,7 @@ When reading the codebase, use this split:
 
 - active operator/control interface:
   - `/humanoid/rl/teleop`
-  - `/humanoid/rl/walk_mode`
+  - `/humanoid/rl/mode_control`
 - active observability interface:
   - `/humanoid/rl/state`
 - sim2sim Python viewer interface:

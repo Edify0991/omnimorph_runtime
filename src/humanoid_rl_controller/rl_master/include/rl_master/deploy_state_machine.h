@@ -14,7 +14,7 @@ namespace rl_master
 constexpr int kModeCodeMin = 0;
 constexpr int kModeCodeMax = 999;
 
-// Lifecycle control words (written to walk_mode control channel).
+// Lifecycle control words (written to mode_control control channel).
 // 0..999 range is reserved for lifecycle commands in control channel.
 constexpr int kCtrlWordStartPolicy = 10;
 constexpr int kCtrlWordStopPolicy = 11;

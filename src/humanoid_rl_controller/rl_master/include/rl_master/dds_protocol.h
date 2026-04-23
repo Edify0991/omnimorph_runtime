@@ -14,7 +14,7 @@ namespace rl_master::dds
 
 constexpr const char *kTopicRobotState = "/humanoid/rl/state";
 constexpr const char *kTopicTeleopCommand = "/humanoid/rl/teleop";
-constexpr const char *kTopicWalkMode = "/humanoid/rl/walk_mode";
+constexpr const char *kTopicModeControl = "/humanoid/rl/mode_control";
 
 namespace legacy
 {

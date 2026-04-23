@@ -183,7 +183,7 @@ Mode switching can be summarized as:
 
 ```mermaid
 flowchart TD
-    A[walk_mode control word] --> B[deploy_state_machine update]
+    A[mode control word] --> B[deploy_state_machine update]
     B --> C[refreshPolicyMode]
     C --> D[resolve target mode_id]
     D --> E[switch active ModeProfile in memory]
@@ -219,12 +219,12 @@ flowchart TD
 
 Inside `RobotSolver::run()` each cycle:
 
-1. dedicated DDS input executor thread keeps teleop / walk_mode / imu caches fresh
-2. sample latest `walk_mode`
+1. dedicated DDS input executor thread keeps teleop / mode_control / imu caches fresh
+2. sample latest `mode_control`
 3. sample latest teleop
 4. `getMotorState()`
 5. `dds_bridge_.buildRobotStateData(joint_state_, &io_state)`
-6. `controller_runtime_.step(io_state, teleop_sample, walk_mode_sample)`
+6. `controller_runtime_.step(io_state, teleop_sample, mode_control_sample)`
 7. `syncRuntimeCfgFromController()`
 8. `applyRuntimeCommand(controller_command, true)`
 9. if controller active:
@@ -320,7 +320,7 @@ Inside `MujocoSimBridge::controlLoopTick()` each timer tick:
 Shared external inputs:
 
 - `/humanoid/rl/teleop`
-- `/humanoid/rl/walk_mode`
+- `/humanoid/rl/mode_control`
 
 Optional observable output:
 

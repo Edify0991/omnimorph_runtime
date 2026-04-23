@@ -14,7 +14,7 @@ It keeps the existing deployment pipeline:
 
 - command publish: `/humanoid/rl/command`
 - state subscribe: `/humanoid/rl/state`
-- lifecycle/mode control: `/humanoid/rl/walk_mode`
+- lifecycle/mode control: `/humanoid/rl/mode_control`
 
 So it can drive:
 
@@ -92,7 +92,7 @@ Export generated sine reference file:
 
 This package uses the same `DeployStateMachine` as deploy framework.
 
-Control words (via `/humanoid/rl/walk_mode`):
+Control words (via `/humanoid/rl/mode_control`):
 
 - `1000 + mode_id`: switch mode and start
 - `2000 + mode_id`: switch mode only

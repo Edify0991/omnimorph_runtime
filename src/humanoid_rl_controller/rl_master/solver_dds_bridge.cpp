@@ -153,13 +153,13 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
             has_teleop_ = true;
         });
 
-    walk_mode_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
-        rl_master::dds::kTopicWalkMode,
+    mode_control_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
+        rl_master::dds::kTopicModeControl,
         rclcpp::QoS(rclcpp::KeepLast(20)).reliable(),
         [this](const std_msgs::msg::Int32::SharedPtr msg) {
-            std::lock_guard<std::mutex> lock(walk_mode_mutex_);
-            latest_walk_mode_control_word_ = msg->data;
-            has_walk_mode_control_word_ = true;
+            std::lock_guard<std::mutex> lock(mode_control_mutex_);
+            latest_mode_control_word_ = msg->data;
+            has_mode_control_word_ = true;
         });
 
     imu_sub_ = node_->create_subscription<sensor_msgs::msg::Imu>(
@@ -283,7 +283,7 @@ void SolverDdsBridge::disconnect()
     }
 
     imu_sub_.reset();
-    walk_mode_sub_.reset();
+    mode_control_sub_.reset();
     teleop_sub_.reset();
     state_pub_.reset();
     executor_.reset();
@@ -390,18 +390,18 @@ bool SolverDdsBridge::readLatestTeleopCommand(rl_master::TeleopCommand *command)
     return true;
 }
 
-bool SolverDdsBridge::readLatestWalkModeControlWord(int *control_word)
+bool SolverDdsBridge::readLatestModeControlWord(int *control_word)
 {
     if (!control_word)
     {
         return false;
     }
-    std::lock_guard<std::mutex> lock(walk_mode_mutex_);
-    if (!has_walk_mode_control_word_)
+    std::lock_guard<std::mutex> lock(mode_control_mutex_);
+    if (!has_mode_control_word_)
     {
         return false;
     }
-    *control_word = latest_walk_mode_control_word_;
+    *control_word = latest_mode_control_word_;
     return true;
 }
 

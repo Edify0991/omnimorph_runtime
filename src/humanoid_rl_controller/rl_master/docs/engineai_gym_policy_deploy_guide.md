@@ -392,7 +392,7 @@ This checks at least:
 1. confirm the XML model path
 2. run precheck for the mode
 3. launch fused sim2sim runtime
-4. publish `walk_mode` start word or use `--auto-start-mode`
+4. publish `mode_control` start word or use `--auto-start-mode`
 5. inspect viewer motion, joint behavior, and `/humanoid/rl/state`
 
 Example:
@@ -410,7 +410,7 @@ Example:
 1. bring up motor driver
 2. bring up IMU DDS publisher
 3. run fused real runtime
-4. publish `walk_mode` start word
+4. publish `mode_control` start word
 5. use joystick / teleop DDS as needed
 
 Example:

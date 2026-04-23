@@ -1250,11 +1250,11 @@ void RobotSolver::run()
         {
             const auto loop_begin = std::chrono::steady_clock::now();
 
-            int walk_mode_value = 0;
-            std::optional<int> walk_mode_control_word;
-            if (dds_bridge_.readLatestWalkModeControlWord(&walk_mode_value))
+            int mode_control_word_value = 0;
+            std::optional<int> mode_control_word;
+            if (dds_bridge_.readLatestModeControlWord(&mode_control_word_value))
             {
-                walk_mode_control_word = walk_mode_value;
+                mode_control_word = mode_control_word_value;
             }
 
             rl_master::TeleopCommand teleop_command{};
@@ -1268,7 +1268,7 @@ void RobotSolver::run()
 
             rl_master::RobotStateData io_state = buildControllerStateData();
             const rl_master::RobotCommandData controller_command =
-                controller_runtime_.step(io_state, teleop_sample, walk_mode_control_word);
+                controller_runtime_.step(io_state, teleop_sample, mode_control_word);
             syncRuntimeCfgFromController();
             const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
             emitDerivedRuntimeEvents(controller_snapshot);

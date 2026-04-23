@@ -140,7 +140,7 @@ public:
         "/rlJointStateSharedMemory",
         "/rlRobotCmd",
         "/rlSolverFlag",
-        "/walkModeSharedMemory"
+        "/modeControlSharedMemory"
     };
     const uint16_t length[13] = {
         4 * 400,

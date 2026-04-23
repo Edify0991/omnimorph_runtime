@@ -9,7 +9,7 @@ This repository now uses a single-process runtime for both real robot deployment
 - `RL_solver` is the only real-time process you need to start.
 - Inside `RL_solver`, the following logic is fused into one process:
   - motor shared-memory I/O
-  - IMU + teleop + `walk_mode` DDS input
+  - IMU + teleop + `mode_control` DDS input
   - deploy state machine
   - observation assembly
   - ONNX policy inference
@@ -18,7 +18,7 @@ This repository now uses a single-process runtime for both real robot deployment
 Dataflow:
 
 ```text
-teleop / walk_mode / imu DDS
+teleop / mode_control / imu DDS
           |
           v
      RL_solver
@@ -42,7 +42,7 @@ teleop / walk_mode / imu DDS
 Dataflow:
 
 ```text
-teleop / walk_mode DDS
+teleop / mode_control DDS
         |
         v
 mujoco_sim_bridge
@@ -58,7 +58,7 @@ mujoco_sim_bridge
 DDS is still used for cross-process operator inputs and observability:
 
 - `/humanoid/rl/teleop`
-- `/humanoid/rl/walk_mode`
+- `/humanoid/rl/mode_control`
 - `/humanoid/rl/state`
 - `/imu/yesense` on real robot path
 

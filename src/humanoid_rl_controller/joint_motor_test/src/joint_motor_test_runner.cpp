@@ -96,7 +96,7 @@ JointMotorTestRunner::JointMotorTestRunner()
         });
 
     mode_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
-        rl_master::dds::kTopicWalkMode,
+        rl_master::dds::kTopicModeControl,
         rclcpp::QoS(rclcpp::KeepLast(50)).reliable(),
         [this](const std_msgs::msg::Int32::SharedPtr msg) {
             this->onModeMsg(msg);

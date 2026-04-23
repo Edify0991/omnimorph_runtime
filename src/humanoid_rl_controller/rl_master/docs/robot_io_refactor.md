@@ -17,7 +17,7 @@
 
 1. `read_state()` <- `/humanoid/rl/state`
 2. `read_control_command()` <- `/humanoid/rl/teleop`
-3. `read_mode_command()` <- `/humanoid/rl/walk_mode`
+3. `read_mode_command()` <- `/humanoid/rl/mode_control`
 4. `controller.step(...)` 产出动作
 5. `write_command()` -> legacy `/humanoid/rl/command`
 

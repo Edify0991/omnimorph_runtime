@@ -14,8 +14,8 @@ Default behavior is read-only checks (no control words published).
 Options:
   --hz-seconds N          Seconds for topic hz probing (default: 3)
   --publish-smoke         Publish a safe smoke sequence to control topics:
-                          teleop zero + walk_mode STOP_POLICY(11)
-  --publish-sequence CSV  Publish explicit walk_mode sequence, e.g. "11,12,1000" or "1003"
+                          teleop zero + mode_control STOP_POLICY(11)
+  --publish-sequence CSV  Publish explicit mode_control sequence, e.g. "11,12,1000" or "1003"
   -h, --help              Show this help
 EOF
 }
@@ -110,7 +110,7 @@ FAIL_COUNT=0
 check_topic_type "/imu/yesense" "sensor_msgs/msg/Imu" || FAIL_COUNT=$((FAIL_COUNT + 1))
 check_topic_type "/humanoid/rl/state" "std_msgs/msg/Float32MultiArray" || FAIL_COUNT=$((FAIL_COUNT + 1))
 check_topic_type "/humanoid/rl/teleop" "geometry_msgs/msg/Twist" || FAIL_COUNT=$((FAIL_COUNT + 1))
-check_topic_type "/humanoid/rl/walk_mode" "std_msgs/msg/Int32" || FAIL_COUNT=$((FAIL_COUNT + 1))
+check_topic_type "/humanoid/rl/mode_control" "std_msgs/msg/Int32" || FAIL_COUNT=$((FAIL_COUNT + 1))
 
 echo
 log_info "[2/4] Checking endpoint connectivity"
@@ -118,7 +118,7 @@ for topic in \
   "/imu/yesense" \
   "/humanoid/rl/state" \
   "/humanoid/rl/teleop" \
-  "/humanoid/rl/walk_mode"; do
+  "/humanoid/rl/mode_control"; do
   echo "--- ${topic} ---"
   ros2 topic info "${topic}" 2>&1 || true
 done
@@ -131,15 +131,15 @@ check_topic_hz "/humanoid/rl/state" || true
 echo
 log_info "[4/4] Optional publish checks"
 if [[ "${PUBLISH_SMOKE}" == "true" ]]; then
-  log_warn "Publish smoke enabled: teleop zero + walk_mode STOP_POLICY(11)"
+  log_warn "Publish smoke enabled: teleop zero + mode_control STOP_POLICY(11)"
   ros2 topic pub --once /humanoid/rl/teleop geometry_msgs/msg/Twist \
     "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
-  ros2 topic pub --once /humanoid/rl/walk_mode std_msgs/msg/Int32 "{data: 11}"
+  ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 11}"
   log_info "Smoke publish done"
 fi
 
 if [[ -n "${PUBLISH_SEQUENCE}" ]]; then
-  log_warn "Publishing explicit walk_mode sequence: ${PUBLISH_SEQUENCE}"
+  log_warn "Publishing explicit mode_control sequence: ${PUBLISH_SEQUENCE}"
   IFS=',' read -r -a MODES <<< "${PUBLISH_SEQUENCE}"
   for mode in "${MODES[@]}"; do
     mode_trimmed="$(echo "${mode}" | xargs)"
@@ -147,7 +147,7 @@ if [[ -n "${PUBLISH_SEQUENCE}" ]]; then
       log_warn "Skip invalid mode token: ${mode_trimmed}"
       continue
     fi
-    ros2 topic pub --once /humanoid/rl/walk_mode std_msgs/msg/Int32 "{data: ${mode_trimmed}}"
+    ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: ${mode_trimmed}}"
     sleep 0.2
   done
   log_info "Sequence publish done"

@@ -85,7 +85,7 @@ void KinConv::validateLegGroupSize() const
 }
 
 std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& joint_state, 
-    const std::vector<JointData>& joint_cmd) const
+    const std::vector<JointData>& joint_cmd)
 {
     if (joint_state.size() != LEG_MOTOR_COUNT || joint_cmd.size() != LEG_MOTOR_COUNT)
     {
@@ -217,7 +217,7 @@ std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& jo
     return motor_cmd;
 }
 
-std::vector<JointData> KinConv::legMotorToJoint(const std::vector<JointData>& motor_state) const
+std::vector<JointData> KinConv::legMotorToJoint(const std::vector<JointData>& motor_state)
 {
     if (motor_state.size() != LEG_MOTOR_COUNT)
     {
@@ -297,7 +297,7 @@ std::vector<JointData> KinConv::legMotorToJoint(const std::vector<JointData>& mo
 
 std::vector<JointData> KinConv::armJointToMotor(
     const std::vector<JointData> &joint_state,
-    const std::vector<JointData> &joint_cmd) const
+    const std::vector<JointData> &joint_cmd)
 {
     if (joint_state.size() != joint_cmd.size())
     {
@@ -306,14 +306,14 @@ std::vector<JointData> KinConv::armJointToMotor(
     return joint_cmd;
 }
 
-std::vector<JointData> KinConv::armMotorToJoint(const std::vector<JointData> &motor_state) const
+std::vector<JointData> KinConv::armMotorToJoint(const std::vector<JointData> &motor_state)
 {
     return motor_state;
 }
 
 std::vector<JointData> KinConv::waistJointToMotor(
     const std::vector<JointData> &joint_state,
-    const std::vector<JointData> &joint_cmd) const
+    const std::vector<JointData> &joint_cmd)
 {
     if (joint_state.size() != joint_cmd.size())
     {
@@ -322,7 +322,7 @@ std::vector<JointData> KinConv::waistJointToMotor(
     return joint_cmd;
 }
 
-std::vector<JointData> KinConv::waistMotorToJoint(const std::vector<JointData> &motor_state) const
+std::vector<JointData> KinConv::waistMotorToJoint(const std::vector<JointData> &motor_state)
 {
     return motor_state;
 }

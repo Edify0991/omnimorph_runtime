@@ -54,7 +54,7 @@ private:
     void handleViewerKey(int key, int action, int mods);
 
     void teleopCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
-    void walkModeCallback(const std_msgs::msg::Int32::SharedPtr msg);
+    void modeControlCallback(const std_msgs::msg::Int32::SharedPtr msg);
     void controlLoopTick();
     void enforceBaseLock();
     void startInputExecutor();
@@ -186,7 +186,7 @@ private:
     rclcpp::Node::SharedPtr input_node_;
     rclcpp::executors::SingleThreadedExecutor::SharedPtr input_executor_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr teleop_sub_;
-    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr walk_mode_sub_;
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_control_sub_;
     rclcpp::TimerBase::SharedPtr control_timer_;
     std::thread input_executor_thread_;
     std::thread state_telemetry_thread_;

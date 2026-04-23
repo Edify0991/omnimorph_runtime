@@ -60,7 +60,7 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
 ## 4. External Topics Still Used
 
 - `/humanoid/rl/teleop`
-- `/humanoid/rl/walk_mode`
+- `/humanoid/rl/mode_control`
 - `/humanoid/rl/state` (debug / monitoring)
 
 There is no standalone `/humanoid/rl/command` control hop in the supported fused path anymore.
@@ -77,7 +77,7 @@ There is no standalone `/humanoid/rl/command` control hop in the supported fused
 8. `RL_controller::RL_controller_Init(startup_mode_id_)`
 9. if no registry was injected, `RL_controller::initModeProfiles()` lazily creates `ModeProfileRegistry::loadFromYaml(...)`
 10. `setupRosInterfaces()` creates timer + state publisher
-11. `startInputExecutor()` starts dedicated teleop / walk_mode ROS input thread
+11. `startInputExecutor()` starts dedicated teleop / mode_control ROS input thread
 12. `startStateTelemetry()` starts low-frequency asynchronous state telemetry thread
 13. `startViewerTelemetry()` starts asynchronous viewer frame / inspector publisher thread
 14. each timer tick -> `controlLoopTick()`

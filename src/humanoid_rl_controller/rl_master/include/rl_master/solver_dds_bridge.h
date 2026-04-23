@@ -50,7 +50,7 @@ public:
             double monotonic_time_sec)> callback);
 
     bool readLatestTeleopCommand(rl_master::TeleopCommand *command);
-    bool readLatestWalkModeControlWord(int *control_word);
+    bool readLatestModeControlWord(int *control_word);
 
     void buildRobotStateData(
         const std::vector<JointData> &joint_state,
@@ -67,16 +67,16 @@ private:
     rclcpp::executors::SingleThreadedExecutor::SharedPtr executor_;
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr state_pub_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr teleop_sub_;
-    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr walk_mode_sub_;
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_control_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
 
     std::mutex teleop_mutex_;
     rl_master::TeleopCommand latest_teleop_{};
     bool has_teleop_ = false;
 
-    std::mutex walk_mode_mutex_;
-    int latest_walk_mode_control_word_ = 0;
-    bool has_walk_mode_control_word_ = false;
+    std::mutex mode_control_mutex_;
+    int latest_mode_control_word_ = 0;
+    bool has_mode_control_word_ = false;
 
     std::mutex imu_mutex_;
     std::array<float, 3> imu_ang_vel_{0.0f, 0.0f, 0.0f};

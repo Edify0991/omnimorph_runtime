@@ -175,7 +175,7 @@ MujocoSimBridge::~MujocoSimBridge()
     stopViewerTelemetry();
     stopStateTelemetry();
     stopInputExecutor();
-    walk_mode_sub_.reset();
+    mode_control_sub_.reset();
     teleop_sub_.reset();
     state_pub_.reset();
     controller_runtime_.estop();
@@ -597,11 +597,11 @@ void MujocoSimBridge::startInputExecutor()
             this->teleopCallback(msg);
         });
 
-    walk_mode_sub_ = input_node_->create_subscription<std_msgs::msg::Int32>(
-        rl_master::dds::kTopicWalkMode,
+    mode_control_sub_ = input_node_->create_subscription<std_msgs::msg::Int32>(
+        rl_master::dds::kTopicModeControl,
         rclcpp::QoS(rclcpp::KeepLast(20)).reliable(),
         [this](const std_msgs::msg::Int32::SharedPtr msg) {
-            this->walkModeCallback(msg);
+            this->modeControlCallback(msg);
         });
 
     io_stop_requested_.store(false);
@@ -638,7 +638,7 @@ void MujocoSimBridge::stopInputExecutor()
     {
         input_executor_->remove_node(input_node_);
     }
-    walk_mode_sub_.reset();
+    mode_control_sub_.reset();
     teleop_sub_.reset();
     input_executor_.reset();
     input_node_.reset();
@@ -1578,7 +1578,7 @@ void MujocoSimBridge::teleopCallback(const geometry_msgs::msg::Twist::SharedPtr 
     latest_teleop_command_.dyaw = static_cast<float>(msg->angular.z);
 }
 
-void MujocoSimBridge::walkModeCallback(const std_msgs::msg::Int32::SharedPtr msg)
+void MujocoSimBridge::modeControlCallback(const std_msgs::msg::Int32::SharedPtr msg)
 {
     if (!msg)
     {
@@ -1588,7 +1588,7 @@ void MujocoSimBridge::walkModeCallback(const std_msgs::msg::Int32::SharedPtr msg
     {
         if ((this->now() - last_mode_warn_).seconds() > 1.0)
         {
-            RCLCPP_WARN(this->get_logger(), "Ignore invalid walk_mode control word: %d", msg->data);
+            RCLCPP_WARN(this->get_logger(), "Ignore invalid mode control word: %d", msg->data);
             last_mode_warn_ = this->now();
         }
         return;
