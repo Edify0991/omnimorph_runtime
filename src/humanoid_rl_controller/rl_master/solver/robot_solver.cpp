@@ -115,6 +115,8 @@ void RobotSolver::initializeJointLayout()
     installed_joint_index_.clear();
     installed_joint_global_indices_.assign(installed_joint_names_.size(), -1);
     installed_zero_joint_q_.assign(installed_joint_names_.size(), 0.0f);
+    installed_joint_tau_limits_.assign(installed_joint_names_.size(), 0.0f);
+    installed_motor_torque_limits_.assign(installed_joint_names_.size(), 0.0f);
     installed_joint_configured_run_modes_.assign(installed_joint_names_.size(), RUN_MODE_CSP);
 
     if (mode_registry_)
@@ -171,6 +173,8 @@ bool RobotSolver::switchToModeConfig(int mode_id, bool allow_fallback_to_default
     active_mode_id_ = resolved_mode_id;
     cacheInstalledZeroPoseFromCfg();
     cacheInstalledJointRunModesFromCfg();
+    cacheInstalledJointTauLimitsFromCfg();
+    cacheInstalledMotorTorqueLimitsFromCfg();
     applyControlGainsFromCfg();
 
     std::cout << "[RL_solver] mode config active: mode_id=" << active_mode_id_
@@ -289,6 +293,8 @@ void RobotSolver::syncRuntimeCfgFromController(bool force)
     active_config_section_ = controller_section;
     cacheInstalledZeroPoseFromCfg();
     cacheInstalledJointRunModesFromCfg();
+    cacheInstalledJointTauLimitsFromCfg();
+    cacheInstalledMotorTorqueLimitsFromCfg();
     applyControlGainsFromCfg();
     dds_bridge_.updateStateTelemetryConfig({
         sim2real_cfg_.enable_state_telemetry,
@@ -403,6 +409,55 @@ void RobotSolver::cacheInstalledJointRunModesFromCfg()
     }
 }
 
+void RobotSolver::cacheInstalledJointTauLimitsFromCfg()
+{
+    installed_joint_tau_limits_.assign(installed_joint_names_.size(), 0.0f);
+
+    std::unordered_map<std::string, size_t> action_joint_to_policy_index;
+    action_joint_to_policy_index.reserve(sim2real_cfg_.action_joint_order.size());
+    for (size_t policy_idx = 0; policy_idx < sim2real_cfg_.action_joint_order.size(); ++policy_idx)
+    {
+        action_joint_to_policy_index[sim2real_cfg_.action_joint_order[policy_idx]] = policy_idx;
+    }
+
+    for (size_t i = 0; i < installed_joint_names_.size(); ++i)
+    {
+        const std::string &joint_name = installed_joint_names_[i];
+        float limit = 0.0f;
+
+        const auto action_it = action_joint_to_policy_index.find(joint_name);
+        if (action_it != action_joint_to_policy_index.end())
+        {
+            const size_t policy_idx = action_it->second;
+            if (policy_idx < sim2real_cfg_.tau_limit.size())
+            {
+                limit = std::max(limit, std::abs(sim2real_cfg_.tau_limit[policy_idx]));
+            }
+        }
+
+        if (limit > 0.0f)
+        {
+            installed_joint_tau_limits_[i] = limit;
+        }
+    }
+}
+
+void RobotSolver::cacheInstalledMotorTorqueLimitsFromCfg()
+{
+    installed_motor_torque_limits_.assign(installed_joint_names_.size(), 0.0f);
+
+    for (size_t i = 0; i < installed_joint_names_.size(); ++i)
+    {
+        const std::string &joint_name = installed_joint_names_[i];
+        const auto it = sim2real_cfg_.robotCfg.motor_torque_limit.find(joint_name);
+        if (it == sim2real_cfg_.robotCfg.motor_torque_limit.end())
+        {
+            continue;
+        }
+        installed_motor_torque_limits_[i] = std::max(0.0f, std::abs(it->second));
+    }
+}
+
 void RobotSolver::initMotorTypes()
 {
     motor_types_.fill(0);
@@ -417,19 +472,6 @@ void RobotSolver::initMotorTypes()
             motor_types_[i] = 0; // rotary motor
         }
     }
-}
-
-std::vector<float> RobotSolver::computePdControl(
-    const std::vector<float> &target_q,
-    const std::vector<float> &target_dq) const
-{
-    std::vector<float> torque(kInstalledMotorCount, 0.0f);
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
-    {
-        torque[i] = (target_q[i] - joint_state_[i].q) * static_cast<float>(joint_cmd_[i].kp) +
-                    (target_dq[i] - joint_state_[i].dq) * static_cast<float>(joint_cmd_[i].kd);
-    }
-    return torque;
 }
 
 void RobotSolver::getMotorState()
@@ -494,6 +536,19 @@ void RobotSolver::sendMotorCmd()
 
     for (size_t i = 0; i < kInstalledMotorCount; ++i)
     {
+        if (i >= installed_motor_torque_limits_.size())
+        {
+            continue;
+        }
+        const float motor_limit = installed_motor_torque_limits_[i];
+        if (motor_limit > 0.0f)
+        {
+            motor_cmd_[i].tau = std::clamp(motor_cmd_[i].tau, -motor_limit, motor_limit);
+        }
+    }
+
+    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    {
         motor_target_all_[i].motor_type = motor_types_[i];
         motor_target_all_[i].io.target.target_speed = motor_cmd_[i].dq;
         motor_target_all_[i].io.target.target_pos = motor_cmd_[i].q;
@@ -530,11 +585,11 @@ void RobotSolver::applyRuntimeCommand(
     const auto runtime_mode = rl_master::resolveCommandRuntimeMode(command_fresh, command.open_rl);
 
     auto tauLimitAt = [this](size_t i) -> float {
-        if (i < sim2real_cfg_.tau_limit.size())
+        if (i < installed_joint_tau_limits_.size())
         {
-            return std::max(0.0f, std::abs(sim2real_cfg_.tau_limit[i]));
+            return std::max(0.0f, std::abs(installed_joint_tau_limits_[i]));
         }
-        return 300.0f;
+        return 0.0f;
     };
     auto commandQAt = [&](size_t hardware_idx) -> float {
         if (hardware_idx >= installed_joint_global_indices_.size())
@@ -616,8 +671,6 @@ void RobotSolver::applyRuntimeCommand(
 
     if (runtime_mode.mode == rl_master::CommandRuntimeMode::kPolicy)
     {
-        std::vector<float> target_q(kInstalledMotorCount, 0.0f);
-        std::vector<float> target_dq(kInstalledMotorCount, 0.0f);
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
         {
             const bool policy_controlled = isPolicyControlledHardwareJoint(i);
@@ -628,8 +681,6 @@ void RobotSolver::applyRuntimeCommand(
 
             if (policy_controlled)
             {
-                target_q[i] = target_q_i;
-                target_dq[i] = target_dq_i;
                 joint_cmd_[i].q = target_q_i;
                 joint_cmd_[i].dq = target_dq_i;
                 joint_cmd_[i].tau = target_tau_i;
@@ -637,8 +688,6 @@ void RobotSolver::applyRuntimeCommand(
             }
             else
             {
-                target_q[i] = hold_q_i;
-                target_dq[i] = 0.0f;
                 joint_cmd_[i].q = hold_q_i;
                 joint_cmd_[i].dq = 0.0f;
                 joint_cmd_[i].tau = 0.0f;
@@ -646,21 +695,27 @@ void RobotSolver::applyRuntimeCommand(
             }
         }
 
-        const std::vector<float> joint_tau = computePdControl(target_q, target_dq);
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
         {
             if (joint_cmd_[i].mode == RUN_MODE_CST)
             {
                 const float tau_limit = tauLimitAt(i);
-                const float policy_tau = joint_cmd_[i].tau;
-                const float pd_tau = joint_tau[i];
-                const float blended_tau = (std::abs(policy_tau) > 1.0e-6f) ? policy_tau : pd_tau;
-                joint_cmd_[i].tau = std::clamp(blended_tau, -tau_limit, tau_limit);
+                if (tau_limit > 0.0f)
+                {
+                    joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
+                }
             }
             else if (joint_cmd_[i].mode == RUN_MODE_R1)
             {
                 const float tau_limit = tauLimitAt(i);
-                joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
+                if (tau_limit > 0.0f)
+                {
+                    joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
+                }
+            }
+            else if (joint_cmd_[i].mode == RUN_MODE_CSP)
+            {
+                joint_cmd_[i].tau = 0.0f;
             }
         }
     }
@@ -684,7 +739,11 @@ void RobotSolver::applyRuntimeCommand(
             const float tau_limit = tauLimitAt(i);
             joint_cmd_[i].q = joint_state_[i].q;
             joint_cmd_[i].dq = 0.0f;
-            joint_cmd_[i].tau = std::clamp(commandTauAt(i), -tau_limit, tau_limit);
+            joint_cmd_[i].tau = commandTauAt(i);
+            if (tau_limit > 0.0f)
+            {
+                joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
+            }
             joint_cmd_[i].mode = RUN_MODE_CST;
         }
     }
@@ -696,7 +755,11 @@ void RobotSolver::applyRuntimeCommand(
             const float tau_limit = tauLimitAt(i);
             joint_cmd_[i].q = commandQAt(i);
             joint_cmd_[i].dq = commandDqAt(i);
-            joint_cmd_[i].tau = std::clamp(commandTauAt(i), -tau_limit, tau_limit);
+            joint_cmd_[i].tau = commandTauAt(i);
+            if (tau_limit > 0.0f)
+            {
+                joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
+            }
             joint_cmd_[i].mode = RUN_MODE_R1;
         }
     }

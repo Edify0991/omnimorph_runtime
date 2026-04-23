@@ -1908,14 +1908,6 @@ std::vector<float> RL_controller::get_joint_target_torque(const std::vector<floa
         {
             limit = std::max(limit, std::abs(active_cfg.tau_limit[policy_idx]));
         }
-        if (joint_idx < joint_order_.size())
-        {
-            const auto it = active_cfg.robotCfg.motor_torque_limit.find(joint_order_[joint_idx]);
-            if (it != active_cfg.robotCfg.motor_torque_limit.end())
-            {
-                limit = std::max(limit, std::abs(it->second));
-            }
-        }
         if (limit > 0.0f)
         {
             tau = std::clamp(tau, -limit, limit);

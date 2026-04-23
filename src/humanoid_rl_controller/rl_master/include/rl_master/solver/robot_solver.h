@@ -41,10 +41,6 @@ private:
     void initializeBuffers();
     void initMotorTypes();
 
-    std::vector<float> computePdControl(
-        const std::vector<float> &target_q,
-        const std::vector<float> &target_dq) const;
-
     void getMotorState();
     void sendMotorCmd();
 
@@ -70,6 +66,8 @@ private:
     void applyControlGainsFromCfg();
     void cacheInstalledZeroPoseFromCfg();
     void cacheInstalledJointRunModesFromCfg();
+    void cacheInstalledJointTauLimitsFromCfg();
+    void cacheInstalledMotorTorqueLimitsFromCfg();
     void initModeProfileMap();
     void initializeJointLayout();
     rl_master::RobotStateData buildControllerStateData() const;
@@ -125,6 +123,8 @@ private:
     std::unordered_map<std::string, size_t> installed_joint_index_;
     std::vector<int> installed_joint_global_indices_;
     std::vector<float> installed_zero_joint_q_;
+    std::vector<float> installed_joint_tau_limits_;
+    std::vector<float> installed_motor_torque_limits_;
     std::vector<MotorRunMode> installed_joint_configured_run_modes_;
     int last_mode_reload_failure_id_ = std::numeric_limits<int>::min();
 
