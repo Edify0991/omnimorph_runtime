@@ -1,12 +1,353 @@
 #include "rl_master/mode_profile_registry.h"
 
+#include <algorithm>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
 namespace rl_master
 {
+
+namespace
+{
+
+std::unordered_map<std::string, size_t> buildJointIndexMap(
+    const std::vector<std::string> &joint_order)
+{
+    std::unordered_map<std::string, size_t> out;
+    out.reserve(joint_order.size());
+    for (size_t i = 0; i < joint_order.size(); ++i)
+    {
+        out[joint_order[i]] = i;
+    }
+    return out;
+}
+
+std::vector<float> buildDefaultAngleVector(
+    const Sim2realCfg::RobotCfg &robot_cfg,
+    const std::vector<std::string> &joint_order)
+{
+    std::vector<float> out(joint_order.size(), 0.0f);
+    std::unordered_map<std::string, float> default_angle_map;
+    default_angle_map.reserve(robot_cfg.default_joint_angles.size());
+    for (const auto &entry : robot_cfg.default_joint_angles)
+    {
+        default_angle_map[entry.first] = entry.second;
+    }
+
+    for (size_t i = 0; i < joint_order.size(); ++i)
+    {
+        const auto it = default_angle_map.find(joint_order[i]);
+        if (it != default_angle_map.end())
+        {
+            out[i] = it->second;
+        }
+    }
+    return out;
+}
+
+std::vector<float> buildZeroPoseVector(
+    const Sim2realCfg::RobotCfg &robot_cfg,
+    const std::vector<std::string> &joint_order,
+    const std::string &section_name)
+{
+    if (robot_cfg.zero_joint_angles.empty())
+    {
+        throw std::runtime_error(
+            "config section '" + section_name +
+            "' robot.zero_joint_angles is required and must cover robot_global_joint_order");
+    }
+
+    std::vector<float> out(joint_order.size(), 0.0f);
+    std::unordered_map<std::string, float> zero_pose_map;
+    zero_pose_map.reserve(robot_cfg.zero_joint_angles.size());
+    for (const auto &entry : robot_cfg.zero_joint_angles)
+    {
+        zero_pose_map[entry.first] = entry.second;
+    }
+
+    for (size_t i = 0; i < joint_order.size(); ++i)
+    {
+        const auto it = zero_pose_map.find(joint_order[i]);
+        if (it == zero_pose_map.end())
+        {
+            throw std::runtime_error(
+                "config section '" + section_name +
+                "' robot.zero_joint_angles must cover robot_global_joint_order; missing: " +
+                joint_order[i]);
+        }
+        out[i] = it->second;
+    }
+    return out;
+}
+
+std::vector<int> buildActionIndices(
+    const Sim2realCfg &cfg,
+    const std::unordered_map<std::string, size_t> &joint_index_map,
+    size_t joint_count,
+    const std::string &section_name)
+{
+    if (cfg.action_dim <= 0)
+    {
+        throw std::runtime_error(section_name + ": action_dim must be > 0");
+    }
+    if (cfg.action_dim > static_cast<int>(joint_count))
+    {
+        throw std::runtime_error(section_name + ": action_dim exceeds robot joint count");
+    }
+    if (cfg.action_joint_order.size() != static_cast<size_t>(cfg.action_dim))
+    {
+        throw std::runtime_error(section_name + ": action_joint_order length must equal action_dim");
+    }
+
+    std::vector<int> out(static_cast<size_t>(cfg.action_dim), -1);
+    std::unordered_set<std::string> seen;
+    seen.reserve(cfg.action_joint_order.size());
+    for (size_t i = 0; i < cfg.action_joint_order.size(); ++i)
+    {
+        const std::string &name = cfg.action_joint_order[i];
+        if (!seen.insert(name).second)
+        {
+            throw std::runtime_error(section_name + ": duplicate joint name in action_joint_order: " + name);
+        }
+        const auto it = joint_index_map.find(name);
+        if (it == joint_index_map.end())
+        {
+            throw std::runtime_error(section_name + ": unknown joint in action_joint_order: " + name);
+        }
+        out[i] = static_cast<int>(it->second);
+    }
+    return out;
+}
+
+std::vector<int> buildObsIndices(
+    const Sim2realCfg &cfg,
+    const std::unordered_map<std::string, size_t> &joint_index_map,
+    size_t joint_count,
+    const std::string &section_name)
+{
+    if (cfg.motor_N <= 0)
+    {
+        throw std::runtime_error(section_name + ": motor_N must be > 0");
+    }
+    if (cfg.motor_N > static_cast<int>(joint_count))
+    {
+        throw std::runtime_error(section_name + ": motor_N exceeds robot joint count");
+    }
+    if (cfg.obs_joint_order.size() != static_cast<size_t>(cfg.motor_N))
+    {
+        throw std::runtime_error(section_name + ": obs_joint_order length must equal motor_N");
+    }
+
+    std::vector<int> out(static_cast<size_t>(cfg.motor_N), -1);
+    for (size_t i = 0; i < cfg.obs_joint_order.size(); ++i)
+    {
+        const std::string &name = cfg.obs_joint_order[i];
+        const auto it = joint_index_map.find(name);
+        if (it == joint_index_map.end())
+        {
+            throw std::runtime_error(section_name + ": unknown joint in obs_joint_order: " + name);
+        }
+        out[i] = static_cast<int>(it->second);
+    }
+    return out;
+}
+
+std::vector<int> buildReferenceIndices(
+    const Sim2realCfg &cfg,
+    const std::unordered_map<std::string, size_t> &joint_index_map,
+    const std::string &section_name)
+{
+    std::vector<std::string> reference_joint_names = cfg.reference_joint_order;
+    if (reference_joint_names.empty())
+    {
+        reference_joint_names = cfg.action_joint_order;
+    }
+    if (reference_joint_names.empty())
+    {
+        return {};
+    }
+
+    std::vector<int> out(reference_joint_names.size(), -1);
+    for (size_t i = 0; i < reference_joint_names.size(); ++i)
+    {
+        const std::string &name = reference_joint_names[i];
+        const auto it = joint_index_map.find(name);
+        if (it == joint_index_map.end())
+        {
+            throw std::runtime_error(section_name + ": unknown joint in reference_joint_order: " + name);
+        }
+        out[i] = static_cast<int>(it->second);
+    }
+    return out;
+}
+
+void validateJointGroupSubset(
+    const std::vector<std::string> &group,
+    const std::string &group_name,
+    const std::unordered_set<std::string> &global_joint_names)
+{
+    for (const auto &joint_name : group)
+    {
+        if (global_joint_names.find(joint_name) == global_joint_names.end())
+        {
+            throw std::runtime_error(
+                "joint_groups." + group_name +
+                " contains joint not present in robot_global_joint_order: " + joint_name);
+        }
+    }
+}
+
+void validateJointGroupOverlap(const JointGroupsConfig &joint_groups)
+{
+    std::unordered_map<std::string, std::string> owner;
+    auto registerGroup = [&owner](const std::vector<std::string> &group, const std::string &group_name) {
+        for (const auto &joint_name : group)
+        {
+            const auto it = owner.find(joint_name);
+            if (it != owner.end())
+            {
+                throw std::runtime_error(
+                    "joint '" + joint_name + "' is declared in both joint_groups." +
+                    it->second + " and joint_groups." + group_name);
+            }
+            owner.emplace(joint_name, group_name);
+        }
+    };
+
+    registerGroup(joint_groups.leg, "leg");
+    registerGroup(joint_groups.arm, "arm");
+    registerGroup(joint_groups.waist, "waist");
+}
+
+void validateJointGroupCoverage(
+    const JointGroupsConfig &joint_groups,
+    const std::vector<std::string> &global_joint_order)
+{
+    std::unordered_set<std::string> grouped_joint_names;
+    grouped_joint_names.reserve(
+        joint_groups.leg.size() +
+        joint_groups.arm.size() +
+        joint_groups.waist.size());
+
+    for (const auto &joint_name : joint_groups.leg)
+    {
+        grouped_joint_names.insert(joint_name);
+    }
+    for (const auto &joint_name : joint_groups.arm)
+    {
+        grouped_joint_names.insert(joint_name);
+    }
+    for (const auto &joint_name : joint_groups.waist)
+    {
+        grouped_joint_names.insert(joint_name);
+    }
+
+    std::vector<std::string> missing_joint_names;
+    for (const auto &joint_name : global_joint_order)
+    {
+        if (grouped_joint_names.find(joint_name) == grouped_joint_names.end())
+        {
+            missing_joint_names.push_back(joint_name);
+        }
+    }
+
+    if (!missing_joint_names.empty())
+    {
+        std::ostringstream oss;
+        for (size_t i = 0; i < missing_joint_names.size(); ++i)
+        {
+            if (i > 0)
+            {
+                oss << ", ";
+            }
+            oss << missing_joint_names[i];
+        }
+        throw std::runtime_error(
+            "joint_groups must fully cover robot_global_joint_order; missing joints: " +
+            oss.str());
+    }
+}
+
+void validateLegJointGroupContract(const JointGroupsConfig &joint_groups)
+{
+    const std::vector<std::string> expected_leg_group = {
+        "right_hip_roll",
+        "right_hip_yaw",
+        "right_hip_pitch",
+        "right_knee_pitch",
+        "right_ankle_pitch",
+        "right_ankle_roll",
+        "left_hip_roll",
+        "left_hip_yaw",
+        "left_hip_pitch",
+        "left_knee_pitch",
+        "left_ankle_pitch",
+        "left_ankle_roll",
+    };
+    if (joint_groups.leg != expected_leg_group)
+    {
+        throw std::runtime_error(
+            "joint_groups.leg must exactly match the current 12-joint leg conversion contract");
+    }
+}
+
+void validateArmJointGroupContract(const JointGroupsConfig &joint_groups)
+{
+    const std::vector<std::string> expected_arm_group = {
+        "right_shoulder_pitch",
+        "right_shoulder_roll",
+        "right_shoulder_yaw",
+        "right_elbow_pitch",
+        "right_elbow_yaw",
+        "right_wrist_pitch",
+        "right_wrist_roll",
+        "left_shoulder_pitch",
+        "left_shoulder_roll",
+        "left_shoulder_yaw",
+        "left_elbow_pitch",
+        "left_elbow_yaw",
+        "left_wrist_pitch",
+        "left_wrist_roll",
+    };
+    if (joint_groups.arm != expected_arm_group)
+    {
+        throw std::runtime_error(
+            "joint_groups.arm must exactly match the current 14-joint arm conversion contract");
+    }
+}
+
+void validateWaistJointGroupContract(const JointGroupsConfig &joint_groups)
+{
+    const std::vector<std::string> expected_waist_group = {
+        "waist_roll",
+        "waist_yaw",
+    };
+    if (joint_groups.waist != expected_waist_group)
+    {
+        throw std::runtime_error(
+            "joint_groups.waist must exactly match the current 2-joint waist conversion contract");
+    }
+}
+
+ModeProfileJointLayout buildJointLayout(
+    const Sim2realCfg &cfg,
+    const std::vector<std::string> &joint_order,
+    const std::string &section_name)
+{
+    ModeProfileJointLayout layout;
+    layout.joint_name_to_global_index = buildJointIndexMap(joint_order);
+    layout.default_angle = buildDefaultAngleVector(cfg.robotCfg, joint_order);
+    layout.zero_pose = buildZeroPoseVector(cfg.robotCfg, joint_order, section_name);
+    layout.action_global_indices = buildActionIndices(cfg, layout.joint_name_to_global_index, joint_order.size(), section_name);
+    layout.obs_global_indices = buildObsIndices(cfg, layout.joint_name_to_global_index, joint_order.size(), section_name);
+    layout.reference_global_indices = buildReferenceIndices(cfg, layout.joint_name_to_global_index, section_name);
+    return layout;
+}
+
+} // namespace
 
 std::shared_ptr<const ModeProfileRegistry> ModeProfileRegistry::loadFromYaml(
     const std::string &yaml_file,
@@ -52,6 +393,11 @@ const std::vector<std::string> &ModeProfileRegistry::jointOrder() const
     return joint_order_;
 }
 
+const JointGroupsConfig &ModeProfileRegistry::jointGroups() const
+{
+    return joint_groups_;
+}
+
 const std::string &ModeProfileRegistry::configSectionForMode(int mode_id, bool allow_fallback) const
 {
     return entryForMode(mode_id, allow_fallback).spec.config_section;
@@ -72,6 +418,16 @@ const Sim2realCfg &ModeProfileRegistry::cfgForSection(const std::string &section
     return entryForSection(section).cfg;
 }
 
+const ModeProfileJointLayout &ModeProfileRegistry::layoutForMode(int mode_id, bool allow_fallback) const
+{
+    return entryForMode(mode_id, allow_fallback).layout;
+}
+
+const ModeProfileJointLayout &ModeProfileRegistry::layoutForSection(const std::string &section) const
+{
+    return entryForSection(section).layout;
+}
+
 void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::string &fallback_section)
 {
     yaml_file_ = yaml_file;
@@ -80,6 +436,7 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
     mode_to_entry_index_.clear();
     section_to_entry_index_.clear();
     joint_order_.clear();
+    joint_groups_ = JointGroupsConfig{};
     default_mode_id_ = rl_master::kModeCodeMin;
     default_config_section_ = fallback_section.empty() ? "engineai_walk" : fallback_section;
 
@@ -99,11 +456,20 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
     const std::vector<std::string> explicit_global_joint_order = loadRobotGlobalJointOrderFromYAML(yaml_file);
     std::unordered_set<std::string> explicit_global_joint_names;
     joint_order_ = explicit_global_joint_order;
+    joint_groups_ = loadJointGroupsFromYAML(yaml_file);
     explicit_global_joint_names.reserve(explicit_global_joint_order.size());
     for (const auto &joint_name : explicit_global_joint_order)
     {
         explicit_global_joint_names.insert(joint_name);
     }
+    validateJointGroupSubset(joint_groups_.leg, "leg", explicit_global_joint_names);
+    validateJointGroupSubset(joint_groups_.arm, "arm", explicit_global_joint_names);
+    validateJointGroupSubset(joint_groups_.waist, "waist", explicit_global_joint_names);
+    validateJointGroupOverlap(joint_groups_);
+    validateJointGroupCoverage(joint_groups_, joint_order_);
+    validateLegJointGroupContract(joint_groups_);
+    validateArmJointGroupContract(joint_groups_);
+    validateWaistJointGroupContract(joint_groups_);
     auto validateJointNames = [&](const auto &names, const std::string &field_name, const std::string &section_name) {
         for (const auto &joint_name : names)
         {
@@ -160,6 +526,7 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
         Entry entry;
         entry.spec = spec;
         entry.cfg = cfg;
+        entry.layout = buildJointLayout(cfg, joint_order_, spec.config_section);
         const size_t index = entries_.size();
         entries_.push_back(std::move(entry));
         mode_to_entry_index_[spec.mode_id] = index;

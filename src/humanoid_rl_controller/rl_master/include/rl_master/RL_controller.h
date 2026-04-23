@@ -107,18 +107,6 @@ private:
         std::vector<float> robot_base_init_quat_w;
     };
 
-    std::vector<int> buildActionRobotIndices(
-        const Sim2realCfg &cfg,
-        const std::vector<std::string> &joint_names,
-        const std::string &cfg_name) const;
-    std::vector<int> buildObsIndexMap(
-        const Sim2realCfg &cfg,
-        const std::vector<std::string> &joint_names,
-        const std::string &cfg_name) const;
-    std::vector<int> buildReferenceIndexMap(
-        const Sim2realCfg &cfg,
-        const std::vector<std::string> &joint_names,
-        const std::string &cfg_name) const;
     const std::vector<int> &currentActionIndexMap() const;
     const std::vector<int> &currentObsIndexMap() const;
     const std::vector<int> &currentReferenceIndexMap() const;
@@ -150,12 +138,6 @@ private:
 
     void initModeProfiles();
     std::vector<ModeProfileSpec> loadModeProfileSpecsFromYaml() const;
-    std::vector<float> buildDefaultAnglesFromCfg(
-        const Sim2realCfg::RobotCfg &robot_cfg,
-        const std::vector<std::string> &joint_names) const;
-    std::vector<float> buildZeroPoseFromCfg(
-        const Sim2realCfg::RobotCfg &robot_cfg,
-        const std::vector<std::string> &joint_names) const;
     size_t profileIndexForMode(int mode_id, bool sanitize_invalid_mode) const;
     ModeProfile &activeModeProfile();
     const ModeProfile &activeModeProfile() const;

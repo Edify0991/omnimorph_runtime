@@ -1,14 +1,110 @@
 #include "rl_master/KinConv.h"
 
-KinConv::KinConv() {
+#include <unordered_map>
 
-}
+KinConv::KinConv() {}
 
 KinConv::~KinConv() {}
 
+void KinConv::configureJointGroups(
+    const std::vector<std::string> &global_joint_order,
+    const JointGroupsConfig &joint_groups)
+{
+    const std::vector<std::string> expected_leg_group = {
+        "right_hip_roll",
+        "right_hip_yaw",
+        "right_hip_pitch",
+        "right_knee_pitch",
+        "right_ankle_pitch",
+        "right_ankle_roll",
+        "left_hip_roll",
+        "left_hip_yaw",
+        "left_hip_pitch",
+        "left_knee_pitch",
+        "left_ankle_pitch",
+        "left_ankle_roll",
+    };
+    if (joint_groups.leg != expected_leg_group)
+    {
+        throw std::runtime_error(
+            "joint_groups.leg must exactly match the current 12-joint leg conversion contract");
+    }
+
+    std::unordered_map<std::string, int> joint_index;
+    joint_index.reserve(global_joint_order.size());
+    for (size_t i = 0; i < global_joint_order.size(); ++i)
+    {
+        joint_index[global_joint_order[i]] = static_cast<int>(i);
+    }
+
+    auto resolveGroup = [&joint_index](const std::vector<std::string> &group_names, const char *group_name) {
+        std::vector<int> indices;
+        indices.reserve(group_names.size());
+        for (const auto &joint_name : group_names)
+        {
+            const auto it = joint_index.find(joint_name);
+            if (it == joint_index.end())
+            {
+                throw std::runtime_error(
+                    std::string("KinConv group '") + group_name +
+                    "' contains joint not present in global joint order: " + joint_name);
+            }
+            indices.push_back(it->second);
+        }
+        return indices;
+    };
+
+    leg_global_indices_ = resolveGroup(joint_groups.leg, "leg");
+    arm_global_indices_ = resolveGroup(joint_groups.arm, "arm");
+    waist_global_indices_ = resolveGroup(joint_groups.waist, "waist");
+    validateLegGroupSize();
+}
+
+const std::vector<int> &KinConv::legGlobalIndices() const
+{
+    return leg_global_indices_;
+}
+
+const std::vector<int> &KinConv::armGlobalIndices() const
+{
+    return arm_global_indices_;
+}
+
+const std::vector<int> &KinConv::waistGlobalIndices() const
+{
+    return waist_global_indices_;
+}
+
+void KinConv::validateLegGroupSize() const
+{
+    if (leg_global_indices_.size() != LEG_MOTOR_COUNT)
+    {
+        throw std::runtime_error(
+            "KinConv leg group must contain exactly " + std::to_string(LEG_MOTOR_COUNT) + " joints");
+    }
+}
+
+std::vector<JointData> KinConv::passThroughJointToMotor(
+    const std::vector<JointData> &joint_cmd)
+{
+    return joint_cmd;
+}
+
+std::vector<JointData> KinConv::passThroughMotorToJoint(
+    const std::vector<JointData> &motor_state)
+{
+    return motor_state;
+}
+
 std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& joint_state, const std::vector<JointData>& joint_cmd)
 {
-    std::vector<JointData> motor_cmd(LEG_MOTOR_COUNT, {0.0, 0.0, 0.0});
+    if (joint_state.size() != LEG_MOTOR_COUNT || joint_cmd.size() != LEG_MOTOR_COUNT)
+    {
+        throw std::runtime_error("KinConv::legJointToMotor expects exactly 12 leg joints");
+    }
+    std::vector<JointData> motor_cmd(
+        LEG_MOTOR_COUNT,
+        {0.0f, 0.0f, 0.0f, RUN_MODE_CSP, 0.0f, 0.0f});
 
     for (size_t i = 0; i < LEG_MOTOR_COUNT; ++i) 
     {
@@ -134,7 +230,13 @@ std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& jo
 
 std::vector<JointData> KinConv::legMotorToJoint(const std::vector<JointData>& motor_state)
 {
-    std::vector<JointData> joint_state(LEG_MOTOR_COUNT);
+    if (motor_state.size() != LEG_MOTOR_COUNT)
+    {
+        throw std::runtime_error("KinConv::legMotorToJoint expects exactly 12 leg joints");
+    }
+    std::vector<JointData> joint_state(
+        LEG_MOTOR_COUNT,
+        {0.0f, 0.0f, 0.0f, RUN_MODE_CSP, 0.0f, 0.0f});
 
     for (size_t i = 0; i < LEG_MOTOR_COUNT; ++i) {
         if (MotorName(i) == hip_motor_r_roll || MotorName(i) == hip_motor_r_yaw || MotorName(i) == hip_motor_r_pitch ||
@@ -202,4 +304,36 @@ std::vector<JointData> KinConv::legMotorToJoint(const std::vector<JointData>& mo
     }
 
     return joint_state;
+}
+
+std::vector<JointData> KinConv::armJointToMotor(
+    const std::vector<JointData> &joint_state,
+    const std::vector<JointData> &joint_cmd) const
+{
+    if (joint_state.size() != joint_cmd.size())
+    {
+        throw std::runtime_error("KinConv::armJointToMotor requires matching joint_state and joint_cmd sizes");
+    }
+    return passThroughJointToMotor(joint_cmd);
+}
+
+std::vector<JointData> KinConv::armMotorToJoint(const std::vector<JointData> &motor_state) const
+{
+    return passThroughMotorToJoint(motor_state);
+}
+
+std::vector<JointData> KinConv::waistJointToMotor(
+    const std::vector<JointData> &joint_state,
+    const std::vector<JointData> &joint_cmd) const
+{
+    if (joint_state.size() != joint_cmd.size())
+    {
+        throw std::runtime_error("KinConv::waistJointToMotor requires matching joint_state and joint_cmd sizes");
+    }
+    return passThroughJointToMotor(joint_cmd);
+}
+
+std::vector<JointData> KinConv::waistMotorToJoint(const std::vector<JointData> &motor_state) const
+{
+    return passThroughMotorToJoint(motor_state);
 }

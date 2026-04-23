@@ -306,6 +306,86 @@ def get_global_robot_joint_order(
     return out
 
 
+def get_joint_groups(
+    root_cfg: Dict[str, Any],
+    global_joint_order: Sequence[str],
+    issues: IssueCollector,
+) -> Dict[str, List[str]]:
+    raw = root_cfg.get("joint_groups")
+    groups: Dict[str, List[str]] = {"leg": [], "arm": [], "waist": []}
+    if raw is None:
+        issues.error("global", "joint_groups is required")
+        return groups
+    if not isinstance(raw, dict):
+        issues.error("global", "joint_groups must be a map")
+        return groups
+
+    global_joint_set = {str(name) for name in global_joint_order}
+    seen_owner: Dict[str, str] = {}
+    for group_name in ("leg", "arm", "waist"):
+        group_raw = raw.get(group_name, [] if group_name != "leg" else None)
+        if group_raw is None:
+            issues.error("global", f"joint_groups.{group_name} is required")
+            continue
+        if not isinstance(group_raw, list):
+            issues.error("global", f"joint_groups.{group_name} must be a sequence")
+            continue
+        names: List[str] = []
+        seen_local: set[str] = set()
+        for item in group_raw:
+            name = str(item).strip()
+            if not name:
+                issues.error("global", f"joint_groups.{group_name} contains empty joint name")
+                continue
+            if name in seen_local:
+                issues.error("global", f"joint_groups.{group_name} contains duplicate joint '{name}'")
+                continue
+            seen_local.add(name)
+            names.append(name)
+            if global_joint_order and name not in global_joint_set:
+                issues.error(
+                    "global",
+                    f"joint_groups.{group_name} contains joint not present in robot_global_joint_order: {name}",
+                )
+            owner = seen_owner.get(name)
+            if owner is not None and owner != group_name:
+                issues.error(
+                    "global",
+                    f"joint '{name}' is declared in both joint_groups.{owner} and joint_groups.{group_name}",
+                )
+            else:
+                seen_owner[name] = group_name
+        groups[group_name] = names
+    expected_leg_group = [
+        "right_hip_roll",
+        "right_hip_yaw",
+        "right_hip_pitch",
+        "right_knee_pitch",
+        "right_ankle_pitch",
+        "right_ankle_roll",
+        "left_hip_roll",
+        "left_hip_yaw",
+        "left_hip_pitch",
+        "left_knee_pitch",
+        "left_ankle_pitch",
+        "left_ankle_roll",
+    ]
+    if groups["leg"] and groups["leg"] != expected_leg_group:
+        issues.error(
+            "global",
+            "joint_groups.leg must exactly match the current 12-joint leg conversion contract",
+        )
+    grouped_joint_names = set(groups["leg"]) | set(groups["arm"]) | set(groups["waist"])
+    missing_joint_names = [name for name in global_joint_order if name not in grouped_joint_names]
+    if missing_joint_names:
+        issues.error(
+            "global",
+            "joint_groups must fully cover robot_global_joint_order; missing joints: "
+            + ", ".join(missing_joint_names),
+        )
+    return groups
+
+
 def validate_zero_pose_contract(
     section_cfg: Dict[str, Any],
     global_joint_order: Sequence[str],
@@ -1541,6 +1621,12 @@ def validate_profile(
         context,
     )
     global_joint_order = get_global_robot_joint_order(root_cfg, issues)
+    joint_groups = get_joint_groups(root_cfg, global_joint_order, issues)
+    leg_group = joint_groups.get("leg", [])
+    if len(global_joint_order) > 30:
+        issues.error("global", "robot_global_joint_order size exceeds kMotorShmSlotCount=30")
+    if len(leg_group) != 12:
+        issues.error("global", "joint_groups.leg must contain exactly 12 joints")
     normalize_installed_joint_run_modes(
         section_cfg.get("installed_joint_run_modes"),
         global_joint_order,

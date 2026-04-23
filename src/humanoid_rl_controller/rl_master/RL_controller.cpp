@@ -519,131 +519,6 @@ std::unique_ptr<RL_controller> RL_controller::create(std::shared_ptr<const rl_ma
     return std::make_unique<RL_controller>(std::move(mode_registry));
 }
 
-std::vector<int> RL_controller::buildActionRobotIndices(
-    const Sim2realCfg &cfg,
-    const std::vector<std::string> &joint_names,
-    const std::string &cfg_name) const
-{
-    if (cfg.action_dim <= 0)
-    {
-        throw std::runtime_error(cfg_name + ": action_dim must be > 0");
-    }
-    if (cfg.action_dim > static_cast<int>(joint_names.size()))
-    {
-        throw std::runtime_error(cfg_name + ": action_dim exceeds robot joint count");
-    }
-
-    std::vector<std::string> action_joint_names = cfg.action_joint_order;
-    if (action_joint_names.size() != static_cast<size_t>(cfg.action_dim))
-    {
-        throw std::runtime_error(cfg_name + ": action_joint_order length must equal action_dim");
-    }
-
-    std::unordered_map<std::string, int> joint_name_to_index;
-    joint_name_to_index.reserve(joint_names.size());
-    for (size_t i = 0; i < joint_names.size(); ++i)
-    {
-        joint_name_to_index[joint_names[i]] = static_cast<int>(i);
-    }
-
-    std::vector<int> map_policy_idx_to_robot_idx(static_cast<size_t>(cfg.action_dim), -1);
-    std::unordered_map<std::string, bool> seen_names;
-    seen_names.reserve(action_joint_names.size());
-    for (size_t i = 0; i < action_joint_names.size(); ++i)
-    {
-        const auto &name = action_joint_names[i];
-        if (seen_names.find(name) != seen_names.end())
-        {
-            throw std::runtime_error(cfg_name + ": duplicate joint name in action_joint_order: " + name);
-        }
-        seen_names[name] = true;
-        const auto it = joint_name_to_index.find(name);
-        if (it == joint_name_to_index.end())
-        {
-            throw std::runtime_error(cfg_name + ": unknown joint in action_joint_order: " + name);
-        }
-        map_policy_idx_to_robot_idx[i] = it->second;
-    }
-
-    return map_policy_idx_to_robot_idx;
-}
-
-std::vector<int> RL_controller::buildObsIndexMap(
-    const Sim2realCfg &cfg,
-    const std::vector<std::string> &joint_names,
-    const std::string &cfg_name) const
-{
-    if (cfg.motor_N <= 0)
-    {
-        throw std::runtime_error(cfg_name + ": motor_N must be > 0");
-    }
-    if (cfg.motor_N > static_cast<int>(joint_names.size()))
-    {
-        throw std::runtime_error(cfg_name + ": motor_N exceeds robot joint count");
-    }
-
-    std::vector<int> map_policy_idx_to_robot_idx(static_cast<size_t>(cfg.motor_N), 0);
-    std::vector<std::string> obs_joint_names = cfg.obs_joint_order;
-    if (obs_joint_names.size() != static_cast<size_t>(cfg.motor_N))
-    {
-        throw std::runtime_error(cfg_name + ": obs_joint_order length must equal motor_N");
-    }
-
-    std::unordered_map<std::string, int> joint_name_to_index;
-    joint_name_to_index.reserve(joint_names.size());
-    for (size_t i = 0; i < joint_names.size(); ++i)
-    {
-        joint_name_to_index[joint_names[i]] = static_cast<int>(i);
-    }
-
-    for (size_t policy_idx = 0; policy_idx < obs_joint_names.size(); ++policy_idx)
-    {
-        const auto &name = obs_joint_names[policy_idx];
-        const auto it = joint_name_to_index.find(name);
-        if (it == joint_name_to_index.end())
-        {
-            throw std::runtime_error(cfg_name + ": unknown joint in obs_joint_order: " + name);
-        }
-        map_policy_idx_to_robot_idx[policy_idx] = it->second;
-    }
-    return map_policy_idx_to_robot_idx;
-}
-
-std::vector<int> RL_controller::buildReferenceIndexMap(
-    const Sim2realCfg &cfg,
-    const std::vector<std::string> &joint_names,
-    const std::string &cfg_name) const
-{
-    std::vector<std::string> reference_joint_names = cfg.reference_joint_order;
-    if (reference_joint_names.empty())
-    {
-        reference_joint_names = cfg.action_joint_order;
-    }
-    if (reference_joint_names.empty())
-    {
-        return {};
-    }
-
-    std::unordered_map<std::string, int> joint_name_to_index;
-    joint_name_to_index.reserve(joint_names.size());
-    for (size_t i = 0; i < joint_names.size(); ++i)
-    {
-        joint_name_to_index[joint_names[i]] = static_cast<int>(i);
-    }
-
-    std::vector<int> map_reference_idx_to_robot_idx(reference_joint_names.size(), -1);
-    for (size_t reference_idx = 0; reference_idx < reference_joint_names.size(); ++reference_idx)
-    {
-        const auto it = joint_name_to_index.find(reference_joint_names[reference_idx]);
-        if (it == joint_name_to_index.end())
-        {
-            throw std::runtime_error(cfg_name + ": unknown joint in reference_joint_order: " + reference_joint_names[reference_idx]);
-        }
-        map_reference_idx_to_robot_idx[reference_idx] = it->second;
-    }
-    return map_reference_idx_to_robot_idx;
-}
-
 const std::vector<int> &RL_controller::currentActionIndexMap() const
 {
     return activeModeProfile().action_robot_indices;
@@ -876,59 +751,6 @@ size_t RL_controller::profileIndexForMode(int mode_id, bool sanitize_invalid_mod
     return 0;
 }
 
-std::vector<float> RL_controller::buildDefaultAnglesFromCfg(
-    const Sim2realCfg::RobotCfg &robot_cfg,
-    const std::vector<std::string> &joint_names) const
-{
-    std::vector<float> out(joint_names.size(), 0.0f);
-    std::unordered_map<std::string, float> default_angle_map;
-    default_angle_map.reserve(robot_cfg.default_joint_angles.size());
-    for (const auto &entry : robot_cfg.default_joint_angles)
-    {
-        default_angle_map[entry.first] = entry.second;
-    }
-
-    for (size_t i = 0; i < joint_names.size(); ++i)
-    {
-        const auto it = default_angle_map.find(joint_names[i]);
-        if (it != default_angle_map.end())
-        {
-            out[i] = it->second;
-        }
-    }
-    return out;
-}
-
-std::vector<float> RL_controller::buildZeroPoseFromCfg(
-    const Sim2realCfg::RobotCfg &robot_cfg,
-    const std::vector<std::string> &joint_names) const
-{
-    if (robot_cfg.zero_joint_angles.empty())
-    {
-        throw std::runtime_error("robot.zero_joint_angles must not be empty");
-    }
-
-    std::vector<float> out(joint_names.size(), 0.0f);
-    std::unordered_map<std::string, float> zero_pose_map;
-    zero_pose_map.reserve(robot_cfg.zero_joint_angles.size());
-    for (const auto &entry : robot_cfg.zero_joint_angles)
-    {
-        zero_pose_map[entry.first] = entry.second;
-    }
-
-    for (size_t i = 0; i < joint_names.size(); ++i)
-    {
-        const auto it = zero_pose_map.find(joint_names[i]);
-        if (it == zero_pose_map.end())
-        {
-            throw std::runtime_error(
-                "robot.zero_joint_angles missing joint for runtime order: " + joint_names[i]);
-        }
-        out[i] = it->second;
-    }
-    return out;
-}
-
 std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsFromYaml() const
 {
     std::shared_ptr<const rl_master::ModeProfileRegistry> registry = mode_registry_;
@@ -997,6 +819,7 @@ void RL_controller::initModeProfiles()
         }
 
         const auto &cfg = mode_registry_->cfgForSection(spec.config_section);
+        const auto &layout = mode_registry_->layoutForSection(spec.config_section);
 
         ModeProfile profile;
         profile.mode_id = spec.mode_id;
@@ -1004,11 +827,11 @@ void RL_controller::initModeProfiles()
         profile.tag = spec.tag;
         profile.cfg = cfg;
         profile.joint_names = joint_order_;
-        profile.default_angle = buildDefaultAnglesFromCfg(profile.cfg.robotCfg, joint_order_);
-        profile.zero_pose = buildZeroPoseFromCfg(profile.cfg.robotCfg, joint_order_);
-        profile.action_robot_indices = buildActionRobotIndices(profile.cfg, joint_order_, profile.config_section);
-        profile.obs_index_map = buildObsIndexMap(profile.cfg, joint_order_, profile.config_section);
-        profile.reference_index_map = buildReferenceIndexMap(profile.cfg, joint_order_, profile.config_section);
+        profile.default_angle = layout.default_angle;
+        profile.zero_pose = layout.zero_pose;
+        profile.action_robot_indices = layout.action_global_indices;
+        profile.obs_index_map = layout.obs_global_indices;
+        profile.reference_index_map = layout.reference_global_indices;
         profile.observation_manifest = ObservationManifest::loadFromYAML(profile.cfg.observation_manifest_path);
         profile.observation_builder = std::make_unique<ObservationBuilder>(profile.observation_manifest);
         if (profile.observation_builder->expectedDim() != static_cast<size_t>(profile.cfg.obs_dim))

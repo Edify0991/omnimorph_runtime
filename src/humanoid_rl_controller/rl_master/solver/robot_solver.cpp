@@ -24,35 +24,60 @@ namespace
 {
 constexpr long kControlPeriodNs = 2'000'000; // 500 Hz
 
-const std::vector<float> kHomePositions = {
-    0.0f,
-    0.0f,
-    -0.24f,
-    0.48f,
-    -0.24f,
-    0.0f,
-    0.0f,
-    0.0f,
-    -0.24f,
-    0.48f,
-    -0.24f,
-    0.0f,
-};
+std::vector<JointData> extractJointGroup(
+    const std::vector<JointData> &full,
+    const std::vector<int> &indices)
+{
+    std::vector<JointData> out;
+    out.reserve(indices.size());
+    for (const int index : indices)
+    {
+        if (index < 0 || static_cast<size_t>(index) >= full.size())
+        {
+            throw std::runtime_error("joint group index out of range during extraction");
+        }
+        out.push_back(full[static_cast<size_t>(index)]);
+    }
+    return out;
+}
 
-const std::vector<std::string> kInstalledJointNames = {
-    "right_hip_roll",
-    "right_hip_yaw",
-    "right_hip_pitch",
-    "right_knee_pitch",
-    "right_ankle_pitch",
-    "right_ankle_roll",
-    "left_hip_roll",
-    "left_hip_yaw",
-    "left_hip_pitch",
-    "left_knee_pitch",
-    "left_ankle_pitch",
-    "left_ankle_roll",
-};
+void scatterJointGroup(
+    const std::vector<JointData> &group,
+    const std::vector<int> &indices,
+    std::vector<JointData> *full)
+{
+    if (!full)
+    {
+        return;
+    }
+    if (group.size() != indices.size())
+    {
+        throw std::runtime_error("joint group scatter size mismatch");
+    }
+    for (size_t i = 0; i < indices.size(); ++i)
+    {
+        const int index = indices[i];
+        if (index < 0 || static_cast<size_t>(index) >= full->size())
+        {
+            throw std::runtime_error("joint group index out of range during scatter");
+        }
+        (*full)[static_cast<size_t>(index)] = group[i];
+    }
+}
+
+bool jointNameInSet(
+    const std::string &joint_name,
+    const std::initializer_list<const char *> &names)
+{
+    for (const char *candidate : names)
+    {
+        if (joint_name == candidate)
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 } // namespace
 
@@ -122,38 +147,38 @@ void RobotSolver::initModeProfileMap()
 
 void RobotSolver::initializeJointLayout()
 {
-    runtime_joint_names_.clear();
-    runtime_joint_index_.clear();
-    installed_joint_names_ = kInstalledJointNames;
+    installed_joint_names_.clear();
     installed_joint_index_.clear();
-    installed_joint_global_indices_.assign(installed_joint_names_.size(), -1);
+    if (mode_registry_)
+    {
+        installed_joint_names_ = mode_registry_->jointOrder();
+    }
+    if (installed_joint_names_.empty())
+    {
+        throw std::runtime_error("robot_global_joint_order must not be empty for RobotSolver");
+    }
+    if (installed_joint_names_.size() > kMotorShmSlotCount)
+    {
+        throw std::runtime_error(
+            "robot_global_joint_order size exceeds SHM slot count: " +
+            std::to_string(installed_joint_names_.size()) + " > " +
+            std::to_string(kMotorShmSlotCount));
+    }
+
     installed_zero_joint_q_.assign(installed_joint_names_.size(), 0.0f);
     installed_joint_tau_limits_.assign(installed_joint_names_.size(), 0.0f);
     installed_motor_torque_limits_.assign(installed_joint_names_.size(), 0.0f);
     installed_joint_configured_run_modes_.assign(installed_joint_names_.size(), RUN_MODE_CSP);
 
-    if (mode_registry_)
-    {
-        runtime_joint_names_ = mode_registry_->jointOrder();
-    }
-    if (runtime_joint_names_.empty())
-    {
-        runtime_joint_names_ = installed_joint_names_;
-    }
-
-    runtime_joint_index_.reserve(runtime_joint_names_.size());
-    for (size_t i = 0; i < runtime_joint_names_.size(); ++i)
-    {
-        runtime_joint_index_[runtime_joint_names_[i]] = i;
-    }
+    installed_joint_index_.reserve(installed_joint_names_.size());
     for (size_t i = 0; i < installed_joint_names_.size(); ++i)
     {
         installed_joint_index_[installed_joint_names_[i]] = i;
-        const auto it = runtime_joint_index_.find(installed_joint_names_[i]);
-        if (it != runtime_joint_index_.end())
-        {
-            installed_joint_global_indices_[i] = static_cast<int>(it->second);
-        }
+    }
+
+    if (mode_registry_)
+    {
+        kin_conv_.configureJointGroups(installed_joint_names_, mode_registry_->jointGroups());
     }
 }
 
@@ -184,6 +209,7 @@ bool RobotSolver::switchToModeConfig(int mode_id, bool allow_fallback_to_default
     sim2real_cfg_ = loaded;
     active_config_section_ = section;
     active_mode_id_ = resolved_mode_id;
+    active_joint_layout_ = mode_registry_ ? &mode_registry_->layoutForSection(section) : nullptr;
     cacheInstalledZeroPoseFromCfg();
     cacheInstalledJointRunModesFromCfg();
     cacheInstalledJointTauLimitsFromCfg();
@@ -308,6 +334,7 @@ void RobotSolver::syncRuntimeCfgFromController(bool force)
     sim2real_cfg_ = controller_runtime_.runtimeCfg();
     active_mode_id_ = controller_mode_id;
     active_config_section_ = controller_section;
+    active_joint_layout_ = mode_registry_ ? &mode_registry_->layoutForSection(active_config_section_) : nullptr;
     cacheInstalledZeroPoseFromCfg();
     cacheInstalledJointRunModesFromCfg();
     cacheInstalledJointTauLimitsFromCfg();
@@ -350,16 +377,21 @@ void RobotSolver::applyControlGainsFromCfg()
         joint_state_[i].kd = 0.0f;
     }
 
-    const size_t policy_joint_count = sim2real_cfg_.action_joint_order.size();
+    if (!active_joint_layout_)
+    {
+        throw std::runtime_error("RobotSolver::applyControlGainsFromCfg requires active joint layout");
+    }
+
+    const size_t policy_joint_count = active_joint_layout_->action_global_indices.size();
     for (size_t policy_idx = 0; policy_idx < policy_joint_count; ++policy_idx)
     {
-        const auto installed_it = installed_joint_index_.find(sim2real_cfg_.action_joint_order[policy_idx]);
-        if (installed_it == installed_joint_index_.end())
+        const int global_index = active_joint_layout_->action_global_indices[policy_idx];
+        if (global_index < 0 || static_cast<size_t>(global_index) >= installed_count)
         {
             continue;
         }
 
-        const size_t hardware_idx = installed_it->second;
+        const size_t hardware_idx = static_cast<size_t>(global_index);
         const float kp = sim2real_cfg_.kps[policy_idx];
         const float kd = sim2real_cfg_.kds[policy_idx];
         joint_cmd_[hardware_idx].kp = kp;
@@ -371,24 +403,15 @@ void RobotSolver::applyControlGainsFromCfg()
 
 void RobotSolver::cacheInstalledZeroPoseFromCfg()
 {
-    installed_zero_joint_q_.assign(installed_joint_names_.size(), 0.0f);
-    std::unordered_map<std::string, float> zero_pose_map;
-    zero_pose_map.reserve(sim2real_cfg_.robotCfg.zero_joint_angles.size());
-    for (const auto &entry : sim2real_cfg_.robotCfg.zero_joint_angles)
+    if (!active_joint_layout_)
     {
-        zero_pose_map[entry.first] = entry.second;
+        throw std::runtime_error("RobotSolver::cacheInstalledZeroPoseFromCfg requires active joint layout");
     }
-
-    for (size_t i = 0; i < installed_joint_names_.size(); ++i)
+    if (active_joint_layout_->zero_pose.size() != installed_joint_names_.size())
     {
-        const auto it = zero_pose_map.find(installed_joint_names_[i]);
-        if (it == zero_pose_map.end())
-        {
-            throw std::runtime_error(
-                "robot.zero_joint_angles missing installed joint: " + installed_joint_names_[i]);
-        }
-        installed_zero_joint_q_[i] = it->second;
+        throw std::runtime_error("active zero pose layout size does not match installed joints");
     }
+    installed_zero_joint_q_ = active_joint_layout_->zero_pose;
 }
 
 void RobotSolver::cacheInstalledJointRunModesFromCfg()
@@ -429,32 +452,22 @@ void RobotSolver::cacheInstalledJointRunModesFromCfg()
 void RobotSolver::cacheInstalledJointTauLimitsFromCfg()
 {
     installed_joint_tau_limits_.assign(installed_joint_names_.size(), 0.0f);
-
-    std::unordered_map<std::string, size_t> action_joint_to_policy_index;
-    action_joint_to_policy_index.reserve(sim2real_cfg_.action_joint_order.size());
-    for (size_t policy_idx = 0; policy_idx < sim2real_cfg_.action_joint_order.size(); ++policy_idx)
+    if (!active_joint_layout_)
     {
-        action_joint_to_policy_index[sim2real_cfg_.action_joint_order[policy_idx]] = policy_idx;
+        throw std::runtime_error("RobotSolver::cacheInstalledJointTauLimitsFromCfg requires active joint layout");
     }
 
-    for (size_t i = 0; i < installed_joint_names_.size(); ++i)
+    for (size_t policy_idx = 0; policy_idx < active_joint_layout_->action_global_indices.size(); ++policy_idx)
     {
-        const std::string &joint_name = installed_joint_names_[i];
-        float limit = 0.0f;
-
-        const auto action_it = action_joint_to_policy_index.find(joint_name);
-        if (action_it != action_joint_to_policy_index.end())
+        const int global_index = active_joint_layout_->action_global_indices[policy_idx];
+        if (global_index < 0 || static_cast<size_t>(global_index) >= installed_joint_tau_limits_.size())
         {
-            const size_t policy_idx = action_it->second;
-            if (policy_idx < sim2real_cfg_.tau_limit.size())
-            {
-                limit = std::max(limit, std::abs(sim2real_cfg_.tau_limit[policy_idx]));
-            }
+            continue;
         }
-
-        if (limit > 0.0f)
+        if (policy_idx < sim2real_cfg_.tau_limit.size())
         {
-            installed_joint_tau_limits_[i] = limit;
+            installed_joint_tau_limits_[static_cast<size_t>(global_index)] =
+                std::max(0.0f, std::abs(sim2real_cfg_.tau_limit[policy_idx]));
         }
     }
 }
@@ -481,7 +494,7 @@ void RobotSolver::initMotorTypes()
     const size_t installed_count = installedJointCount();
     for (size_t i = 0; i < installed_count; ++i)
     {
-        if (i == 3 || i == 9)
+        if (jointNameInSet(installed_joint_names_[i], {"right_knee_pitch", "left_knee_pitch"}))
         {
             motor_types_[i] = 1; // linear motor
         }
@@ -507,7 +520,7 @@ void RobotSolver::getMotorState()
         motor_state_dq_[i] = motor_state_[i].dq;
         motor_state_tau_[i] = motor_state_[i].tau;
 
-        if (i == 2 || i == 8)
+        if (jointNameInSet(installed_joint_names_[i], {"right_hip_pitch", "left_hip_pitch"}))
         {
             constexpr float kSpeedLimit = 2.7f;
             const float current_speed = std::fabs(motor_state_[i].dq);
@@ -518,7 +531,7 @@ void RobotSolver::getMotorState()
             }
         }
 
-        if (i == 3 || i == 9)
+        if (jointNameInSet(installed_joint_names_[i], {"right_knee_pitch", "left_knee_pitch"}))
         {
             constexpr float kQMinMm = -0.1f;
             constexpr float kQMaxMm = 60.0f;
@@ -531,7 +544,31 @@ void RobotSolver::getMotorState()
         }
     }
 
-    joint_state_ = kin_conv_.legMotorToJoint(motor_state_);
+    joint_state_ = motor_state_;
+    const auto &leg_indices = kin_conv_.legGlobalIndices();
+    if (!leg_indices.empty())
+    {
+        scatterJointGroup(
+            kin_conv_.legMotorToJoint(extractJointGroup(motor_state_, leg_indices)),
+            leg_indices,
+            &joint_state_);
+    }
+    const auto &arm_indices = kin_conv_.armGlobalIndices();
+    if (!arm_indices.empty())
+    {
+        scatterJointGroup(
+            kin_conv_.armMotorToJoint(extractJointGroup(motor_state_, arm_indices)),
+            arm_indices,
+            &joint_state_);
+    }
+    const auto &waist_indices = kin_conv_.waistGlobalIndices();
+    if (!waist_indices.empty())
+    {
+        scatterJointGroup(
+            kin_conv_.waistMotorToJoint(extractJointGroup(motor_state_, waist_indices)),
+            waist_indices,
+            &joint_state_);
+    }
     for (size_t i = 0; i < installed_count; ++i)
     {
         joint_state_q_[i] = joint_state_[i].q;
@@ -552,7 +589,37 @@ void RobotSolver::sendMotorCmd()
         joint_cmd_tau_[i] = joint_cmd_[i].tau;
     }
 
-    motor_cmd_ = kin_conv_.legJointToMotor(joint_state_, joint_cmd_);
+    motor_cmd_ = joint_cmd_;
+    const auto &leg_indices = kin_conv_.legGlobalIndices();
+    if (!leg_indices.empty())
+    {
+        scatterJointGroup(
+            kin_conv_.legJointToMotor(
+                extractJointGroup(joint_state_, leg_indices),
+                extractJointGroup(joint_cmd_, leg_indices)),
+            leg_indices,
+            &motor_cmd_);
+    }
+    const auto &arm_indices = kin_conv_.armGlobalIndices();
+    if (!arm_indices.empty())
+    {
+        scatterJointGroup(
+            kin_conv_.armJointToMotor(
+                extractJointGroup(joint_state_, arm_indices),
+                extractJointGroup(joint_cmd_, arm_indices)),
+            arm_indices,
+            &motor_cmd_);
+    }
+    const auto &waist_indices = kin_conv_.waistGlobalIndices();
+    if (!waist_indices.empty())
+    {
+        scatterJointGroup(
+            kin_conv_.waistJointToMotor(
+                extractJointGroup(joint_state_, waist_indices),
+                extractJointGroup(joint_cmd_, waist_indices)),
+            waist_indices,
+            &motor_cmd_);
+    }
 
     for (size_t i = 0; i < installed_count; ++i)
     {
@@ -612,40 +679,25 @@ void RobotSolver::applyRuntimeCommand(
         return 0.0f;
     };
     auto commandQAt = [&](size_t hardware_idx) -> float {
-        if (hardware_idx >= installed_joint_global_indices_.size())
-        {
-            return 0.0f;
-        }
-        const int global_idx = installed_joint_global_indices_[hardware_idx];
-        if (global_idx < 0 || static_cast<size_t>(global_idx) >= command.joint_target_q.size())
+        if (hardware_idx >= command.joint_target_q.size())
         {
             return joint_state_[hardware_idx].q;
         }
-        return command.joint_target_q[static_cast<size_t>(global_idx)];
+        return command.joint_target_q[hardware_idx];
     };
     auto commandDqAt = [&](size_t hardware_idx) -> float {
-        if (hardware_idx >= installed_joint_global_indices_.size())
+        if (hardware_idx >= command.joint_target_dq.size())
         {
             return 0.0f;
         }
-        const int global_idx = installed_joint_global_indices_[hardware_idx];
-        if (global_idx < 0 || static_cast<size_t>(global_idx) >= command.joint_target_dq.size())
-        {
-            return 0.0f;
-        }
-        return command.joint_target_dq[static_cast<size_t>(global_idx)];
+        return command.joint_target_dq[hardware_idx];
     };
     auto commandTauAt = [&](size_t hardware_idx) -> float {
-        if (hardware_idx >= installed_joint_global_indices_.size())
+        if (hardware_idx >= command.joint_target_tau.size())
         {
             return 0.0f;
         }
-        const int global_idx = installed_joint_global_indices_[hardware_idx];
-        if (global_idx < 0 || static_cast<size_t>(global_idx) >= command.joint_target_tau.size())
-        {
-            return 0.0f;
-        }
-        return command.joint_target_tau[static_cast<size_t>(global_idx)];
+        return command.joint_target_tau[hardware_idx];
     };
     auto zeroJointQAt = [&](size_t hardware_idx) -> float {
         if (hardware_idx >= installed_zero_joint_q_.size())
@@ -655,25 +707,11 @@ void RobotSolver::applyRuntimeCommand(
         return installed_zero_joint_q_[hardware_idx];
     };
     auto isPolicyControlledHardwareJoint = [&](size_t hardware_idx) -> bool {
-        if (hardware_idx >= installed_joint_global_indices_.size())
+        if (hardware_idx >= installed_joint_names_.size())
         {
             return false;
         }
-        const int global_idx = installed_joint_global_indices_[hardware_idx];
-        if (global_idx < 0)
-        {
-            return false;
-        }
-
-        if (sim2real_cfg_.action_joint_order.empty())
-        {
-            return false;
-        }
-        if (static_cast<size_t>(global_idx) >= runtime_joint_names_.size())
-        {
-            return false;
-        }
-        const std::string &joint_name = runtime_joint_names_[static_cast<size_t>(global_idx)];
+        const std::string &joint_name = installed_joint_names_[hardware_idx];
         return std::find(
                    sim2real_cfg_.action_joint_order.begin(),
                    sim2real_cfg_.action_joint_order.end(),
@@ -801,22 +839,15 @@ rl_master::RobotStateData RobotSolver::buildControllerStateData() const
 {
     rl_master::RobotStateData state;
     state.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
-    state.active_joint_count = static_cast<int>(runtime_joint_names_.size());
-    state.joint_q.assign(runtime_joint_names_.size(), 0.0f);
-    state.joint_dq.assign(runtime_joint_names_.size(), 0.0f);
-    state.joint_tau.assign(runtime_joint_names_.size(), 0.0f);
-
-    for (size_t hardware_idx = 0; hardware_idx < installed_joint_global_indices_.size(); ++hardware_idx)
+    state.active_joint_count = static_cast<int>(installed_joint_names_.size());
+    state.joint_q.assign(installed_joint_names_.size(), 0.0f);
+    state.joint_dq.assign(installed_joint_names_.size(), 0.0f);
+    state.joint_tau.assign(installed_joint_names_.size(), 0.0f);
+    for (size_t i = 0; i < installed_joint_names_.size() && i < joint_state_.size(); ++i)
     {
-        const int global_idx = installed_joint_global_indices_[hardware_idx];
-        if (global_idx < 0 || static_cast<size_t>(global_idx) >= state.joint_q.size() ||
-            hardware_idx >= joint_state_.size())
-        {
-            continue;
-        }
-        state.joint_q[static_cast<size_t>(global_idx)] = joint_state_[hardware_idx].q;
-        state.joint_dq[static_cast<size_t>(global_idx)] = joint_state_[hardware_idx].dq;
-        state.joint_tau[static_cast<size_t>(global_idx)] = joint_state_[hardware_idx].tau;
+        state.joint_q[i] = joint_state_[i].q;
+        state.joint_dq[i] = joint_state_[i].dq;
+        state.joint_tau[i] = joint_state_[i].tau;
     }
 
     return state;
@@ -935,7 +966,7 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
     oss << ",\"active_policy_name\":";
     appendQuoted(oss, sim2real_cfg_.policy_name);
     oss << ",\"runtime_joint_order\":";
-    appendStringVector(oss, runtime_joint_names_);
+    appendStringVector(oss, installed_joint_names_);
     oss << ",\"installed_joint_names\":";
     appendStringVector(oss, installed_joint_names_);
     oss << ",\"profiles\":[";
@@ -1267,7 +1298,7 @@ void RobotSolver::run()
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     std::cout << "Move to Home Position!" << std::endl;
-    moveToPosition(kHomePositions);
+    moveToPosition(installed_zero_joint_q_);
     std::cout << "Move to Home Position Done!" << std::endl;
     sleep(2);
     std::cout << "Start RL Solver Loop!" << std::endl;

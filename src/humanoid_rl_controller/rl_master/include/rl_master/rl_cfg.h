@@ -106,6 +106,13 @@ struct DeployModeProfileSpec
     std::string tag;
 };
 
+struct JointGroupsConfig
+{
+    std::vector<std::string> leg;
+    std::vector<std::string> arm;
+    std::vector<std::string> waist;
+};
+
 struct RootConfigDocument
 {
     std::filesystem::path root_path;
@@ -326,6 +333,72 @@ inline std::vector<std::string> loadRobotGlobalJointOrderFromYAML(
         }
         out.push_back(name);
     }
+    return out;
+}
+
+inline std::vector<std::string> loadJointGroupNamesFromRoot(
+    const YAML::Node &joint_groups,
+    const char *group_name,
+    bool required)
+{
+    if (!group_name)
+    {
+        return {};
+    }
+    const YAML::Node group_node = joint_groups ? joint_groups[group_name] : YAML::Node();
+    if (!group_node)
+    {
+        if (required)
+        {
+            throw std::runtime_error(std::string("joint_groups.") + group_name + " is required");
+        }
+        return {};
+    }
+    if (!group_node.IsSequence())
+    {
+        throw std::runtime_error(std::string("joint_groups.") + group_name + " must be a sequence");
+    }
+
+    std::vector<std::string> out;
+    std::unordered_set<std::string> seen;
+    out.reserve(group_node.size());
+    seen.reserve(group_node.size());
+    for (size_t i = 0; i < group_node.size(); ++i)
+    {
+        const std::string name = group_node[i].as<std::string>();
+        if (name.empty())
+        {
+            throw std::runtime_error(
+                std::string("joint_groups.") + group_name + " contains empty joint name");
+        }
+        if (!seen.insert(name).second)
+        {
+            throw std::runtime_error(
+                std::string("joint_groups.") + group_name + " contains duplicate joint: " + name);
+        }
+        out.push_back(name);
+    }
+    return out;
+}
+
+inline JointGroupsConfig loadJointGroupsFromYAML(
+    const std::string &yaml_file)
+{
+    const YAML::Node root = loadRootConfigDocument(yaml_file).root;
+    const YAML::Node joint_groups = root["joint_groups"];
+    if (!joint_groups)
+    {
+        throw std::runtime_error("joint_groups is required");
+    }
+    if (!joint_groups.IsMap())
+    {
+        throw std::runtime_error("joint_groups must be a map");
+    }
+
+    JointGroupsConfig out;
+    out.leg = loadJointGroupNamesFromRoot(joint_groups, "leg", true);
+    out.arm = loadJointGroupNamesFromRoot(joint_groups, "arm", false);
+    out.waist = loadJointGroupNamesFromRoot(joint_groups, "waist", false);
     return out;
 }
 

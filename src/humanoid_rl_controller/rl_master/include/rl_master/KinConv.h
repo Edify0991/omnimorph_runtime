@@ -1,8 +1,10 @@
 #include <iostream>
+#include <stdexcept>
 #include <Eigen/Dense>
 
 #include "rl_master/Ankle_Kinematics.h"
 #include "rl_master/Knee_Kinematics.h"
+#include "rl_master/rl_cfg.h"
 
 #define LEG_MOTOR_COUNT (12) // 下肢有12个电机
 
@@ -119,11 +121,32 @@ public:
     KinConv();
     ~KinConv();
 
+    void configureJointGroups(
+        const std::vector<std::string> &global_joint_order,
+        const JointGroupsConfig &joint_groups);
+
     std::vector<JointData> legJointToMotor(const std::vector<JointData> &joint_state, const std::vector<JointData> &joint_cmd);
     std::vector<JointData> legMotorToJoint(const std::vector<JointData> &motor_state);
+    std::vector<JointData> armJointToMotor(const std::vector<JointData> &joint_state, const std::vector<JointData> &joint_cmd);
+    std::vector<JointData> armMotorToJoint(const std::vector<JointData> &motor_state);
+    std::vector<JointData> waistJointToMotor(const std::vector<JointData> &joint_state, const std::vector<JointData> &joint_cmd);
+    std::vector<JointData> waistMotorToJoint(const std::vector<JointData> &motor_state);
+
+    const std::vector<int> &legGlobalIndices() const;
+    const std::vector<int> &armGlobalIndices() const;
+    const std::vector<int> &waistGlobalIndices() const;
 
 private:
+    void validateLegGroupSize() const;
+    static std::vector<JointData> passThroughJointToMotor(
+        const std::vector<JointData> &joint_cmd);
+    static std::vector<JointData> passThroughMotorToJoint(
+        const std::vector<JointData> &motor_state);
+
     // 调用运动学类
     Ankle_Kinematics ankle_kinematics;
     Knee_Kinematics knee_kinematics;
+    std::vector<int> leg_global_indices_;
+    std::vector<int> arm_global_indices_;
+    std::vector<int> waist_global_indices_;
 };

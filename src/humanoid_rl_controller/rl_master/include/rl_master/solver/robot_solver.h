@@ -115,15 +115,13 @@ private:
 
     std::string active_config_section_ = "sim2real";
     Sim2realCfg sim2real_cfg_;
+    const rl_master::ModeProfileJointLayout *active_joint_layout_ = nullptr;
     int active_mode_id_ = 0;
     std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry_;
     std::unordered_map<int, std::string> mode_to_config_section_;
     std::vector<DeployModeProfileSpec> mode_profile_specs_;
-    std::vector<std::string> runtime_joint_names_;
-    std::unordered_map<std::string, size_t> runtime_joint_index_;
     std::vector<std::string> installed_joint_names_;
     std::unordered_map<std::string, size_t> installed_joint_index_;
-    std::vector<int> installed_joint_global_indices_;
     std::vector<float> installed_zero_joint_q_;
     std::vector<float> installed_joint_tau_limits_;
     std::vector<float> installed_motor_torque_limits_;

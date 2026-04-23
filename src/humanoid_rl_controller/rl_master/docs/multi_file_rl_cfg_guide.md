@@ -22,6 +22,7 @@
 - `humanoid_rl_root_dir`
 - `legged_gym_root_dir`
 - `robot_global_joint_order`
+- `joint_groups`
 - `deploy_mode_profiles`
 - `config_files`
 - `runtime_process`
@@ -35,6 +36,19 @@
   它定义 `mode_id -> config_section -> tag`
 - `config_files`
   它定义 `config_section -> profile 文件路径`
+
+现在还新增了一层关节组合同：
+
+- `robot_global_joint_order`
+  它不仅是全局 runtime joint 顺序，也同时作为 solver installed joints 顺序和 SHM 槽位顺序
+- `joint_groups.leg / arm / waist`
+  它们是在这个全局顺序里切出来的显式子集合同，供 `KinConv` 和 solver 做分组转换
+
+当前实现里：
+
+- `joint_groups.leg` 必须完整给出当前 12 个下肢关节，并保持既定局部顺序
+- `joint_groups.arm` 和 `joint_groups.waist` 可以为空
+- arm / waist 当前只是接口预留，默认走直通
 
 ### 2.2 每个 profile 文件
 
