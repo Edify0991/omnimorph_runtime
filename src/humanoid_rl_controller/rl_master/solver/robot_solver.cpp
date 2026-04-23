@@ -112,7 +112,10 @@ void RobotSolver::initializeJointLayout()
     runtime_joint_names_.clear();
     runtime_joint_index_.clear();
     installed_joint_names_ = kInstalledJointNames;
+    installed_joint_index_.clear();
     installed_joint_global_indices_.assign(installed_joint_names_.size(), -1);
+    installed_zero_joint_q_.assign(installed_joint_names_.size(), 0.0f);
+    installed_joint_configured_run_modes_.assign(installed_joint_names_.size(), RUN_MODE_CSP);
 
     if (mode_registry_)
     {
@@ -130,6 +133,7 @@ void RobotSolver::initializeJointLayout()
     }
     for (size_t i = 0; i < installed_joint_names_.size(); ++i)
     {
+        installed_joint_index_[installed_joint_names_[i]] = i;
         const auto it = runtime_joint_index_.find(installed_joint_names_[i]);
         if (it != runtime_joint_index_.end())
         {
@@ -165,6 +169,8 @@ bool RobotSolver::switchToModeConfig(int mode_id, bool allow_fallback_to_default
     sim2real_cfg_ = loaded;
     active_config_section_ = section;
     active_mode_id_ = resolved_mode_id;
+    cacheInstalledZeroPoseFromCfg();
+    cacheInstalledJointRunModesFromCfg();
     applyControlGainsFromCfg();
 
     std::cout << "[RL_solver] mode config active: mode_id=" << active_mode_id_
@@ -281,6 +287,8 @@ void RobotSolver::syncRuntimeCfgFromController(bool force)
     sim2real_cfg_ = controller_runtime_.runtimeCfg();
     active_mode_id_ = controller_mode_id;
     active_config_section_ = controller_section;
+    cacheInstalledZeroPoseFromCfg();
+    cacheInstalledJointRunModesFromCfg();
     applyControlGainsFromCfg();
     dds_bridge_.updateStateTelemetryConfig({
         sim2real_cfg_.enable_state_telemetry,
@@ -313,12 +321,85 @@ void RobotSolver::applyControlGainsFromCfg()
 
     for (size_t i = 0; i < kInstalledMotorCount; ++i)
     {
-        const float kp = (i < sim2real_cfg_.kps.size()) ? sim2real_cfg_.kps[i] : 0.0f;
-        const float kd = (i < sim2real_cfg_.kds.size()) ? sim2real_cfg_.kds[i] : 0.0f;
-        joint_cmd_[i].kp = kp;
-        joint_cmd_[i].kd = kd;
-        joint_state_[i].kp = kp;
-        joint_state_[i].kd = kd;
+        joint_cmd_[i].kp = 0.0f;
+        joint_cmd_[i].kd = 0.0f;
+        joint_state_[i].kp = 0.0f;
+        joint_state_[i].kd = 0.0f;
+    }
+
+    const size_t policy_joint_count = sim2real_cfg_.action_joint_order.size();
+    for (size_t policy_idx = 0; policy_idx < policy_joint_count; ++policy_idx)
+    {
+        const auto installed_it = installed_joint_index_.find(sim2real_cfg_.action_joint_order[policy_idx]);
+        if (installed_it == installed_joint_index_.end())
+        {
+            continue;
+        }
+
+        const size_t hardware_idx = installed_it->second;
+        const float kp = sim2real_cfg_.kps[policy_idx];
+        const float kd = sim2real_cfg_.kds[policy_idx];
+        joint_cmd_[hardware_idx].kp = kp;
+        joint_cmd_[hardware_idx].kd = kd;
+        joint_state_[hardware_idx].kp = kp;
+        joint_state_[hardware_idx].kd = kd;
+    }
+}
+
+void RobotSolver::cacheInstalledZeroPoseFromCfg()
+{
+    installed_zero_joint_q_.assign(installed_joint_names_.size(), 0.0f);
+    std::unordered_map<std::string, float> zero_pose_map;
+    zero_pose_map.reserve(sim2real_cfg_.robotCfg.zero_joint_angles.size());
+    for (const auto &entry : sim2real_cfg_.robotCfg.zero_joint_angles)
+    {
+        zero_pose_map[entry.first] = entry.second;
+    }
+
+    for (size_t i = 0; i < installed_joint_names_.size(); ++i)
+    {
+        const auto it = zero_pose_map.find(installed_joint_names_[i]);
+        if (it == zero_pose_map.end())
+        {
+            throw std::runtime_error(
+                "robot.zero_joint_angles missing installed joint: " + installed_joint_names_[i]);
+        }
+        installed_zero_joint_q_[i] = it->second;
+    }
+}
+
+void RobotSolver::cacheInstalledJointRunModesFromCfg()
+{
+    installed_joint_configured_run_modes_.assign(installed_joint_names_.size(), RUN_MODE_CSP);
+
+    auto parseConfiguredRunMode = [](const std::string &joint_name, const std::string &raw_mode) -> MotorRunMode {
+        if (raw_mode == "csp")
+        {
+            return RUN_MODE_CSP;
+        }
+        if (raw_mode == "cst")
+        {
+            return RUN_MODE_CST;
+        }
+        if (raw_mode == "r1")
+        {
+            return RUN_MODE_R1;
+        }
+        throw std::runtime_error(
+            "installed_joint_run_modes for joint '" + joint_name +
+            "' must be one of: csp, cst, r1");
+    };
+
+    for (size_t i = 0; i < installed_joint_names_.size(); ++i)
+    {
+        const std::string &joint_name = installed_joint_names_[i];
+        const auto it = sim2real_cfg_.installed_joint_run_modes.find(joint_name);
+        if (it == sim2real_cfg_.installed_joint_run_modes.end())
+        {
+            throw std::runtime_error(
+                "installed_joint_run_modes missing installed joint: " + joint_name);
+        }
+        installed_joint_configured_run_modes_[i] = parseConfiguredRunMode(joint_name, it->second);
     }
 }
 
@@ -418,8 +499,16 @@ void RobotSolver::sendMotorCmd()
         motor_target_all_[i].io.target.target_pos = motor_cmd_[i].q;
         motor_target_all_[i].io.target.target_torque = motor_cmd_[i].tau;
         motor_target_all_[i].run_mode = static_cast<uint8_t>(joint_cmd_[i].mode);
-        motor_target_all_[i].pd[0] = static_cast<uint8_t>(joint_cmd_[i].kp);
-        motor_target_all_[i].pd[1] = static_cast<uint8_t>(joint_cmd_[i].kd);
+        if (joint_cmd_[i].mode == RUN_MODE_R1)
+        {
+            motor_target_all_[i].pd[0] = static_cast<uint8_t>(joint_cmd_[i].kp);
+            motor_target_all_[i].pd[1] = static_cast<uint8_t>(joint_cmd_[i].kd);
+        }
+        else
+        {
+            motor_target_all_[i].pd[0] = 0;
+            motor_target_all_[i].pd[1] = 0;
+        }
 
         motor_cmd_q_[i] = motor_cmd_[i].q;
         motor_cmd_dq_[i] = motor_cmd_[i].dq;
@@ -483,6 +572,13 @@ void RobotSolver::applyRuntimeCommand(
         }
         return command.joint_target_tau[static_cast<size_t>(global_idx)];
     };
+    auto zeroJointQAt = [&](size_t hardware_idx) -> float {
+        if (hardware_idx >= installed_zero_joint_q_.size())
+        {
+            return 0.0f;
+        }
+        return installed_zero_joint_q_[hardware_idx];
+    };
     auto isPolicyControlledHardwareJoint = [&](size_t hardware_idx) -> bool {
         if (hardware_idx >= installed_joint_global_indices_.size())
         {
@@ -528,38 +624,44 @@ void RobotSolver::applyRuntimeCommand(
             const float target_q_i = commandQAt(i);
             const float target_dq_i = commandDqAt(i);
             const float target_tau_i = commandTauAt(i);
-
-            target_q[i] = target_q_i;
-            target_dq[i] = target_dq_i;
+            const float hold_q_i = zeroJointQAt(i);
 
             if (policy_controlled)
             {
+                target_q[i] = target_q_i;
+                target_dq[i] = target_dq_i;
                 joint_cmd_[i].q = target_q_i;
                 joint_cmd_[i].dq = target_dq_i;
                 joint_cmd_[i].tau = target_tau_i;
-                joint_cmd_[i].mode = RUN_MODE_CST;
+                joint_cmd_[i].mode = installed_joint_configured_run_modes_[i];
             }
             else
             {
-                joint_cmd_[i].q = target_q_i;
+                target_q[i] = hold_q_i;
+                target_dq[i] = 0.0f;
+                joint_cmd_[i].q = hold_q_i;
                 joint_cmd_[i].dq = 0.0f;
                 joint_cmd_[i].tau = 0.0f;
-                joint_cmd_[i].mode = RUN_MODE_CSP;
+                joint_cmd_[i].mode = installed_joint_configured_run_modes_[i];
             }
         }
 
         const std::vector<float> joint_tau = computePdControl(target_q, target_dq);
         for (size_t i = 0; i < kInstalledMotorCount; ++i)
         {
-            if (joint_cmd_[i].mode != RUN_MODE_CST)
+            if (joint_cmd_[i].mode == RUN_MODE_CST)
             {
-                continue;
+                const float tau_limit = tauLimitAt(i);
+                const float policy_tau = joint_cmd_[i].tau;
+                const float pd_tau = joint_tau[i];
+                const float blended_tau = (std::abs(policy_tau) > 1.0e-6f) ? policy_tau : pd_tau;
+                joint_cmd_[i].tau = std::clamp(blended_tau, -tau_limit, tau_limit);
             }
-            const float tau_limit = tauLimitAt(i);
-            const float policy_tau = joint_cmd_[i].tau;
-            const float pd_tau = joint_tau[i];
-            const float blended_tau = (std::abs(policy_tau) > 1.0e-6f) ? policy_tau : pd_tau;
-            joint_cmd_[i].tau = std::clamp(blended_tau, -tau_limit, tau_limit);
+            else if (joint_cmd_[i].mode == RUN_MODE_R1)
+            {
+                const float tau_limit = tauLimitAt(i);
+                joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
+            }
         }
     }
     else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kCommandStream ||
@@ -719,6 +821,22 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
         }
         oss << "]";
     };
+    auto appendStringMap = [&](std::ostringstream &oss, const std::map<std::string, std::string> &values) {
+        oss << "{";
+        bool first = true;
+        for (const auto &entry : values)
+        {
+            if (!first)
+            {
+                oss << ",";
+            }
+            first = false;
+            appendQuoted(oss, entry.first);
+            oss << ":";
+            appendQuoted(oss, entry.second);
+        }
+        oss << "}";
+    };
 
     std::ostringstream oss;
     oss << "{";
@@ -760,6 +878,9 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
         oss << "\"obs_stack_n\":" << cfg.obs_stack_N << ",";
         oss << "\"policy_hz\":" << cfg.RL_control_f << ",";
         oss << "\"solver_control_hz\":1000,";
+        oss << "\"installed_joint_run_modes\":";
+        appendStringMap(oss, cfg.installed_joint_run_modes);
+        oss << ",";
         oss << "\"action_joint_order\":";
         appendStringVector(oss, cfg.action_joint_order);
         oss << ",\"obs_joint_order\":";

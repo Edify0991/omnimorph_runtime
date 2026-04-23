@@ -1,6 +1,7 @@
 #ifndef RL_CFG_H
 #define RL_CFG_H
 
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -46,6 +47,27 @@ inline std::map<std::string, std::string> yamlReadStringMapOr(
     for (auto it = map_node.begin(); it != map_node.end(); ++it)
     {
         out[it->first.as<std::string>()] = it->second.as<std::string>();
+    }
+    return out;
+}
+
+inline std::map<std::string, float> yamlReadFloatMapOr(
+    const YAML::Node &node,
+    const char *key)
+{
+    std::map<std::string, float> out;
+    if (!node || !node[key])
+    {
+        return out;
+    }
+    const YAML::Node map_node = node[key];
+    if (!map_node.IsMap())
+    {
+        throw std::runtime_error(std::string("yaml key is not a map: ") + key);
+    }
+    for (auto it = map_node.begin(); it != map_node.end(); ++it)
+    {
+        out[it->first.as<std::string>()] = it->second.as<float>();
     }
     return out;
 }
@@ -536,6 +558,10 @@ public:
 
     std::vector<float> kps;
     std::vector<float> kds;
+    std::vector<float> tau_limit;
+    std::map<std::string, float> named_kps;
+    std::map<std::string, float> named_kds;
+    std::map<std::string, float> named_tau_limit;
 
     float clip_observations = 100.0f;
     float clip_actions = 100.0f;
@@ -549,6 +575,7 @@ public:
     int motor_N = 0;
     int RL_control_f = 100;
     std::vector<std::string> action_joint_order;
+    std::map<std::string, std::string> installed_joint_run_modes;
     std::vector<std::string> obs_joint_order;
     std::string observation_manifest_file;
     std::string observation_manifest_path;
@@ -591,8 +618,6 @@ public:
     int loop_overrun_warn_us = 2000;
     bool enable_state_telemetry = true;
     double state_telemetry_hz = 50.0;
-
-    std::vector<float> tau_limit;
 
     RuntimeLoggingConfig logging;
     std::string data_path;
@@ -640,6 +665,9 @@ public:
             amp_discriminator = AmpDiscriminatorCfg{};
             onnx_inputs.clear();
             reference_joint_order.clear();
+            named_kps.clear();
+            named_kds.clear();
+            named_tau_limit.clear();
             source_contract = SourceContract{};
             logging = RuntimeLoggingConfig{};
 
@@ -842,9 +870,6 @@ public:
             obs_stack_N = cfg["obs_stack_N"].as<int>();
             cycle_time = cfg["cycle_time"].as<double>();
 
-            kps = cfg["kps"].as<std::vector<float>>();
-            kds = cfg["kds"].as<std::vector<float>>();
-
             clip_observations = cfg["clip_observations"].as<float>();
             clip_actions = cfg["clip_actions"].as<float>();
             action_scale = cfg["action_scale"].as<float>();
@@ -855,6 +880,7 @@ public:
             motor_N = cfg["motor_N"].as<int>();
             RL_control_f = cfg["RL_control_f"].as<int>();
             action_joint_order = yamlReadOr<std::vector<std::string>>(cfg, "action_joint_order", {});
+            installed_joint_run_modes = yamlReadStringMapOr(cfg, "installed_joint_run_modes");
             obs_joint_order = yamlReadOr<std::vector<std::string>>(cfg, "obs_joint_order", {});
             if (obs_joint_order.empty())
             {
@@ -867,6 +893,19 @@ public:
             if (action_joint_order.size() != static_cast<size_t>(action_dim))
             {
                 throw std::runtime_error("action_joint_order length must equal action_dim");
+            }
+            for (auto &entry : installed_joint_run_modes)
+            {
+                std::string &mode = entry.second;
+                std::transform(
+                    mode.begin(),
+                    mode.end(),
+                    mode.begin(),
+                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (mode != "csp" && mode != "cst" && mode != "r1")
+                {
+                    throw std::runtime_error("installed_joint_run_modes items must be 'csp', 'cst' or 'r1'");
+                }
             }
             {
                 std::unordered_set<std::string> seen_action_joint_names;
@@ -897,6 +936,71 @@ public:
                         throw std::runtime_error("obs_joint_order contains duplicate joint: " + name);
                     }
                 }
+            }
+            named_kps = yamlReadFloatMapOr(cfg, "kps");
+            named_kds = yamlReadFloatMapOr(cfg, "kds");
+            if (named_kps.empty())
+            {
+                throw std::runtime_error("kps must be a non-empty joint-name map");
+            }
+            if (named_kds.empty())
+            {
+                throw std::runtime_error("kds must be a non-empty joint-name map");
+            }
+            auto validateNamedActionJointValueMap = [&](const std::map<std::string, float> &value_map, const std::string &field_name) {
+                std::unordered_set<std::string> action_joint_names(
+                    action_joint_order.begin(),
+                    action_joint_order.end());
+                std::unordered_set<std::string> obs_joint_names(
+                    obs_joint_order.begin(),
+                    obs_joint_order.end());
+                for (const auto &entry : value_map)
+                {
+                    const std::string &joint_name = entry.first;
+                    const bool in_action = action_joint_names.find(joint_name) != action_joint_names.end();
+                    const bool in_obs = obs_joint_names.find(joint_name) != obs_joint_names.end();
+                    if (!in_action && !in_obs)
+                    {
+                        throw std::runtime_error(
+                            field_name + " contains joint not present in action_joint_order or obs_joint_order: " +
+                            joint_name);
+                    }
+                    if (!in_action)
+                    {
+                        throw std::runtime_error(
+                            field_name + " must match action_joint_order exactly; unexpected joint: " +
+                            joint_name);
+                    }
+                }
+                for (const auto &joint_name : action_joint_order)
+                {
+                    if (value_map.find(joint_name) == value_map.end())
+                    {
+                        throw std::runtime_error(
+                            field_name + " missing action joint from action_joint_order: " +
+                            joint_name);
+                    }
+                }
+            };
+            validateNamedActionJointValueMap(named_kps, "kps");
+            validateNamedActionJointValueMap(named_kds, "kds");
+            named_tau_limit = yamlReadFloatMapOr(cfg, "tau_limit");
+            if (named_tau_limit.empty())
+            {
+                throw std::runtime_error("tau_limit must be a non-empty joint-name map");
+            }
+            validateNamedActionJointValueMap(named_tau_limit, "tau_limit");
+            kps.clear();
+            kds.clear();
+            tau_limit.clear();
+            kps.reserve(action_joint_order.size());
+            kds.reserve(action_joint_order.size());
+            tau_limit.reserve(action_joint_order.size());
+            for (const auto &joint_name : action_joint_order)
+            {
+                kps.push_back(named_kps.at(joint_name));
+                kds.push_back(named_kds.at(joint_name));
+                tau_limit.push_back(named_tau_limit.at(joint_name));
             }
 
             const std::string policy_file = yamlReadOr<std::string>(cfg, "policy_file", "");
@@ -1207,7 +1311,6 @@ public:
                 realtime.fifo_priority = yamlReadOr<int>(cfg, "realtime_fifo_priority", realtime.fifo_priority);
             }
 
-            tau_limit = cfg["tau_limit"].as<std::vector<float>>();
             control_mode = cfg["control_mode"].as<std::string>();
             action_filter = cfg["action_filter"].as<float>();
             if (cfg["save_data_flag"])
@@ -1333,6 +1436,7 @@ public:
         std::cout << "Action Scale: " << action_scale << std::endl;
         std::cout << "Zero Joint Angles: " << robotCfg.zero_joint_angles.size() << std::endl;
         std::cout << "Control Mode: " << control_mode << std::endl;
+        std::cout << "Installed Joint Run Modes: " << installed_joint_run_modes.size() << std::endl;
         std::cout << "Policy Frequency: " << RL_control_f << std::endl;
         std::cout << "Sub Models: " << sub_models.size() << std::endl;
         std::cout << "AMP Discriminator Enabled: " << (amp_discriminator.enabled ? "true" : "false") << std::endl;

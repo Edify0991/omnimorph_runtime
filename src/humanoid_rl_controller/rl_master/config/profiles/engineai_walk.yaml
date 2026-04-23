@@ -4,31 +4,31 @@ engineai_walk:
   obs_stack_N: 15
   cycle_time: 1.0
   kps:
-    - 200
-    - 120
-    - 150
-    - 300
-    - 20
-    - 20
-    - 200
-    - 120
-    - 150
-    - 300
-    - 20
-    - 20
+    left_hip_roll: 200
+    left_hip_yaw: 120
+    left_hip_pitch: 150
+    left_knee_pitch: 300
+    left_ankle_pitch: 20
+    left_ankle_roll: 20
+    right_hip_roll: 200
+    right_hip_yaw: 120
+    right_hip_pitch: 150
+    right_knee_pitch: 300
+    right_ankle_pitch: 20
+    right_ankle_roll: 20
   kds:
-    - 5
-    - 3
-    - 5
-    - 10
-    - 2
-    - 2
-    - 5
-    - 3
-    - 5
-    - 10
-    - 2
-    - 2
+    left_hip_roll: 5
+    left_hip_yaw: 3
+    left_hip_pitch: 5
+    left_knee_pitch: 10
+    left_ankle_pitch: 2
+    left_ankle_roll: 2
+    right_hip_roll: 5
+    right_hip_yaw: 3
+    right_hip_pitch: 5
+    right_knee_pitch: 10
+    right_ankle_pitch: 2
+    right_ankle_roll: 2
   clip_observations: 100.0
   clip_actions: 100.0
   action_scale: 0.5
@@ -37,6 +37,19 @@ engineai_walk:
   action_dim: 12
   motor_N: 12
   RL_control_f: 100
+  installed_joint_run_modes:
+    left_hip_roll: cst
+    left_hip_yaw: cst
+    left_hip_pitch: cst
+    left_knee_pitch: cst
+    left_ankle_pitch: cst
+    left_ankle_roll: cst
+    right_hip_roll: cst
+    right_hip_yaw: cst
+    right_hip_pitch: cst
+    right_knee_pitch: cst
+    right_ankle_pitch: cst
+    right_ankle_roll: cst
   realtime:
     enabled: true
     lock_memory: true
@@ -153,18 +166,18 @@ engineai_walk:
   auto_start_policy: true
   zeroing_duration_s: 2.0
   tau_limit:
-    - 130.0
-    - 130.0
-    - 130.0
-    - 130.0
-    - 130.0
-    - 130.0
-    - 130.0
-    - 130.0
-    - 130.0
-    - 130.0
-    - 130.0
-    - 130.0
+    left_hip_roll: 130.0
+    left_hip_yaw: 130.0
+    left_hip_pitch: 130.0
+    left_knee_pitch: 130.0
+    left_ankle_pitch: 130.0
+    left_ankle_roll: 130.0
+    right_hip_roll: 130.0
+    right_hip_yaw: 130.0
+    right_hip_pitch: 130.0
+    right_knee_pitch: 130.0
+    right_ankle_pitch: 130.0
+    right_ankle_roll: 130.0
   control_mode: sim2real
   action_filter: 0.5
   robot:

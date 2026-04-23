@@ -172,6 +172,10 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
         validatePairJointNames(cfg.robotCfg.zero_joint_angles, "robot.zero_joint_angles", spec.config_section);
         validatePairJointNames(cfg.robotCfg.joint_limit_range, "robot.joint_limit_range", spec.config_section);
         validatePairJointNames(cfg.robotCfg.motor_torque_limit, "robot.motor_torque_limit", spec.config_section);
+        validatePairJointNames(cfg.named_kps, "kps", spec.config_section);
+        validatePairJointNames(cfg.named_kds, "kds", spec.config_section);
+        validatePairJointNames(cfg.named_tau_limit, "tau_limit", spec.config_section);
+        validatePairJointNames(cfg.installed_joint_run_modes, "installed_joint_run_modes", spec.config_section);
 
         if (cfg.robotCfg.zero_joint_angles.empty())
         {

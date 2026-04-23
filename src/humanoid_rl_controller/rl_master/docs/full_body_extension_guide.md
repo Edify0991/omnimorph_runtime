@@ -7,7 +7,8 @@ Current architecture:
 - `RobotState` / `RobotStateData` / `RobotCommandData` are dynamic-vector based
 - DDS command/state transport uses dynamic `joint_count`
 - controller maps policy action indices by joint name
-- non-controlled joints stay at the active mode's `default_angle`
+- `kps` / `kds` / `tau_limit` are configured as joint-name maps and reordered internally to `action_joint_order`, not to the full installed hardware joint list
+- solver keeps non-policy installed joints in `CSP` at `robot.zero_joint_angles`
 - mode registry uses required top-level `robot_global_joint_order` as the single runtime joint space
 - `robot.zero_joint_angles` is required and must cover the full `robot_global_joint_order`
 
@@ -33,18 +34,23 @@ For a new full-body mode, keep these fields aligned:
 
 1. root `robot_global_joint_order`
 2. `action_joint_order`
-3. `obs_joint_order`
-4. `action_dim`
-5. `motor_N`
-6. `observation_manifest_file`
-7. `obs_dim`
+3. `kps` / `kds` / `tau_limit`
+4. `installed_joint_run_modes`
+5. `obs_joint_order`
+6. `action_dim`
+7. `motor_N`
+8. `observation_manifest_file`
+9. `obs_dim`
 
 The easiest safe rule is:
 
 - root `robot_global_joint_order`: full robot joint space shared by all modes
 - `action_joint_order`: exactly the ONNX action output order
+- `kps` / `kds` / `tau_limit`: joint-name maps that must cover the policy-controlled joints in `action_joint_order`; runtime reorders them internally
+- `installed_joint_run_modes`: a joint-name map for all installed joints; runtime caches and applies the configured mode directly by joint name
 - `obs_joint_order`: exactly the joint order expected by the observation builder for joint-based terms
 - `action_dim == len(action_joint_order)`
+- `kps.keys() == kds.keys() == tau_limit.keys() == set(action_joint_order)`
 - `motor_N == len(obs_joint_order)` for joint-based observation terms
 
 ## Example Files

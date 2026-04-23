@@ -206,6 +206,12 @@ Edit:
 - `obs_dim`
 - `action_dim`
 - `action_joint_order`
+- `kps` / `kds`
+  按 policy joint name 写成 map，runtime 会按 `action_joint_order` 自动重排
+- `tau_limit`
+  同样按 policy joint name 写成 map，runtime 会按 `action_joint_order` 自动重排
+- `installed_joint_run_modes`
+  按 installed joint name 写成 map，runtime 会直接按接线关节名缓存控制模式
 - `obs_joint_order`
 - `observation_manifest_file` / `observation_manifest_path`
 - `policy_io.obs_input_name`
@@ -262,6 +268,10 @@ Edit:
 - runtime 会使用顶层 `robot_global_joint_order` 作为全局 joint 顺序
 - `robot.zero_joint_angles` 现在是必配项
 - `robot.zero_joint_angles` 必须完整覆盖 `robot_global_joint_order`
+- `kps` / `kds` 现在推荐按 joint name 写 map；加载时会检查 joint name 是否落在 `action_joint_order` / `obs_joint_order` 定义范围内，并进一步要求完整覆盖 `action_joint_order`，然后按 `action_joint_order` 重排成内部向量
+- `tau_limit` 与 `kps` / `kds` 使用同样的 joint-name map 规则，并最终按 `action_joint_order` 重排成内部向量
+- `installed_joint_run_modes` 用 joint name -> mode 的 map 显式配置所有 installed joints；不再按 `action_joint_order` 重排，也不再做“非 R1 就转成 CST”的二次解释
+- solver 在 policy 模式下会直接使用缓存的 installed joint 控制模式；非 policy 关节的目标值仍保持在 `robot.zero_joint_angles`，因此推荐这些关节在配置里显式写为 `csp`
 
 这样做的目的，是避免 zeroing 目标姿态存在隐式回退或漏配关节。
 

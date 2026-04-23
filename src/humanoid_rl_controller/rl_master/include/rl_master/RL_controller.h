@@ -45,7 +45,6 @@ public:
     std::vector<float> get_robot_observation(double phase_t);
     std::vector<float> run_policy(std::deque<std::vector<float>> *obs_deque = nullptr);
     std::deque<std::vector<float>> update_obs_deque(const std::vector<float> &obs);
-    std::vector<float> pd_control(const std::vector<float> &target_q, const std::vector<float> &kp, const std::vector<float> &target_dq, const std::vector<float> &kd);
     std::vector<float> get_joint_target_torque(const std::vector<float> &target_q);
     std::vector<float> get_joint_target_q(const std::vector<float> &action);
 

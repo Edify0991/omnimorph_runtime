@@ -716,6 +716,88 @@ def check_reference_joint_order(
     return reference_order
 
 
+def normalize_installed_joint_run_modes(
+    raw: Any,
+    global_joint_order: Sequence[str],
+    issues: IssueCollector,
+    context: str,
+) -> Dict[str, str]:
+    if raw is None:
+        issues.error(context, "installed_joint_run_modes is required")
+        return {}
+
+    if not isinstance(raw, dict):
+        issues.error(context, "installed_joint_run_modes must be a joint-name map")
+        return {}
+
+    named_modes = {str(k).strip(): str(v).strip().lower() for k, v in raw.items()}
+    unknown = sorted(name for name in named_modes.keys() if name not in global_joint_order)
+    if unknown:
+        issues.error(
+            context,
+            "installed_joint_run_modes contains joints not present in robot_global_joint_order: " + ", ".join(unknown),
+        )
+
+    for joint_name, mode in named_modes.items():
+        if mode not in {"csp", "cst", "r1"}:
+            issues.error(
+                context,
+                f"installed_joint_run_modes[{joint_name}] must be 'csp', 'cst' or 'r1'",
+            )
+    return named_modes
+
+
+def normalize_named_action_joint_value_map(
+    raw: Any,
+    field_name: str,
+    action_order: Sequence[str],
+    obs_order: Sequence[str],
+    issues: IssueCollector,
+    context: str,
+) -> Dict[str, float]:
+    if raw is None:
+        issues.error(context, f"{field_name} is required")
+        return {}
+
+    if not isinstance(raw, dict):
+        issues.error(context, f"{field_name} must be a joint-name map")
+        return {}
+
+    named_values: Dict[str, float] = {}
+    for raw_key, raw_value in raw.items():
+        joint_name = str(raw_key).strip()
+        try:
+            value = float(raw_value)
+        except Exception:
+            issues.error(context, f"{field_name}[{joint_name}] must be numeric")
+            continue
+        named_values[joint_name] = value
+
+    action_names = set(action_order)
+    obs_names = set(obs_order)
+    for joint_name in named_values.keys():
+        in_action = joint_name in action_names
+        in_obs = joint_name in obs_names
+        if not in_action and not in_obs:
+            issues.error(
+                context,
+                f"{field_name} contains joint not present in action_joint_order or obs_joint_order: {joint_name}",
+            )
+        elif not in_action:
+            issues.error(
+                context,
+                f"{field_name} must match action_joint_order exactly; unexpected joint: {joint_name}",
+            )
+
+    missing = [joint_name for joint_name in action_order if joint_name not in named_values]
+    if missing:
+        issues.error(
+            context,
+            f"{field_name} missing action joints from action_joint_order: {', '.join(missing)}",
+        )
+    return named_values
+
+
 def build_feature_dim_map(section_cfg: Dict[str, Any], reference_order: List[str]) -> Dict[str, int]:
     feature_dims: Dict[str, int] = {}
     motor_n = as_int(section_cfg.get("motor_N"), 0)
@@ -1407,10 +1489,50 @@ def validate_profile(
         issues.error(context, "obs_stack_N must be > 0")
     if obs_dim <= 0:
         issues.error(context, "obs_dim must be > 0")
-
     action_order = [str(x) for x in to_list(section_cfg.get("action_joint_order"))]
     obs_order = [str(x) for x in to_list(section_cfg.get("obs_joint_order"))]
-    check_joint_order(action_dim, motor_n, action_order, obs_order, issues, context)
+    if "policy_control_run_mode" in section_cfg:
+        issues.error(
+            context,
+            "legacy policy_control_run_mode is no longer supported; use installed_joint_run_modes",
+        )
+    if "policy_control_run_modes" in section_cfg:
+        issues.error(
+            context,
+            "legacy policy_control_run_modes is no longer supported; use installed_joint_run_modes",
+        )
+    check_joint_order(
+        action_dim,
+        motor_n,
+        action_order,
+        obs_order,
+        issues,
+        context,
+    )
+    kps_map = normalize_named_action_joint_value_map(
+        section_cfg.get("kps"),
+        "kps",
+        action_order,
+        obs_order if obs_order else action_order,
+        issues,
+        context,
+    )
+    kds_map = normalize_named_action_joint_value_map(
+        section_cfg.get("kds"),
+        "kds",
+        action_order,
+        obs_order if obs_order else action_order,
+        issues,
+        context,
+    )
+    tau_limit_map = normalize_named_action_joint_value_map(
+        section_cfg.get("tau_limit"),
+        "tau_limit",
+        action_order,
+        obs_order if obs_order else action_order,
+        issues,
+        context,
+    )
     reference_order = check_reference_joint_order(
         motor_n,
         action_order,
@@ -1419,8 +1541,23 @@ def validate_profile(
         context,
     )
     global_joint_order = get_global_robot_joint_order(root_cfg, issues)
+    normalize_installed_joint_run_modes(
+        section_cfg.get("installed_joint_run_modes"),
+        global_joint_order,
+        issues,
+        context,
+    )
     validate_named_joints_against_global_joint_order(
         "action_joint_order", action_order, global_joint_order, issues, context
+    )
+    validate_named_joints_against_global_joint_order(
+        "kps", list(kps_map.keys()), global_joint_order, issues, context
+    )
+    validate_named_joints_against_global_joint_order(
+        "kds", list(kds_map.keys()), global_joint_order, issues, context
+    )
+    validate_named_joints_against_global_joint_order(
+        "tau_limit", list(tau_limit_map.keys()), global_joint_order, issues, context
     )
     validate_named_joints_against_global_joint_order(
         "obs_joint_order",

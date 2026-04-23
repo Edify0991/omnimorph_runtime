@@ -1876,42 +1876,41 @@ std::deque<std::vector<float>> RL_controller::update_obs_deque(const std::vector
     return obs_deque;
 }
 
-std::vector<float> RL_controller::pd_control(
-    const std::vector<float> &target_q,
-    const std::vector<float> &kp,
-    const std::vector<float> &target_dq,
-    const std::vector<float> &kd)
-{
-    const std::vector<float> &q = robot->joint_q;
-    const std::vector<float> &dq = robot->joint_dq;
-    std::vector<float> torque(target_q.size(), 0.0f);
-
-    const size_t n = std::min(
-        std::min(target_q.size(), target_dq.size()),
-        std::min(std::min(kp.size(), kd.size()), std::min(q.size(), dq.size())));
-
-    for (size_t i = 0; i < n; ++i)
-    {
-        torque[i] = (target_q[i] - q[i]) * kp[i] + (target_dq[i] - dq[i]) * kd[i];
-    }
-    return torque;
-}
-
 std::vector<float> RL_controller::get_joint_target_torque(const std::vector<float> &target_q)
 {
     const auto &active_cfg = activePolicyCfg();
-    std::vector<float> target_dq(target_q.size(), 0.0f);
-    std::vector<float> target_tau = pd_control(target_q, active_cfg.kps, target_dq, active_cfg.kds);
-    for (size_t i = 0; i < target_tau.size(); ++i)
+    const std::vector<int> &action_robot_indices = currentActionIndexMap();
+    const std::vector<float> &q = robot->joint_q;
+    const std::vector<float> &dq = robot->joint_dq;
+    std::vector<float> target_tau(target_q.size(), 0.0f);
+
+    const size_t policy_dim = std::min(
+        action_robot_indices.size(),
+        std::min(active_cfg.kps.size(), active_cfg.kds.size()));
+    for (size_t policy_idx = 0; policy_idx < policy_dim; ++policy_idx)
     {
-        float limit = 0.0f;
-        if (i < active_cfg.tau_limit.size())
+        const int robot_idx = action_robot_indices[policy_idx];
+        if (robot_idx < 0)
         {
-            limit = std::max(limit, std::abs(active_cfg.tau_limit[i]));
+            continue;
         }
-        if (i < joint_order_.size())
+        const size_t joint_idx = static_cast<size_t>(robot_idx);
+        if (joint_idx >= target_q.size() || joint_idx >= q.size() || joint_idx >= dq.size())
         {
-            const auto it = active_cfg.robotCfg.motor_torque_limit.find(joint_order_[i]);
+            continue;
+        }
+        float tau = 
+            (target_q[joint_idx] - q[joint_idx]) * active_cfg.kps[policy_idx] +
+            (0.0f - dq[joint_idx]) * active_cfg.kds[policy_idx];
+
+        float limit = 0.0f;
+        if (policy_idx < active_cfg.tau_limit.size())
+        {
+            limit = std::max(limit, std::abs(active_cfg.tau_limit[policy_idx]));
+        }
+        if (joint_idx < joint_order_.size())
+        {
+            const auto it = active_cfg.robotCfg.motor_torque_limit.find(joint_order_[joint_idx]);
             if (it != active_cfg.robotCfg.motor_torque_limit.end())
             {
                 limit = std::max(limit, std::abs(it->second));
@@ -1919,8 +1918,9 @@ std::vector<float> RL_controller::get_joint_target_torque(const std::vector<floa
         }
         if (limit > 0.0f)
         {
-            target_tau[i] = std::clamp(target_tau[i], -limit, limit);
+            tau = std::clamp(tau, -limit, limit);
         }
+        target_tau[joint_idx] = tau;
     }
 
     joint_target_torque = target_tau;
