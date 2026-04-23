@@ -58,6 +58,19 @@ const std::vector<std::string> kInstalledJointNames = {
 
 RobotSolver::~RobotSolver() = default;
 
+size_t RobotSolver::installedJointCount() const
+{
+    return installed_joint_names_.size();
+}
+
+bool RobotSolver::jointBuffersInitialized() const
+{
+    const size_t installed_count = installedJointCount();
+    return installed_count > 0 &&
+           joint_cmd_.size() == installed_count &&
+           joint_state_.size() == installed_count;
+}
+
 std::unique_ptr<RobotSolver> RobotSolver::create(
     int startup_mode_id,
     std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry)
@@ -175,7 +188,10 @@ bool RobotSolver::switchToModeConfig(int mode_id, bool allow_fallback_to_default
     cacheInstalledJointRunModesFromCfg();
     cacheInstalledJointTauLimitsFromCfg();
     cacheInstalledMotorTorqueLimitsFromCfg();
-    applyControlGainsFromCfg();
+    if (jointBuffersInitialized())
+    {
+        applyControlGainsFromCfg();
+    }
 
     std::cout << "[RL_solver] mode config active: mode_id=" << active_mode_id_
               << ", section=" << active_config_section_
@@ -222,10 +238,6 @@ bool RobotSolver::initialize()
     }
 
     initMotorTypes();
-    for (auto &filter : velocity_filters_)
-    {
-        filter = rl_master::filters::MovingAverageFilter(5);
-    }
 
     run_flag_.store(true);
     return true;
@@ -238,31 +250,36 @@ void RobotSolver::requestStop()
 
 void RobotSolver::initializeBuffers()
 {
-    joint_state_ = std::vector<JointData>(kMotorCountMax, {0, 0, 0, RUN_MODE_CSP, 0, 0});
-    joint_cmd_ = std::vector<JointData>(kMotorCountMax, {0, 0, 0, RUN_MODE_CSP, 0, 0});
-    motor_state_ = std::vector<JointData>(kMotorCountMax, {0, 0, 0, RUN_MODE_CSP, 0, 0});
-    motor_cmd_ = std::vector<JointData>(kMotorCountMax, {0, 0, 0, RUN_MODE_CSP, 0, 0});
+    const size_t installed_count = installedJointCount();
+    if (installed_count == 0)
+    {
+        throw std::runtime_error("RobotSolver::initializeBuffers requires installed joints to be initialized first.");
+    }
+
+    joint_state_ = std::vector<JointData>(installed_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
+    joint_cmd_ = std::vector<JointData>(installed_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
+    motor_state_ = std::vector<JointData>(installed_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
+    motor_cmd_ = std::vector<JointData>(installed_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
 
     open_rl_ = 0;
     last_open_rl_ = 0;
 
-    joint_cmd_q_ = std::vector<float>(kMotorCountMax, 0.0f);
-    joint_cmd_dq_ = std::vector<float>(kMotorCountMax, 0.0f);
-    joint_cmd_tau_ = std::vector<float>(kMotorCountMax, 0.0f);
-    joint_state_q_ = std::vector<float>(kMotorCountMax, 0.0f);
-    joint_state_dq_ = std::vector<float>(kMotorCountMax, 0.0f);
-    joint_state_tau_ = std::vector<float>(kMotorCountMax, 0.0f);
-    motor_cmd_q_ = std::vector<float>(kMotorCountMax, 0.0f);
-    motor_cmd_dq_ = std::vector<float>(kMotorCountMax, 0.0f);
-    motor_cmd_tau_ = std::vector<float>(kMotorCountMax, 0.0f);
-    motor_state_q_ = std::vector<float>(kMotorCountMax, 0.0f);
-    motor_state_dq_ = std::vector<float>(kMotorCountMax, 0.0f);
-    motor_state_tau_ = std::vector<float>(kMotorCountMax, 0.0f);
-    motor_cmd_mode_ = std::vector<float>(kMotorCountMax, 0.0f);
-    hold_target_q_ = std::vector<float>(kInstalledMotorCount, 0.0f);
+    joint_cmd_q_ = std::vector<float>(installed_count, 0.0f);
+    joint_cmd_dq_ = std::vector<float>(installed_count, 0.0f);
+    joint_cmd_tau_ = std::vector<float>(installed_count, 0.0f);
+    joint_state_q_ = std::vector<float>(installed_count, 0.0f);
+    joint_state_dq_ = std::vector<float>(installed_count, 0.0f);
+    joint_state_tau_ = std::vector<float>(installed_count, 0.0f);
+    motor_cmd_q_ = std::vector<float>(installed_count, 0.0f);
+    motor_cmd_dq_ = std::vector<float>(installed_count, 0.0f);
+    motor_cmd_tau_ = std::vector<float>(installed_count, 0.0f);
+    motor_state_q_ = std::vector<float>(installed_count, 0.0f);
+    motor_state_dq_ = std::vector<float>(installed_count, 0.0f);
+    motor_state_tau_ = std::vector<float>(installed_count, 0.0f);
+    motor_cmd_mode_ = std::vector<float>(installed_count, 0.0f);
+    hold_target_q_ = std::vector<float>(installed_count, 0.0f);
+    velocity_filters_.assign(installed_count, rl_master::filters::MovingAverageFilter(5));
     hold_target_latched_ = false;
-
-    applyControlGainsFromCfg();
 }
 
 void RobotSolver::initializeController()
@@ -319,13 +336,13 @@ void RobotSolver::syncRuntimeCfgFromController(bool force)
 
 void RobotSolver::applyControlGainsFromCfg()
 {
-    if (joint_cmd_.size() < kInstalledMotorCount ||
-        joint_state_.size() < kInstalledMotorCount)
+    if (!jointBuffersInitialized())
     {
         return;
     }
 
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    const size_t installed_count = installedJointCount();
+    for (size_t i = 0; i < installed_count; ++i)
     {
         joint_cmd_[i].kp = 0.0f;
         joint_cmd_[i].kd = 0.0f;
@@ -461,7 +478,8 @@ void RobotSolver::cacheInstalledMotorTorqueLimitsFromCfg()
 void RobotSolver::initMotorTypes()
 {
     motor_types_.fill(0);
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    const size_t installed_count = installedJointCount();
+    for (size_t i = 0; i < installed_count; ++i)
     {
         if (i == 3 || i == 9)
         {
@@ -478,7 +496,8 @@ void RobotSolver::getMotorState()
 {
     motor_shm_io_.readFeedback(&motor_feedback_all_);
 
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    const size_t installed_count = installedJointCount();
+    for (size_t i = 0; i < installed_count; ++i)
     {
         motor_state_[i].q = motor_feedback_all_[i].io.feedback.feedback_pos;
         motor_state_[i].dq = motor_feedback_all_[i].io.feedback.feedback_speed;
@@ -513,7 +532,7 @@ void RobotSolver::getMotorState()
     }
 
     joint_state_ = kin_conv_.legMotorToJoint(motor_state_);
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    for (size_t i = 0; i < installed_count; ++i)
     {
         joint_state_q_[i] = joint_state_[i].q;
         joint_state_dq_[i] = joint_state_[i].dq;
@@ -525,7 +544,8 @@ void RobotSolver::sendMotorCmd()
 {
     motor_target_all_.fill(MotorHandle{});
 
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    const size_t installed_count = installedJointCount();
+    for (size_t i = 0; i < installed_count; ++i)
     {
         joint_cmd_q_[i] = joint_cmd_[i].q;
         joint_cmd_dq_[i] = joint_cmd_[i].dq;
@@ -534,7 +554,7 @@ void RobotSolver::sendMotorCmd()
 
     motor_cmd_ = kin_conv_.legJointToMotor(joint_state_, joint_cmd_);
 
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    for (size_t i = 0; i < installed_count; ++i)
     {
         if (i >= installed_motor_torque_limits_.size())
         {
@@ -547,7 +567,7 @@ void RobotSolver::sendMotorCmd()
         }
     }
 
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    for (size_t i = 0; i < installed_count; ++i)
     {
         motor_target_all_[i].motor_type = motor_types_[i];
         motor_target_all_[i].io.target.target_speed = motor_cmd_[i].dq;
@@ -671,7 +691,8 @@ void RobotSolver::applyRuntimeCommand(
 
     if (runtime_mode.mode == rl_master::CommandRuntimeMode::kPolicy)
     {
-        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        const size_t installed_count = installedJointCount();
+        for (size_t i = 0; i < installed_count; ++i)
         {
             const bool policy_controlled = isPolicyControlledHardwareJoint(i);
             const float target_q_i = commandQAt(i);
@@ -695,7 +716,7 @@ void RobotSolver::applyRuntimeCommand(
             }
         }
 
-        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        for (size_t i = 0; i < installed_count; ++i)
         {
             if (joint_cmd_[i].mode == RUN_MODE_CST)
             {
@@ -723,7 +744,8 @@ void RobotSolver::applyRuntimeCommand(
              runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCsp)
     {
         // Position stream: keep joints in CSP and track commanded positions.
-        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        const size_t installed_count = installedJointCount();
+        for (size_t i = 0; i < installed_count; ++i)
         {
             joint_cmd_[i].q = commandQAt(i);
             joint_cmd_[i].dq = 0.0f;
@@ -734,7 +756,8 @@ void RobotSolver::applyRuntimeCommand(
     else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCst)
     {
         // Torque stream: use commanded joint torques directly in CST mode.
-        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        const size_t installed_count = installedJointCount();
+        for (size_t i = 0; i < installed_count; ++i)
         {
             const float tau_limit = tauLimitAt(i);
             joint_cmd_[i].q = joint_state_[i].q;
@@ -750,7 +773,8 @@ void RobotSolver::applyRuntimeCommand(
     else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1)
     {
         // Mixed stream: forward target q/dq/tau with R1 run mode.
-        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        const size_t installed_count = installedJointCount();
+        for (size_t i = 0; i < installed_count; ++i)
         {
             const float tau_limit = tauLimitAt(i);
             joint_cmd_[i].q = commandQAt(i);
@@ -764,7 +788,8 @@ void RobotSolver::applyRuntimeCommand(
         }
     }
 
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    const size_t installed_count = installedJointCount();
+    for (size_t i = 0; i < installed_count; ++i)
     {
         joint_cmd_q_[i] = joint_cmd_[i].q;
         joint_cmd_dq_[i] = joint_cmd_[i].dq;
@@ -1163,8 +1188,16 @@ void RobotSolver::moveToPosition(const std::vector<float> &target_positions)
 {
     getMotorState();
 
-    std::vector<float> current_positions(kInstalledMotorCount, 0.0f);
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    const size_t installed_count = installedJointCount();
+    if (target_positions.size() != installed_count)
+    {
+        throw std::runtime_error(
+            "RobotSolver::moveToPosition target size mismatch: expected " +
+            std::to_string(installed_count) + ", got " + std::to_string(target_positions.size()));
+    }
+
+    std::vector<float> current_positions(installed_count, 0.0f);
+    for (size_t i = 0; i < installed_count; ++i)
     {
         current_positions[i] = joint_state_[i].q;
         std::cout << "Joint " << i << " current position: " << current_positions[i] << std::endl;
@@ -1177,8 +1210,8 @@ void RobotSolver::moveToPosition(const std::vector<float> &target_positions)
     std::cout << "Starting linear interpolation to home position..." << std::endl;
     std::cout << "Total time: " << total_time << "s, Steps: " << total_steps << std::endl;
 
-    std::vector<float> step_increments(kInstalledMotorCount, 0.0f);
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    std::vector<float> step_increments(installed_count, 0.0f);
+    for (size_t i = 0; i < installed_count; ++i)
     {
         step_increments[i] = (target_positions[i] - current_positions[i]) / static_cast<float>(total_steps);
     }
@@ -1187,7 +1220,7 @@ void RobotSolver::moveToPosition(const std::vector<float> &target_positions)
     {
         const auto frame_start = std::chrono::high_resolution_clock::now();
 
-        for (size_t i = 0; i < kInstalledMotorCount; ++i)
+        for (size_t i = 0; i < installed_count; ++i)
         {
             const float interpolated_pos = current_positions[i] + static_cast<float>(step) * step_increments[i];
             joint_cmd_[i].q = interpolated_pos;
@@ -1214,7 +1247,8 @@ void RobotSolver::moveToPosition(const std::vector<float> &target_positions)
 void RobotSolver::holdCurrentPose()
 {
     getMotorState();
-    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+    const size_t installed_count = installedJointCount();
+    for (size_t i = 0; i < installed_count; ++i)
     {
         joint_cmd_[i].q = joint_state_[i].q;
         joint_cmd_[i].dq = 0.0f;
@@ -1297,14 +1331,16 @@ void RobotSolver::run()
                 if (!hold_target_latched_)
                 {
                     std::cout << "[RL_solver] hold mode active" << std::endl;
-                    for (size_t i = 0; i < kInstalledMotorCount; ++i)
+                    const size_t installed_count = installedJointCount();
+                    for (size_t i = 0; i < installed_count; ++i)
                     {
                         hold_target_q_[i] = joint_state_[i].q;
                     }
                     hold_target_latched_ = true;
                 }
 
-                for (size_t i = 0; i < kInstalledMotorCount; ++i)
+                const size_t installed_count = installedJointCount();
+                for (size_t i = 0; i < installed_count; ++i)
                 {
                     joint_cmd_[i].q = hold_target_q_[i];
                     joint_cmd_[i].dq = 0.0;

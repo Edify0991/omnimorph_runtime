@@ -72,6 +72,8 @@ private:
     void initializeJointLayout();
     rl_master::RobotStateData buildControllerStateData() const;
     bool switchToModeConfig(int mode_id, bool allow_fallback_to_default);
+    size_t installedJointCount() const;
+    bool jointBuffersInitialized() const;
 
     std::atomic<bool> run_flag_{true};
 
@@ -103,9 +105,9 @@ private:
     double last_stale_warn_time_s_ = 0.0;
     uint64_t loop_overrun_count_ = 0;
 
-    std::array<MotorHandle, kMotorCountMax> motor_feedback_all_{};
-    std::array<MotorHandle, kMotorCountMax> motor_target_all_{};
-    std::array<uint8_t, kMotorCountMax> motor_types_{};
+    std::array<MotorHandle, kMotorShmSlotCount> motor_feedback_all_{};
+    std::array<MotorHandle, kMotorShmSlotCount> motor_target_all_{};
+    std::array<uint8_t, kMotorShmSlotCount> motor_types_{};
 
     KinConv kin_conv_;
     SolverDdsBridge dds_bridge_;
@@ -128,7 +130,7 @@ private:
     std::vector<MotorRunMode> installed_joint_configured_run_modes_;
     int last_mode_reload_failure_id_ = std::numeric_limits<int>::min();
 
-    std::array<rl_master::filters::MovingAverageFilter, kMotorCountMax> velocity_filters_;
+    std::vector<rl_master::filters::MovingAverageFilter> velocity_filters_;
     rl_master::runtime::IntegratedControllerRuntime controller_runtime_;
 
     rl_master::logging::RuntimeRecorder runtime_recorder_;

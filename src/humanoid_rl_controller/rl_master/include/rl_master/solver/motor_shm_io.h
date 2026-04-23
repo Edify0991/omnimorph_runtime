@@ -11,8 +11,7 @@ class SharedMemory;
 namespace rl_master::solver
 {
 
-constexpr size_t kMotorCountMax = 30;
-constexpr size_t kInstalledMotorCount = 12;
+constexpr size_t kMotorShmSlotCount = 30;
 
 struct MotorHandle
 {
@@ -46,8 +45,8 @@ public:
 
     void connect();
 
-    void readFeedback(std::array<MotorHandle, kMotorCountMax> *feedback);
-    void writeTarget(const std::array<MotorHandle, kMotorCountMax> &target);
+    void readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback);
+    void writeTarget(const std::array<MotorHandle, kMotorShmSlotCount> &target);
 
 private:
     std::unique_ptr<SharedMemory> shm_target_;

@@ -25,14 +25,14 @@ void MotorShmIo::connect()
 {
     shm_target_ = std::make_unique<SharedMemory>(
         kShmTargetPath,
-        sizeof(MotorHandle) * kMotorCountMax,
+        sizeof(MotorHandle) * kMotorShmSlotCount,
         kShmTargetKeyNum,
         LOCK_TYPE_MUTEX,
         kShmTargetSemName);
 
     shm_feedback_ = std::make_unique<SharedMemory>(
         kShmFeedbackPath,
-        sizeof(MotorHandle) * kMotorCountMax,
+        sizeof(MotorHandle) * kMotorShmSlotCount,
         kShmFeedbackKeyNum,
         LOCK_TYPE_MUTEX,
         kShmFeedbackSemName);
@@ -41,7 +41,7 @@ void MotorShmIo::connect()
     shm_feedback_->connect();
 }
 
-void MotorShmIo::readFeedback(std::array<MotorHandle, kMotorCountMax> *feedback)
+void MotorShmIo::readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback)
 {
     if (!feedback)
     {
@@ -53,17 +53,17 @@ void MotorShmIo::readFeedback(std::array<MotorHandle, kMotorCountMax> *feedback)
         throw std::runtime_error("MotorShmIo::readFeedback called before connect().");
     }
 
-    shm_feedback_->read(feedback->data(), static_cast<int>(kMotorCountMax), 0);
+    shm_feedback_->read(feedback->data(), static_cast<int>(kMotorShmSlotCount), 0);
 }
 
-void MotorShmIo::writeTarget(const std::array<MotorHandle, kMotorCountMax> &target)
+void MotorShmIo::writeTarget(const std::array<MotorHandle, kMotorShmSlotCount> &target)
 {
     if (!shm_target_)
     {
         throw std::runtime_error("MotorShmIo::writeTarget called before connect().");
     }
 
-    shm_target_->write(target.data(), static_cast<int>(kMotorCountMax), 0);
+    shm_target_->write(target.data(), static_cast<int>(kMotorShmSlotCount), 0);
 }
 
 } // namespace rl_master::solver
