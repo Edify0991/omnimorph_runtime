@@ -26,10 +26,23 @@ struct ReferenceMotionFrame
     std::vector<float> body_quat_w;
 };
 
+struct ReferenceMotionFieldMap
+{
+    std::string reference_motion_key = "reference_motion";
+    std::string joint_pos_key = "joint_pos";
+    std::string joint_vel_key = "joint_vel";
+    std::string body_pos_w_key = "body_pos_w";
+    std::string body_quat_w_key = "body_quat_w";
+};
+
 class ReferenceMotionProvider
 {
 public:
-    bool load(const std::string &file_path, int expected_dim, const std::string &body_quat_format_override = "");
+    bool load(
+        const std::string &file_path,
+        int expected_dim,
+        const ReferenceMotionFieldMap &field_map = {},
+        const std::string &body_quat_format_override = "");
     void clear();
 
     bool available() const { return loaded_ && !frames_.empty(); }
@@ -45,7 +58,11 @@ public:
 
 private:
     static size_t sampleIndexByPhase(size_t frame_count, double phase_t, double cycle_time);
-    bool loadStructuredFile(const std::string &file_path, int expected_dim, const std::string &body_quat_format_override);
+    bool loadStructuredFile(
+        const std::string &file_path,
+        int expected_dim,
+        const ReferenceMotionFieldMap &field_map,
+        const std::string &body_quat_format_override);
     bool loadLegacyTextFile(const std::string &file_path, int expected_dim);
     static std::vector<float> parseLine(const std::string &line);
     static std::vector<float> fitDim(const std::vector<float> &values, size_t dim);

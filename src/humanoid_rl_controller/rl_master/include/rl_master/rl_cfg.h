@@ -490,6 +490,7 @@ struct SourceContractSimBase
 
 struct SourceContractReferenceFile
 {
+    std::string reference_motion_key = "reference_motion";
     std::string reference_joint_pos_key = "joint_pos";
     std::string reference_joint_vel_key = "joint_vel";
     std::string reference_body_pos_w_key = "body_pos_w";
@@ -501,6 +502,7 @@ struct SourceContractReferenceFile
 
 struct SourceContractPolicyExtraOutputs
 {
+    std::string reference_motion_key = "reference_motion";
     std::string reference_joint_pos_key = "joint_pos";
     std::string reference_joint_vel_key = "joint_vel";
     std::string reference_body_pos_w_key = "body_pos_w";
@@ -1303,6 +1305,10 @@ public:
                 sim_base_contract_cfg, "quat_source_order", source_contract.sim_base.quat_source_order);
 
             const YAML::Node reference_file_contract_cfg = source_contract_cfg["reference_file"];
+            source_contract.reference_file.reference_motion_key = yamlReadOr<std::string>(
+                reference_file_contract_cfg,
+                "reference_motion_key",
+                source_contract.reference_file.reference_motion_key);
             source_contract.reference_file.reference_joint_pos_key = yamlReadOr<std::string>(
                 reference_file_contract_cfg,
                 "reference_joint_pos_key",
@@ -1333,6 +1339,10 @@ public:
                 source_contract.reference_file.body_quat_frame);
 
             const YAML::Node policy_extra_outputs_contract_cfg = source_contract_cfg["policy_extra_outputs"];
+            source_contract.policy_extra_outputs.reference_motion_key = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "reference_motion_key",
+                source_contract.policy_extra_outputs.reference_motion_key);
             source_contract.policy_extra_outputs.reference_joint_pos_key = yamlReadOr<std::string>(
                 policy_extra_outputs_contract_cfg,
                 "reference_joint_pos_key",
@@ -1441,14 +1451,14 @@ public:
                 {
                     throw std::runtime_error("source_contract.reference_file.body_quat_order must be 'xyzw' or 'wxyz'");
                 }
-                if (source_contract.reference_file.reference_joint_pos_key != "joint_pos" ||
-                    source_contract.reference_file.reference_joint_vel_key != "joint_vel" ||
-                    source_contract.reference_file.reference_body_pos_w_key != "body_pos_w" ||
-                    source_contract.reference_file.reference_body_quat_w_key != "body_quat_w")
+                if (source_contract.reference_file.reference_motion_key.empty() ||
+                    source_contract.reference_file.reference_joint_pos_key.empty() ||
+                    source_contract.reference_file.reference_joint_vel_key.empty() ||
+                    source_contract.reference_file.reference_body_pos_w_key.empty() ||
+                    source_contract.reference_file.reference_body_quat_w_key.empty())
                 {
                     throw std::runtime_error(
-                        "reference_file key remapping is not yet supported; use the default keys "
-                        "joint_pos/joint_vel/body_pos_w/body_quat_w");
+                        "source_contract.reference_file keys must all be non-empty");
                 }
                 if (source_contract.reference_file.body_quat_representation != "quat")
                 {
@@ -1476,7 +1486,8 @@ public:
                 {
                     throw std::runtime_error("source_contract.policy_extra_outputs.body_quat_frame must be 'world'");
                 }
-                if (source_contract.policy_extra_outputs.reference_joint_pos_key.empty() ||
+                if (source_contract.policy_extra_outputs.reference_motion_key.empty() ||
+                    source_contract.policy_extra_outputs.reference_joint_pos_key.empty() ||
                     source_contract.policy_extra_outputs.reference_joint_vel_key.empty() ||
                     source_contract.policy_extra_outputs.reference_body_pos_w_key.empty() ||
                     source_contract.policy_extra_outputs.reference_body_quat_w_key.empty())

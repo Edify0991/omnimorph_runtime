@@ -115,6 +115,7 @@ stand_sim2real:
     sim_base:
       quat_source_order: wxyz
     policy_extra_outputs:
+      reference_motion_key: reference_motion
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
       reference_body_pos_w_key: body_pos_w

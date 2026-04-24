@@ -1262,9 +1262,17 @@ void RL_controller::initReferenceMotionProvider(const Sim2realCfg &cfg, Referenc
         return;
     }
 
+    const ReferenceMotionFieldMap field_map{
+        cfg.source_contract.reference_file.reference_motion_key,
+        cfg.source_contract.reference_file.reference_joint_pos_key,
+        cfg.source_contract.reference_file.reference_joint_vel_key,
+        cfg.source_contract.reference_file.reference_body_pos_w_key,
+        cfg.source_contract.reference_file.reference_body_quat_w_key};
+
     if (!provider->load(
             cfg.reference_motion_path,
             cfg.reference_motion_dim,
+            field_map,
             cfg.source_contract.reference_file.body_quat_order))
     {
         std::cerr << "[RL_controller][" << tag << "] failed to load reference motion file: "
@@ -1366,6 +1374,17 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     if (use_policy_source)
     {
         const std::string preferred_prefix = profile.tag + "/main/";
+        if (const auto *reference_motion = findExtraOutputByName(
+                latest_policy_extra_outputs_,
+                preferred_prefix,
+                cfg.source_contract.policy_extra_outputs.reference_motion_key))
+        {
+            setFeatureIfNonEmpty(
+                &feature_context,
+                "reference_motion",
+                reference_motion_dim > 0 ? fitDim(*reference_motion, static_cast<size_t>(reference_motion_dim))
+                                         : *reference_motion);
+        }
         if (const auto *joint_pos = findExtraOutputByName(
                 latest_policy_extra_outputs_,
                 preferred_prefix,

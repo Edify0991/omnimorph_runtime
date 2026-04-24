@@ -995,6 +995,15 @@ def check_source_contract(section_cfg: Dict[str, Any], issues: IssueCollector, c
         if not reference_file:
             issues.error(context, "missing source_contract.reference_file")
         else:
+            for field_name in (
+                "reference_motion_key",
+                "reference_joint_pos_key",
+                "reference_joint_vel_key",
+                "reference_body_pos_w_key",
+                "reference_body_quat_w_key",
+            ):
+                if not str(reference_file.get(field_name, "")).strip():
+                    issues.error(context, f"source_contract.reference_file.{field_name} must be non-empty")
             body_quat_order = normalize_token(reference_file.get("body_quat_order", ""))
             if body_quat_order not in SUPPORTED_QUAT_ORDERS:
                 issues.error(
@@ -1014,6 +1023,15 @@ def check_source_contract(section_cfg: Dict[str, Any], issues: IssueCollector, c
         if not policy_extra_outputs:
             issues.error(context, "missing source_contract.policy_extra_outputs")
         else:
+            for field_name in (
+                "reference_motion_key",
+                "reference_joint_pos_key",
+                "reference_joint_vel_key",
+                "reference_body_pos_w_key",
+                "reference_body_quat_w_key",
+            ):
+                if not str(policy_extra_outputs.get(field_name, "")).strip():
+                    issues.error(context, f"source_contract.policy_extra_outputs.{field_name} must be non-empty")
             body_quat_order = normalize_token(policy_extra_outputs.get("body_quat_order", ""))
             if body_quat_order not in SUPPORTED_QUAT_ORDERS:
                 issues.error(
@@ -1085,6 +1103,12 @@ def check_reference_contract(
         file_body_names = [str(x) for x in to_list(motion_root.get("body_names"))]
         file_anchor = str(motion_root.get("anchor_body", "")).strip()
         file_quat_order = normalize_token(motion_root.get("body_quat_format", ""))
+        reference_file_contract = to_dict(to_dict(section_cfg.get("source_contract")).get("reference_file"))
+        configured_reference_motion_key = str(reference_file_contract.get("reference_motion_key", "reference_motion")).strip()
+        configured_joint_pos_key = str(reference_file_contract.get("reference_joint_pos_key", "joint_pos")).strip()
+        configured_joint_vel_key = str(reference_file_contract.get("reference_joint_vel_key", "joint_vel")).strip()
+        configured_body_pos_key = str(reference_file_contract.get("reference_body_pos_w_key", "body_pos_w")).strip()
+        configured_body_quat_key = str(reference_file_contract.get("reference_body_quat_w_key", "body_quat_w")).strip()
 
         if body_names and file_body_names and body_names != file_body_names:
             issues.error(
@@ -1097,7 +1121,6 @@ def check_reference_contract(
                 f"reference_anchor_body='{anchor_body}' differs from file anchor_body='{file_anchor}'; config overrides file metadata",
             )
 
-        reference_file_contract = to_dict(to_dict(section_cfg.get("source_contract")).get("reference_file"))
         contract_quat_order = normalize_token(reference_file_contract.get("body_quat_order", ""))
         if file_quat_order and contract_quat_order and file_quat_order != contract_quat_order:
             issues.warn(
@@ -1105,6 +1128,22 @@ def check_reference_contract(
                 "reference file body_quat_format differs from source_contract.reference_file.body_quat_order; "
                 "runtime uses config as source of truth",
             )
+
+        frames = to_list(motion_root.get("frames"))
+        if frames:
+            sample_frame = to_dict(frames[0])
+            for field_name, configured_key in (
+                ("reference_motion_key", configured_reference_motion_key),
+                ("reference_joint_pos_key", configured_joint_pos_key),
+                ("reference_joint_vel_key", configured_joint_vel_key),
+                ("reference_body_pos_w_key", configured_body_pos_key),
+                ("reference_body_quat_w_key", configured_body_quat_key),
+            ):
+                if configured_key and configured_key not in sample_frame:
+                    issues.warn(
+                        context,
+                        f"structured reference file first frame does not contain configured {field_name}='{configured_key}'",
+                    )
 
 
 def parse_int_metadata(value: str) -> Optional[int]:

@@ -31,10 +31,18 @@ std::string toLower(std::string text)
 
 bool parseFloatVectorNode(
     const YAML::Node &frame_node,
-    const char *field_name,
+    const std::string &field_name,
     std::vector<float> *out,
     std::string *error)
 {
+    if (field_name.empty())
+    {
+        if (error)
+        {
+            *error = "field name is empty";
+        }
+        return false;
+    }
     if (!frame_node[field_name])
     {
         out->clear();
@@ -182,6 +190,7 @@ ReferenceMotionFrame emptyFrame(int expected_dim)
 bool ReferenceMotionProvider::load(
     const std::string &file_path,
     int expected_dim,
+    const ReferenceMotionFieldMap &field_map,
     const std::string &body_quat_format_override)
 {
     clear();
@@ -194,7 +203,7 @@ bool ReferenceMotionProvider::load(
     const std::string extension = toLower(std::filesystem::path(file_path).extension().string());
     const bool prefer_structured = extension == ".yaml" || extension == ".yml" || extension == ".json";
 
-    if (loadStructuredFile(file_path, expected_dim, body_quat_format_override))
+    if (loadStructuredFile(file_path, expected_dim, field_map, body_quat_format_override))
     {
         return true;
     }
@@ -293,6 +302,7 @@ size_t ReferenceMotionProvider::sampleIndexByPhase(size_t frame_count, double ph
 bool ReferenceMotionProvider::loadStructuredFile(
     const std::string &file_path,
     int expected_dim,
+    const ReferenceMotionFieldMap &field_map,
     const std::string &body_quat_format_override)
 {
     YAML::Node root;
@@ -364,17 +374,17 @@ bool ReferenceMotionProvider::loadStructuredFile(
             ReferenceMotionFrame frame;
             std::string error;
 
-            if (!parseFloatVectorNode(frame_node, "reference_motion", &frame.reference_motion, &error) ||
-                !parseFloatVectorNode(frame_node, "joint_pos", &frame.joint_pos, &error) ||
-                !parseFloatVectorNode(frame_node, "joint_vel", &frame.joint_vel, &error) ||
-                !parseFloatVectorNode(frame_node, "body_pos_w", &frame.body_pos_w, &error))
+            if (!parseFloatVectorNode(frame_node, field_map.reference_motion_key, &frame.reference_motion, &error) ||
+                !parseFloatVectorNode(frame_node, field_map.joint_pos_key, &frame.joint_pos, &error) ||
+                !parseFloatVectorNode(frame_node, field_map.joint_vel_key, &frame.joint_vel, &error) ||
+                !parseFloatVectorNode(frame_node, field_map.body_pos_w_key, &frame.body_pos_w, &error))
             {
                 std::cerr << "[ReferenceMotionProvider] frame[" << frame_index << "] " << error << std::endl;
                 return false;
             }
 
             std::vector<float> raw_quat_w;
-            if (!parseFloatVectorNode(frame_node, "body_quat_w", &raw_quat_w, &error))
+            if (!parseFloatVectorNode(frame_node, field_map.body_quat_w_key, &raw_quat_w, &error))
             {
                 std::cerr << "[ReferenceMotionProvider] frame[" << frame_index << "] " << error << std::endl;
                 return false;
