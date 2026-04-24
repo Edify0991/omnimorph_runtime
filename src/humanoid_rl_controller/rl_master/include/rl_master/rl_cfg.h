@@ -490,12 +490,33 @@ struct SourceContractSimBase
 
 struct SourceContractReferenceFile
 {
+    std::string reference_joint_pos_key = "joint_pos";
+    std::string reference_joint_vel_key = "joint_vel";
+    std::string reference_body_pos_w_key = "body_pos_w";
+    std::string reference_body_quat_w_key = "body_quat_w";
     std::string body_quat_order = "wxyz";
+    std::string body_quat_representation = "quat";
+    std::string body_quat_frame = "world";
 };
 
 struct SourceContractPolicyExtraOutputs
 {
+    std::string reference_joint_pos_key = "joint_pos";
+    std::string reference_joint_vel_key = "joint_vel";
+    std::string reference_body_pos_w_key = "body_pos_w";
+    std::string reference_body_quat_w_key = "body_quat_w";
     std::string body_quat_order = "wxyz";
+    std::string body_quat_representation = "quat";
+    std::string body_quat_frame = "world";
+};
+
+struct ObservationCanonicalContract
+{
+    std::string joint_order = "robot_global_joint_order";
+    std::string quat_order = "xyzw";
+    std::string quat_representation = "quat";
+    std::string body_quat_frame = "world";
+    std::string body_orientation_representation = "rot6";
 };
 
 struct SourceContract
@@ -682,6 +703,7 @@ public:
     std::vector<std::string> reference_joint_order;
     std::vector<ExternalObservationSpec> external_observations;
     SourceContract source_contract;
+    ObservationCanonicalContract observation_canonical_contract;
 
     std::string startup_completion_action = "hold";
     double zeroing_duration_s = 2.0;
@@ -742,6 +764,7 @@ public:
             named_kds.clear();
             named_tau_limit.clear();
             source_contract = SourceContract{};
+            observation_canonical_contract = ObservationCanonicalContract{};
             logging = RuntimeLoggingConfig{};
 
             const std::string configured_root_raw = yamlReadOr<std::string>(config, "humanoid_rl_root_dir", "");
@@ -1280,16 +1303,87 @@ public:
                 sim_base_contract_cfg, "quat_source_order", source_contract.sim_base.quat_source_order);
 
             const YAML::Node reference_file_contract_cfg = source_contract_cfg["reference_file"];
+            source_contract.reference_file.reference_joint_pos_key = yamlReadOr<std::string>(
+                reference_file_contract_cfg,
+                "reference_joint_pos_key",
+                source_contract.reference_file.reference_joint_pos_key);
+            source_contract.reference_file.reference_joint_vel_key = yamlReadOr<std::string>(
+                reference_file_contract_cfg,
+                "reference_joint_vel_key",
+                source_contract.reference_file.reference_joint_vel_key);
+            source_contract.reference_file.reference_body_pos_w_key = yamlReadOr<std::string>(
+                reference_file_contract_cfg,
+                "reference_body_pos_w_key",
+                source_contract.reference_file.reference_body_pos_w_key);
+            source_contract.reference_file.reference_body_quat_w_key = yamlReadOr<std::string>(
+                reference_file_contract_cfg,
+                "reference_body_quat_w_key",
+                source_contract.reference_file.reference_body_quat_w_key);
             source_contract.reference_file.body_quat_order = yamlReadOr<std::string>(
                 reference_file_contract_cfg,
                 "body_quat_order",
                 source_contract.reference_file.body_quat_order);
+            source_contract.reference_file.body_quat_representation = yamlReadOr<std::string>(
+                reference_file_contract_cfg,
+                "body_quat_representation",
+                source_contract.reference_file.body_quat_representation);
+            source_contract.reference_file.body_quat_frame = yamlReadOr<std::string>(
+                reference_file_contract_cfg,
+                "body_quat_frame",
+                source_contract.reference_file.body_quat_frame);
 
             const YAML::Node policy_extra_outputs_contract_cfg = source_contract_cfg["policy_extra_outputs"];
+            source_contract.policy_extra_outputs.reference_joint_pos_key = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "reference_joint_pos_key",
+                source_contract.policy_extra_outputs.reference_joint_pos_key);
+            source_contract.policy_extra_outputs.reference_joint_vel_key = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "reference_joint_vel_key",
+                source_contract.policy_extra_outputs.reference_joint_vel_key);
+            source_contract.policy_extra_outputs.reference_body_pos_w_key = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "reference_body_pos_w_key",
+                source_contract.policy_extra_outputs.reference_body_pos_w_key);
+            source_contract.policy_extra_outputs.reference_body_quat_w_key = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "reference_body_quat_w_key",
+                source_contract.policy_extra_outputs.reference_body_quat_w_key);
             source_contract.policy_extra_outputs.body_quat_order = yamlReadOr<std::string>(
                 policy_extra_outputs_contract_cfg,
                 "body_quat_order",
                 source_contract.policy_extra_outputs.body_quat_order);
+            source_contract.policy_extra_outputs.body_quat_representation = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "body_quat_representation",
+                source_contract.policy_extra_outputs.body_quat_representation);
+            source_contract.policy_extra_outputs.body_quat_frame = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "body_quat_frame",
+                source_contract.policy_extra_outputs.body_quat_frame);
+
+            const YAML::Node observation_contract_cfg = cfg["observation_contract"];
+            const YAML::Node canonical_contract_cfg = observation_contract_cfg["canonical"];
+            observation_canonical_contract.joint_order = yamlReadOr<std::string>(
+                canonical_contract_cfg,
+                "joint_order",
+                observation_canonical_contract.joint_order);
+            observation_canonical_contract.quat_order = yamlReadOr<std::string>(
+                canonical_contract_cfg,
+                "quat_order",
+                observation_canonical_contract.quat_order);
+            observation_canonical_contract.quat_representation = yamlReadOr<std::string>(
+                canonical_contract_cfg,
+                "quat_representation",
+                observation_canonical_contract.quat_representation);
+            observation_canonical_contract.body_quat_frame = yamlReadOr<std::string>(
+                canonical_contract_cfg,
+                "body_quat_frame",
+                observation_canonical_contract.body_quat_frame);
+            observation_canonical_contract.body_orientation_representation = yamlReadOr<std::string>(
+                canonical_contract_cfg,
+                "body_orientation_representation",
+                observation_canonical_contract.body_orientation_representation);
 
             if (source_contract.imu_input.euler_order.size() != 3)
             {
@@ -1331,15 +1425,85 @@ public:
             {
                 throw std::runtime_error("source_contract.sim_base.quat_source_order must be 'wxyz' or 'xyzw'");
             }
-            if (source_contract.reference_file.body_quat_order != "xyzw" &&
-                source_contract.reference_file.body_quat_order != "wxyz")
+            auto normalizeLower = [](std::string text) {
+                std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
+                    return static_cast<char>(std::tolower(c));
+                });
+                return text;
+            };
+            const std::string normalized_reference_motion_source = normalizeLower(reference_motion_source);
+            const bool reference_file_contract_active =
+                enable_reference_motion && normalized_reference_motion_source != "policy_outputs";
+            if (reference_file_contract_active)
             {
-                throw std::runtime_error("source_contract.reference_file.body_quat_order must be 'xyzw' or 'wxyz'");
+                if (source_contract.reference_file.body_quat_order != "xyzw" &&
+                    source_contract.reference_file.body_quat_order != "wxyz")
+                {
+                    throw std::runtime_error("source_contract.reference_file.body_quat_order must be 'xyzw' or 'wxyz'");
+                }
+                if (source_contract.reference_file.reference_joint_pos_key != "joint_pos" ||
+                    source_contract.reference_file.reference_joint_vel_key != "joint_vel" ||
+                    source_contract.reference_file.reference_body_pos_w_key != "body_pos_w" ||
+                    source_contract.reference_file.reference_body_quat_w_key != "body_quat_w")
+                {
+                    throw std::runtime_error(
+                        "reference_file key remapping is not yet supported; use the default keys "
+                        "joint_pos/joint_vel/body_pos_w/body_quat_w");
+                }
+                if (source_contract.reference_file.body_quat_representation != "quat")
+                {
+                    throw std::runtime_error("source_contract.reference_file.body_quat_representation must be 'quat'");
+                }
+                if (source_contract.reference_file.body_quat_frame != "world")
+                {
+                    throw std::runtime_error("source_contract.reference_file.body_quat_frame must be 'world'");
+                }
             }
-            if (source_contract.policy_extra_outputs.body_quat_order != "xyzw" &&
-                source_contract.policy_extra_outputs.body_quat_order != "wxyz")
+            const bool policy_extra_reference_contract_active =
+                enable_reference_motion && normalized_reference_motion_source != "file";
+            if (policy_extra_reference_contract_active)
             {
-                throw std::runtime_error("source_contract.policy_extra_outputs.body_quat_order must be 'xyzw' or 'wxyz'");
+                if (source_contract.policy_extra_outputs.body_quat_order != "xyzw" &&
+                    source_contract.policy_extra_outputs.body_quat_order != "wxyz")
+                {
+                    throw std::runtime_error("source_contract.policy_extra_outputs.body_quat_order must be 'xyzw' or 'wxyz'");
+                }
+                if (source_contract.policy_extra_outputs.body_quat_representation != "quat")
+                {
+                    throw std::runtime_error("source_contract.policy_extra_outputs.body_quat_representation must be 'quat'");
+                }
+                if (source_contract.policy_extra_outputs.body_quat_frame != "world")
+                {
+                    throw std::runtime_error("source_contract.policy_extra_outputs.body_quat_frame must be 'world'");
+                }
+                if (source_contract.policy_extra_outputs.reference_joint_pos_key.empty() ||
+                    source_contract.policy_extra_outputs.reference_joint_vel_key.empty() ||
+                    source_contract.policy_extra_outputs.reference_body_pos_w_key.empty() ||
+                    source_contract.policy_extra_outputs.reference_body_quat_w_key.empty())
+                {
+                    throw std::runtime_error(
+                        "source_contract.policy_extra_outputs keys must all be non-empty");
+                }
+            }
+            if (observation_canonical_contract.joint_order != "robot_global_joint_order")
+            {
+                throw std::runtime_error(
+                    "observation_contract.canonical.joint_order must be 'robot_global_joint_order'");
+            }
+            if (observation_canonical_contract.quat_order != "xyzw")
+            {
+                throw std::runtime_error(
+                    "observation_contract.canonical.quat_order must be 'xyzw' in the current implementation");
+            }
+            if (observation_canonical_contract.quat_representation != "quat")
+            {
+                throw std::runtime_error(
+                    "observation_contract.canonical.quat_representation must be 'quat'");
+            }
+            if (observation_canonical_contract.body_orientation_representation != "rot6")
+            {
+                throw std::runtime_error(
+                    "observation_contract.canonical.body_orientation_representation must be 'rot6'");
             }
 
             if (cfg["external_observations"])
@@ -1526,16 +1690,27 @@ public:
         std::cout << "Sub Models: " << sub_models.size() << std::endl;
         std::cout << "AMP Discriminator Enabled: " << (amp_discriminator.enabled ? "true" : "false") << std::endl;
         std::cout << "AMP Discriminator Path: " << amp_discriminator.policy_path << std::endl;
-        std::cout << "Reference Motion Source: " << reference_motion_source << std::endl;
+        std::cout << "Reference Motion Source: " << reference_motion_source
+                  << ", enabled=" << (enable_reference_motion ? "true" : "false")
+                  << std::endl;
         std::cout << "Reference Motion Path: " << reference_motion_path << std::endl;
         std::cout << "Reference Joint Order: " << reference_joint_order.size() << std::endl;
         std::cout << "Source Contract IMU: payload=" << source_contract.imu_input.payload
                   << ", euler_unit=" << source_contract.imu_input.euler_unit
                   << ", quat_order=" << source_contract.imu_input.quat_order
                   << ", sim_base_quat_source_order=" << source_contract.sim_base.quat_source_order
-                  << ", reference_file_body_quat_order=" << source_contract.reference_file.body_quat_order
-                  << ", policy_extra_body_quat_order=" << source_contract.policy_extra_outputs.body_quat_order
+                  << ", canonical_quat_order=" << observation_canonical_contract.quat_order
+                  << ", canonical_body_orientation_representation=" << observation_canonical_contract.body_orientation_representation
                   << std::endl;
+        if (enable_reference_motion)
+        {
+            std::cout << "Reference Source Contract: "
+                      << "reference_file_body_quat_order=" << source_contract.reference_file.body_quat_order
+                      << ", reference_file_body_quat_key=" << source_contract.reference_file.reference_body_quat_w_key
+                      << ", policy_extra_body_quat_order=" << source_contract.policy_extra_outputs.body_quat_order
+                      << ", policy_extra_body_quat_key=" << source_contract.policy_extra_outputs.reference_body_quat_w_key
+                      << std::endl;
+        }
         std::cout << "External Obs Inputs: " << external_observations.size() << std::endl;
         std::cout << "ONNX Inputs: " << onnx_inputs.size() << std::endl;
         std::cout << "Logging: enabled=" << (logging.enabled ? "true" : "false")

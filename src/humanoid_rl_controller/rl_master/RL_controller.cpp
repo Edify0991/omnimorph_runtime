@@ -304,6 +304,35 @@ void setFeatureIfNonEmpty(
     feature_context->named_features[name] = values;
 }
 
+void setFeatureIfNonEmptyWithContract(
+    ObservationFeatureContext *feature_context,
+    const std::string &name,
+    const std::vector<float> &values,
+    const ObservationFeatureContract &contract)
+{
+    if (!feature_context || values.empty())
+    {
+        return;
+    }
+    feature_context->named_features[name] = values;
+    feature_context->named_feature_contracts[name] = contract;
+}
+
+std::vector<float> convertQuatVectorToCanonical(
+    const std::vector<float> &values,
+    const std::string &source_order,
+    const std::string &canonical_order)
+{
+    const std::string normalized_canonical = toLowerCopy(canonical_order);
+    if (normalized_canonical != "xyzw")
+    {
+        throw std::runtime_error(
+            "Unsupported canonical quaternion order: " + canonical_order +
+            ". Current implementation only supports xyzw.");
+    }
+    return convertQuatVectorToXyzw(values, source_order);
+}
+
 size_t resolveAnchorIndex(
     const std::vector<std::string> &body_names,
     const std::string &anchor_body)
@@ -1256,6 +1285,15 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     auto &profile = activeModeProfile();
     std::string source = toLowerCopy(cfg.reference_motion_source);
 
+    const ObservationFeatureContract reference_joint_contract{
+        joint_order_,
+        "joint_vector",
+        "joint_space"};
+    const ObservationFeatureContract reference_body_quat_contract{
+        {"x", "y", "z", "w"},
+        cfg.observation_canonical_contract.quat_representation,
+        cfg.observation_canonical_contract.body_quat_frame};
+
     auto external = external_observation_provider_.collect(cfg.external_observations);
     for (auto &kv : external)
     {
@@ -1266,6 +1304,20 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     const bool use_file_source = enable_reference && source != "policy_outputs";
     const bool use_policy_source = enable_reference && source != "file";
     const int reference_motion_dim = cfg.reference_motion_dim > 0 ? cfg.reference_motion_dim : activeReferenceMotionProvider().dim();
+    std::vector<std::string> body_names = cfg.reference_body_names;
+    std::string anchor_body = cfg.reference_anchor_body;
+    if (activeReferenceMotionProvider().available())
+    {
+        const auto &provider_metadata = activeReferenceMotionProvider().metadata();
+        if (!provider_metadata.body_names.empty())
+        {
+            body_names = provider_metadata.body_names;
+        }
+        if (!provider_metadata.anchor_body.empty())
+        {
+            anchor_body = provider_metadata.anchor_body;
+        }
+    }
 
     if (use_file_source && activeReferenceMotionProvider().available())
     {
@@ -1283,57 +1335,90 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                 reference_motion_dim > 0 ? fitDim(sampled_frame.reference_motion, static_cast<size_t>(reference_motion_dim))
                                          : sampled_frame.reference_motion);
         }
-        setFeatureIfNonEmpty(
+        setFeatureIfNonEmptyWithContract(
             &feature_context,
             "reference_joint_pos",
             remapJointVectorToCanonical(
                 sampled_frame.joint_pos,
                 cfg.reference_joint_order,
-                joint_order_));
-        setFeatureIfNonEmpty(
+                joint_order_),
+            reference_joint_contract);
+        setFeatureIfNonEmptyWithContract(
             &feature_context,
             "reference_joint_vel",
             remapJointVectorToCanonical(
                 sampled_frame.joint_vel,
                 cfg.reference_joint_order,
-                joint_order_));
-        setFeatureIfNonEmpty(&feature_context, "reference_body_pos_w", sampled_frame.body_pos_w);
-        setFeatureIfNonEmpty(&feature_context, "reference_body_quat_w", sampled_frame.body_quat_w);
+                joint_order_),
+            reference_joint_contract);
+        setFeatureIfNonEmptyWithContract(
+            &feature_context,
+            "reference_body_pos_w",
+            sampled_frame.body_pos_w,
+            ObservationFeatureContract{body_names, "vec3_array", "world"});
+        setFeatureIfNonEmptyWithContract(
+            &feature_context,
+            "reference_body_quat_w",
+            sampled_frame.body_quat_w,
+            reference_body_quat_contract);
     }
 
     if (use_policy_source)
     {
         const std::string preferred_prefix = profile.tag + "/main/";
-        if (const auto *joint_pos = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "joint_pos"))
+        if (const auto *joint_pos = findExtraOutputByName(
+                latest_policy_extra_outputs_,
+                preferred_prefix,
+                cfg.source_contract.policy_extra_outputs.reference_joint_pos_key))
         {
-            setFeatureIfNonEmpty(
+            setFeatureIfNonEmptyWithContract(
                 &feature_context,
                 "reference_joint_pos",
                 remapJointVectorToCanonical(
                     *joint_pos,
                     cfg.reference_joint_order,
-                    joint_order_));
+                    joint_order_),
+                reference_joint_contract);
         }
-        if (const auto *joint_vel = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "joint_vel"))
+        if (const auto *joint_vel = findExtraOutputByName(
+                latest_policy_extra_outputs_,
+                preferred_prefix,
+                cfg.source_contract.policy_extra_outputs.reference_joint_vel_key))
         {
-            setFeatureIfNonEmpty(
+            setFeatureIfNonEmptyWithContract(
                 &feature_context,
                 "reference_joint_vel",
                 remapJointVectorToCanonical(
                     *joint_vel,
                     cfg.reference_joint_order,
-                    joint_order_));
+                    joint_order_),
+                reference_joint_contract);
         }
-        if (const auto *body_pos_w = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "body_pos_w"))
+        if (const auto *body_pos_w = findExtraOutputByName(
+                latest_policy_extra_outputs_,
+                preferred_prefix,
+                cfg.source_contract.policy_extra_outputs.reference_body_pos_w_key))
         {
-            setFeatureIfNonEmpty(&feature_context, "reference_body_pos_w", *body_pos_w);
+            setFeatureIfNonEmptyWithContract(
+                &feature_context,
+                "reference_body_pos_w",
+                *body_pos_w,
+                ObservationFeatureContract{body_names, "vec3_array", "world"});
         }
-        if (const auto *body_quat_w = findExtraOutputByName(latest_policy_extra_outputs_, preferred_prefix, "body_quat_w"))
+        if (const auto *body_quat_w = findExtraOutputByName(
+                latest_policy_extra_outputs_,
+                preferred_prefix,
+                cfg.source_contract.policy_extra_outputs.reference_body_quat_w_key))
         {
-            const std::vector<float> quat_xyzw = convertQuatVectorToXyzw(
+            const std::vector<float> quat_xyzw = convertQuatVectorToCanonical(
                 *body_quat_w,
-                cfg.source_contract.policy_extra_outputs.body_quat_order);
-            setFeatureIfNonEmpty(&feature_context, "reference_body_quat_w", quat_xyzw);
+                cfg.source_contract.policy_extra_outputs.body_quat_order,
+                cfg.observation_canonical_contract.quat_order);
+            setFeatureIfNonEmptyWithContract(
+                &feature_context,
+                "reference_body_quat_w",
+                quat_xyzw,
+                reference_body_quat_contract);
         }
     }
 
@@ -1359,21 +1444,6 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     {
         feature_context.named_features["reference_motion"] =
             std::vector<float>(static_cast<size_t>(reference_motion_dim), 0.0f);
-    }
-
-    std::vector<std::string> body_names = cfg.reference_body_names;
-    std::string anchor_body = cfg.reference_anchor_body;
-    if (activeReferenceMotionProvider().available())
-    {
-        const auto &provider_metadata = activeReferenceMotionProvider().metadata();
-        if (!provider_metadata.body_names.empty())
-        {
-            body_names = provider_metadata.body_names;
-        }
-        if (!provider_metadata.anchor_body.empty())
-        {
-            anchor_body = provider_metadata.anchor_body;
-        }
     }
 
     const auto *reference_body_pos_w = findNamedFeature(feature_context.named_features, "reference_body_pos_w");
@@ -1425,10 +1495,22 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
             {
                 setFeatureIfNonEmpty(&feature_context, "motion_anchor_pos_b", motion_anchor_pos_b);
                 setFeatureIfNonEmpty(&feature_context, "motion_ref_pos_b", motion_anchor_pos_b);
-                setFeatureIfNonEmpty(&feature_context, "motion_anchor_ori_b", motion_anchor_ori_b);
-                setFeatureIfNonEmpty(&feature_context, "motion_ref_ori_b", motion_anchor_ori_b);
+                setFeatureIfNonEmptyWithContract(
+                    &feature_context,
+                    "motion_anchor_ori_b",
+                    motion_anchor_ori_b,
+                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
+                setFeatureIfNonEmptyWithContract(
+                    &feature_context,
+                    "motion_ref_ori_b",
+                    motion_anchor_ori_b,
+                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
                 setFeatureIfNonEmpty(&feature_context, "motion_body_pos_b", motion_body_pos_b);
-                setFeatureIfNonEmpty(&feature_context, "motion_body_ori_b", motion_body_ori_b);
+                setFeatureIfNonEmptyWithContract(
+                    &feature_context,
+                    "motion_body_ori_b",
+                    motion_body_ori_b,
+                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
             }
         }
     }
@@ -1460,7 +1542,11 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                     &robot_body_ori_b))
             {
                 setFeatureIfNonEmpty(&feature_context, "robot_body_pos", robot_body_pos_b);
-                setFeatureIfNonEmpty(&feature_context, "robot_body_ori", robot_body_ori_b);
+                setFeatureIfNonEmptyWithContract(
+                    &feature_context,
+                    "robot_body_ori",
+                    robot_body_ori_b,
+                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
             }
         }
     }

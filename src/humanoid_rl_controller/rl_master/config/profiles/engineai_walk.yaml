@@ -114,10 +114,21 @@ engineai_walk:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-    reference_file:
-      body_quat_order: wxyz
     policy_extra_outputs:
+      reference_joint_pos_key: joint_pos
+      reference_joint_vel_key: joint_vel
+      reference_body_pos_w_key: body_pos_w
+      reference_body_quat_w_key: body_quat_w
       body_quat_order: wxyz
+      body_quat_representation: quat
+      body_quat_frame: world
+  observation_contract:
+    canonical:
+      joint_order: robot_global_joint_order
+      quat_order: xyzw
+      quat_representation: quat
+      body_quat_frame: world
+      body_orientation_representation: rot6
   external_observations:
     - name: vision_latent
       dim: 64

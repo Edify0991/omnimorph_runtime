@@ -45,6 +45,8 @@ observation_manifest:
       enabled: false
       source: motion_anchor_ori_b
       count: 6
+      target_representation: rot6
+      target_frame: body_local
     - name: motion_body_pos_b
       enabled: false
       source: motion_body_pos_b
@@ -53,6 +55,8 @@ observation_manifest:
       enabled: false
       source: motion_body_ori_b
       count: 0 # set to 6 * body_count when enabled
+      target_representation: rot6
+      target_frame: body_local
     - name: robot_body_pos
       enabled: false
       source: robot_body_pos
@@ -61,6 +65,8 @@ observation_manifest:
       enabled: false
       source: robot_body_ori
       count: 0 # set to 6 * body_count when enabled
+      target_representation: rot6
+      target_frame: body_local
     # External sensor interface example:
     # - name: external_sensor
     #   enabled: true

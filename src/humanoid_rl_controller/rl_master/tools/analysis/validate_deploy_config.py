@@ -919,6 +919,8 @@ def check_source_contract(section_cfg: Dict[str, Any], issues: IssueCollector, c
     if not source_contract:
         issues.error(context, "missing source_contract section")
         return
+    reference_enabled = as_bool(section_cfg.get("enable_reference_motion", False), False)
+    reference_source = normalize_token(section_cfg.get("reference_motion_source", "auto"))
 
     imu_input = to_dict(source_contract.get("imu_input"))
     if not imu_input:
@@ -989,9 +991,17 @@ def check_source_contract(section_cfg: Dict[str, Any], issues: IssueCollector, c
             issues.error(context, "source_contract.sim_base.quat_source_order must be 'wxyz' for MuJoCo qpos")
 
     reference_file = to_dict(source_contract.get("reference_file"))
-    if not reference_file:
-        issues.error(context, "missing source_contract.reference_file")
-    else:
+    if reference_enabled and reference_source != "policy_outputs":
+        if not reference_file:
+            issues.error(context, "missing source_contract.reference_file")
+        else:
+            body_quat_order = normalize_token(reference_file.get("body_quat_order", ""))
+            if body_quat_order not in SUPPORTED_QUAT_ORDERS:
+                issues.error(
+                    context,
+                    f"source_contract.reference_file.body_quat_order must be one of {sorted(SUPPORTED_QUAT_ORDERS)}",
+                )
+    elif reference_file:
         body_quat_order = normalize_token(reference_file.get("body_quat_order", ""))
         if body_quat_order not in SUPPORTED_QUAT_ORDERS:
             issues.error(
@@ -1000,9 +1010,18 @@ def check_source_contract(section_cfg: Dict[str, Any], issues: IssueCollector, c
             )
 
     policy_extra_outputs = to_dict(source_contract.get("policy_extra_outputs"))
-    if not policy_extra_outputs:
-        issues.error(context, "missing source_contract.policy_extra_outputs")
-    else:
+    if reference_enabled and reference_source != "file":
+        if not policy_extra_outputs:
+            issues.error(context, "missing source_contract.policy_extra_outputs")
+        else:
+            body_quat_order = normalize_token(policy_extra_outputs.get("body_quat_order", ""))
+            if body_quat_order not in SUPPORTED_QUAT_ORDERS:
+                issues.error(
+                    context,
+                    "source_contract.policy_extra_outputs.body_quat_order must be one of "
+                    f"{sorted(SUPPORTED_QUAT_ORDERS)}",
+                )
+    elif policy_extra_outputs:
         body_quat_order = normalize_token(policy_extra_outputs.get("body_quat_order", ""))
         if body_quat_order not in SUPPORTED_QUAT_ORDERS:
             issues.error(

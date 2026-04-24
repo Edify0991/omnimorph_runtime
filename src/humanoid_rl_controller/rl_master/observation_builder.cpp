@@ -1,6 +1,7 @@
 #include "rl_master/observation_builder.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <sstream>
 #include <stdexcept>
@@ -29,6 +30,15 @@ std::vector<std::string> getComponents(const YAML::Node &node)
     return node["components"].as<std::vector<std::string>>();
 }
 
+std::vector<std::string> getTargetOrderOrEmpty(const YAML::Node &node)
+{
+    if (!node["target_order"])
+    {
+        return {};
+    }
+    return node["target_order"].as<std::vector<std::string>>();
+}
+
 std::string getNameCompat(const YAML::Node &node)
 {
     if (node["name"])
@@ -51,6 +61,15 @@ std::string getSourceOrEmpty(const YAML::Node &node)
     return node["source"].as<std::string>();
 }
 
+std::string getStringOrEmpty(const YAML::Node &node, const char *key)
+{
+    if (!node || !key || !node[key])
+    {
+        return "";
+    }
+    return node[key].as<std::string>();
+}
+
 bool getEnabled(const YAML::Node &node)
 {
     if (!node["enabled"])
@@ -60,6 +79,15 @@ bool getEnabled(const YAML::Node &node)
     return node["enabled"].as<bool>();
 }
 
+std::string getFillPolicy(const YAML::Node &node)
+{
+    if (!node["fill_policy"])
+    {
+        return "error";
+    }
+    return node["fill_policy"].as<std::string>();
+}
+
 void pushPadded(std::vector<float> *out, float value, int i, int max_count)
 {
     if (!out)
@@ -67,6 +95,14 @@ void pushPadded(std::vector<float> *out, float value, int i, int max_count)
         return;
     }
     out->push_back(i < max_count ? value : 0.0f);
+}
+
+std::string normalizeToken(std::string token)
+{
+    std::transform(token.begin(), token.end(), token.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return token;
 }
 
 const std::vector<float> *findFeature(
@@ -81,6 +117,169 @@ const std::vector<float> *findFeature(
     return &it->second;
 }
 
+const ObservationFeatureContract *findFeatureContract(
+    const ObservationFeatureContext &feature_context,
+    const std::string &source_name)
+{
+    const auto it = feature_context.named_feature_contracts.find(source_name);
+    if (it == feature_context.named_feature_contracts.end())
+    {
+        return nullptr;
+    }
+    return &it->second;
+}
+
+std::vector<std::string> effectiveTargetOrder(const ObservationTermConfig &term)
+{
+    if (!term.target_order.empty())
+    {
+        return term.target_order;
+    }
+    return term.components;
+}
+
+bool isFillPolicyZero(const ObservationTermConfig &term)
+{
+    return normalizeToken(term.fill_policy) == "zero";
+}
+
+void requireFeatureAvailable(
+    const ObservationTermConfig &term,
+    const std::string &source_name,
+    const std::vector<float> *source)
+{
+    if (source || isFillPolicyZero(term))
+    {
+        return;
+    }
+    throw std::runtime_error(
+        "Observation term '" + term.name +
+        "' requires feature '" + source_name + "' but it is missing from ObservationFeatureContext");
+}
+
+std::vector<float> reorderNamedVector(
+    const std::vector<float> &values,
+    const std::vector<std::string> &source_order,
+    const std::vector<std::string> &target_order,
+    const ObservationTermConfig &term,
+    const std::string &source_name)
+{
+    if (source_order.empty())
+    {
+        throw std::runtime_error(
+            "Observation term '" + term.name +
+            "' requested target_order for feature '" + source_name +
+            "' but the feature does not declare a canonical_order");
+    }
+
+    std::unordered_map<std::string, size_t> source_index;
+    source_index.reserve(source_order.size());
+    for (size_t i = 0; i < source_order.size(); ++i)
+    {
+        source_index.emplace(source_order[i], i);
+    }
+
+    std::vector<float> out;
+    out.reserve(target_order.size());
+    for (const auto &target_name : target_order)
+    {
+        const auto it = source_index.find(target_name);
+        if (it == source_index.end())
+        {
+            if (isFillPolicyZero(term))
+            {
+                out.push_back(0.0f);
+                continue;
+            }
+            throw std::runtime_error(
+                "Observation term '" + term.name +
+                "' requested target_order entry '" + target_name +
+                "' that is missing from canonical_order of feature '" + source_name + "'");
+        }
+        if (it->second >= values.size())
+        {
+            if (isFillPolicyZero(term))
+            {
+                out.push_back(0.0f);
+                continue;
+            }
+            throw std::runtime_error(
+                "Observation term '" + term.name +
+                "' requested canonical index out of range for feature '" + source_name + "'");
+        }
+        out.push_back(values[it->second]);
+    }
+    return out;
+}
+
+std::vector<float> applyFeatureTargetContract(
+    const ObservationTermConfig &term,
+    const std::string &source_name,
+    const std::vector<float> *source,
+    const ObservationFeatureContract *source_contract)
+{
+    requireFeatureAvailable(term, source_name, source);
+    if (!source)
+    {
+        return std::vector<float>(static_cast<size_t>(std::max(term.count, 0)), 0.0f);
+    }
+
+    if (!term.target_representation.empty())
+    {
+        const std::string target_representation = normalizeToken(term.target_representation);
+        const std::string source_representation =
+            source_contract ? normalizeToken(source_contract->representation) : std::string();
+        if (!source_representation.empty() && source_representation != target_representation)
+        {
+            throw std::runtime_error(
+                "Observation term '" + term.name +
+                "' target_representation='" + term.target_representation +
+                "' does not match canonical representation='" + source_contract->representation +
+                "' for feature '" + source_name + "'");
+        }
+    }
+
+    if (!term.target_frame.empty())
+    {
+        const std::string target_frame = normalizeToken(term.target_frame);
+        const std::string source_frame =
+            source_contract ? normalizeToken(source_contract->frame) : std::string();
+        if (!source_frame.empty() && source_frame != target_frame)
+        {
+            throw std::runtime_error(
+                "Observation term '" + term.name +
+                "' target_frame='" + term.target_frame +
+                "' does not match canonical frame='" + source_contract->frame +
+                "' for feature '" + source_name + "'");
+        }
+    }
+
+    const std::vector<std::string> target_order = effectiveTargetOrder(term);
+    if (!target_order.empty())
+    {
+        return reorderNamedVector(
+            *source,
+            source_contract ? source_contract->canonical_order : std::vector<std::string>{},
+            target_order,
+            term,
+            source_name);
+    }
+
+    if (term.count <= 0)
+    {
+        return *source;
+    }
+    if (static_cast<size_t>(term.count) > source->size() && !isFillPolicyZero(term))
+    {
+        throw std::runtime_error(
+            "Observation term '" + term.name +
+            "' expected count=" + std::to_string(term.count) +
+            " but feature '" + source_name +
+            "' only provides " + std::to_string(source->size()) + " values");
+    }
+    return *source;
+}
+
 void appendFeatureVector(
     const ObservationTermConfig &term,
     const ObservationFeatureContext &feature_context,
@@ -89,10 +288,13 @@ void appendFeatureVector(
 {
     const std::string source_name = term.source.empty() ? default_source_name : term.source;
     const std::vector<float> *source = findFeature(feature_context, source_name);
-    const int max_count = source ? std::min(term.count, static_cast<int>(source->size())) : 0;
+    const ObservationFeatureContract *source_contract = findFeatureContract(feature_context, source_name);
+    const std::vector<float> transformed = applyFeatureTargetContract(
+        term, source_name, source, source_contract);
+    const int max_count = std::min(term.count, static_cast<int>(transformed.size()));
     for (int i = 0; i < term.count; ++i)
     {
-        pushPadded(out, (source && i < max_count) ? (*source)[static_cast<size_t>(i)] : 0.0f, i, max_count);
+        pushPadded(out, i < max_count ? transformed[static_cast<size_t>(i)] : 0.0f, i, max_count);
     }
 }
 
@@ -169,7 +371,9 @@ const std::vector<float> *featureVectorOrNull(
 std::vector<float> reorderedReferenceVector(
     const std::vector<float> *source,
     const std::vector<int> &reference_index_map,
-    int count)
+    int count,
+    const ObservationTermConfig &term,
+    const std::string &source_name)
 {
     std::vector<float> out;
     out.reserve(static_cast<size_t>(std::max(count, 0)));
@@ -181,6 +385,13 @@ std::vector<float> reorderedReferenceVector(
         const bool valid = source &&
                            source_idx >= 0 &&
                            static_cast<size_t>(source_idx) < source->size();
+        if (!valid && !isFillPolicyZero(term))
+        {
+            throw std::runtime_error(
+                "Observation term '" + term.name +
+                "' could not resolve canonical index for feature '" + source_name +
+                "' at position " + std::to_string(i));
+        }
         out.push_back(valid ? (*source)[static_cast<size_t>(source_idx)] : 0.0f);
     }
     return out;
@@ -204,6 +415,21 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
         term.enabled = getEnabled(term_node);
         term.components = getComponents(term_node);
         term.source = getSourceOrEmpty(term_node);
+        term.target_order = getTargetOrderOrEmpty(term_node);
+        term.target_representation = getStringOrEmpty(term_node, "target_representation");
+        term.target_frame = getStringOrEmpty(term_node, "target_frame");
+        term.fill_policy = getFillPolicy(term_node);
+        if (!term.components.empty() && !term.target_order.empty() &&
+            term.components != term.target_order)
+        {
+            throw std::runtime_error(
+                "Observation term '" + term.name +
+                "' cannot declare both components and target_order with different values");
+        }
+        if (term.target_order.empty())
+        {
+            term.target_order = term.components;
+        }
 
         if (term.name == "phase")
         {
@@ -228,7 +454,9 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
         }
         else if (term.name == "reference_joint_pos" || term.name == "reference_joint_vel")
         {
-            term.count = getCountOrDefault(term_node, 12);
+            term.count = getCountOrDefault(
+                term_node,
+                term.target_order.empty() ? 12 : static_cast<int>(term.target_order.size()));
         }
         else if (term.name == "base_ang_vel" || term.name == "base_rpy" || term.name == "base_euler")
         {
@@ -237,7 +465,7 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
         }
         else if (term.name == "base_quat")
         {
-            const int default_count = term.components.empty() ? 4 : static_cast<int>(term.components.size());
+            const int default_count = term.target_order.empty() ? 4 : static_cast<int>(term.target_order.size());
             term.count = getCountOrDefault(term_node, default_count);
         }
         else if (term.name == "motion_anchor_pos_b" || term.name == "motion_ref_pos_b")
@@ -430,7 +658,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           true}},
         {"base_quat",
          {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
-              const auto components = term.components.empty() ? fallbackComponentsForTerm(term.name) : term.components;
+              const auto components = effectiveTargetOrder(term).empty() ? fallbackComponentsForTerm(term.name) : effectiveTargetOrder(term);
               const int component_count = static_cast<int>(components.size());
               for (int i = 0; i < term.count; ++i)
               {
@@ -451,8 +679,19 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           false}},
         {"reference_joint_pos",
          {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &reference_index_map, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
-              const std::vector<float> *source = featureVectorOrNull(feature_context, term.source.empty() ? "reference_joint_pos" : term.source);
-              const std::vector<float> values = reorderedReferenceVector(source, reference_index_map, term.count);
+              const std::string source_name = term.source.empty() ? "reference_joint_pos" : term.source;
+              const std::vector<float> *source = featureVectorOrNull(feature_context, source_name);
+              const ObservationFeatureContract *source_contract = findFeatureContract(feature_context, source_name);
+              std::vector<float> values;
+              if (!term.target_order.empty())
+              {
+                  values = applyFeatureTargetContract(term, source_name, source, source_contract);
+              }
+              else
+              {
+                  requireFeatureAvailable(term, source_name, source);
+                  values = reorderedReferenceVector(source, reference_index_map, term.count, term, source_name);
+              }
               out->insert(out->end(), values.begin(), values.end());
           },
           12,
@@ -460,8 +699,19 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           false}},
         {"reference_joint_vel",
          {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &reference_index_map, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
-              const std::vector<float> *source = featureVectorOrNull(feature_context, term.source.empty() ? "reference_joint_vel" : term.source);
-              const std::vector<float> values = reorderedReferenceVector(source, reference_index_map, term.count);
+              const std::string source_name = term.source.empty() ? "reference_joint_vel" : term.source;
+              const std::vector<float> *source = featureVectorOrNull(feature_context, source_name);
+              const ObservationFeatureContract *source_contract = findFeatureContract(feature_context, source_name);
+              std::vector<float> values;
+              if (!term.target_order.empty())
+              {
+                  values = applyFeatureTargetContract(term, source_name, source, source_contract);
+              }
+              else
+              {
+                  requireFeatureAvailable(term, source_name, source);
+                  values = reorderedReferenceVector(source, reference_index_map, term.count, term, source_name);
+              }
               out->insert(out->end(), values.begin(), values.end());
           },
           12,
@@ -537,10 +787,13 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
                   throw std::runtime_error("feature term requires non-empty source field");
               }
               const std::vector<float> *source = findFeature(feature_context, term.source);
-              const int max_count = source ? std::min(term.count, static_cast<int>(source->size())) : 0;
+              const ObservationFeatureContract *source_contract = findFeatureContract(feature_context, term.source);
+              const std::vector<float> transformed = applyFeatureTargetContract(
+                  term, term.source, source, source_contract);
+              const int max_count = std::min(term.count, static_cast<int>(transformed.size()));
               for (int i = 0; i < term.count; ++i)
               {
-                  pushPadded(out, (source && i < max_count) ? (*source)[static_cast<size_t>(i)] : 0.0f, i, max_count);
+                  pushPadded(out, i < max_count ? transformed[static_cast<size_t>(i)] : 0.0f, i, max_count);
               }
           },
           0,
@@ -590,6 +843,13 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
         if (!provider.supports_components && !term.components.empty())
         {
             throw std::runtime_error("Term does not support components: " + term.name);
+        }
+        if (normalizeToken(term.fill_policy) != "error" &&
+            normalizeToken(term.fill_policy) != "zero")
+        {
+            throw std::runtime_error(
+                "Observation term '" + term.name +
+                "' fill_policy must be 'error' or 'zero'");
         }
         if (!provider.supports_count && term.count > 0)
         {
@@ -655,21 +915,41 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
         }
         if (term.name == "base_quat")
         {
-            if (!term.components.empty() && term.count != static_cast<int>(term.components.size()))
+            const auto target_order = effectiveTargetOrder(term);
+            if (!target_order.empty() && term.count != static_cast<int>(target_order.size()))
             {
-                throw std::runtime_error("base_quat term count must equal components length");
+                throw std::runtime_error("base_quat term count must equal target_order length");
             }
-            if (term.components.empty() && term.count > 4)
+            if (target_order.empty() && term.count > 4)
             {
                 throw std::runtime_error("base_quat term count cannot exceed 4 when components is empty");
             }
-            for (const auto &component : term.components)
+            for (const auto &component : target_order)
             {
                 if (!isValidQuatComponent(component))
                 {
                     throw std::runtime_error("Unknown base_quat component: " + component);
                 }
             }
+            if (!term.target_representation.empty() &&
+                normalizeToken(term.target_representation) != "quat")
+            {
+                throw std::runtime_error("base_quat target_representation must be 'quat'");
+            }
+        }
+        if ((term.name == "motion_anchor_ori_b" || term.name == "motion_ref_ori_b" ||
+             term.name == "motion_body_ori_b" || term.name == "robot_body_ori") &&
+            !term.target_representation.empty() &&
+            normalizeToken(term.target_representation) != "rot6")
+        {
+            throw std::runtime_error(term.name + " target_representation must be 'rot6'");
+        }
+        if ((term.name == "reference_joint_pos" || term.name == "reference_joint_vel") &&
+            !term.target_order.empty() &&
+            term.count != static_cast<int>(term.target_order.size()))
+        {
+            throw std::runtime_error(
+                term.name + " term count must equal target_order length when target_order is set");
         }
         if ((term.name == "reference_motion" || term.name == "external_sensor" || term.name == "feature" ||
              term.name == "motion_body_pos_b" || term.name == "motion_body_ori_b" ||
@@ -692,6 +972,26 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
         if (!resolved.config.source.empty())
         {
             oss << ", source=" << resolved.config.source;
+        }
+        if (!resolved.config.target_representation.empty())
+        {
+            oss << ", target_representation=" << resolved.config.target_representation;
+        }
+        if (!resolved.config.target_frame.empty())
+        {
+            oss << ", target_frame=" << resolved.config.target_frame;
+        }
+        if (!resolved.config.target_order.empty())
+        {
+            oss << ", target_order=";
+            for (size_t i = 0; i < resolved.config.target_order.size(); ++i)
+            {
+                if (i != 0)
+                {
+                    oss << "/";
+                }
+                oss << resolved.config.target_order[i];
+            }
         }
         oss << "]";
         resolved.description = oss.str();

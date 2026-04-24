@@ -17,11 +17,23 @@ struct ObservationTermConfig
     int count = 0;
     std::vector<std::string> components;
     std::string source;
+    std::vector<std::string> target_order;
+    std::string target_representation;
+    std::string target_frame;
+    std::string fill_policy = "error";
+};
+
+struct ObservationFeatureContract
+{
+    std::vector<std::string> canonical_order;
+    std::string representation;
+    std::string frame;
 };
 
 struct ObservationFeatureContext
 {
     std::unordered_map<std::string, std::vector<float>> named_features;
+    std::unordered_map<std::string, ObservationFeatureContract> named_feature_contracts;
 };
 
 class ObservationManifest
