@@ -539,14 +539,6 @@ bool ReferenceMotionProvider::loadStructuredFile(
                       << ") mismatches frame body count (" << inferred_body_count << ")." << std::endl;
             return false;
         }
-        if (metadata.body_names.empty() && inferred_body_count > 0)
-        {
-            metadata.body_names.reserve(inferred_body_count);
-            for (size_t i = 0; i < inferred_body_count; ++i)
-            {
-                metadata.body_names.push_back("body_" + std::to_string(i));
-            }
-        }
 
         frames_.clear();
         structured_frames_.clear();

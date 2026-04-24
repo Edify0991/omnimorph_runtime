@@ -42,8 +42,15 @@ struct ReferenceFeatureRequirements
     bool reference_joint_vel = false;
     bool reference_body_pos_w = false;
     bool reference_body_quat_w = false;
+    bool named_body_layout = false;
 
     bool any() const
+    {
+        return reference_motion || reference_joint_pos || reference_joint_vel ||
+               reference_body_pos_w || reference_body_quat_w || named_body_layout;
+    }
+
+    bool sourceAny() const
     {
         return reference_motion || reference_joint_pos || reference_joint_vel ||
                reference_body_pos_w || reference_body_quat_w;

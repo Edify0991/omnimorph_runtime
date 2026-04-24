@@ -769,6 +769,7 @@ def empty_reference_requirements() -> Dict[str, bool]:
         "reference_joint_vel": False,
         "reference_body_pos_w": False,
         "reference_body_quat_w": False,
+        "named_body_layout": False,
     }
 
 
@@ -787,6 +788,9 @@ def mark_required_reference_feature(requirements: Dict[str, bool], source_name: 
     }:
         requirements["reference_body_pos_w"] = True
         requirements["reference_body_quat_w"] = True
+        requirements["named_body_layout"] = True
+    elif source in {"robot_body_pos", "robot_body_ori"}:
+        requirements["named_body_layout"] = True
 
 
 def collect_required_reference_features(
@@ -817,9 +821,24 @@ def collect_required_reference_features(
             "motion_body_ori_b",
         }:
             mark_required_reference_feature(requirements, source or name)
+        elif name in {"robot_body_pos", "robot_body_ori"}:
+            requirements["named_body_layout"] = True
         elif name in {"feature", "external_sensor"} and source:
             mark_required_reference_feature(requirements, source)
     return requirements
+
+
+def required_reference_source_any(required_reference_features: Dict[str, bool]) -> bool:
+    return any(
+        required_reference_features.get(name, False)
+        for name in (
+            "reference_motion",
+            "reference_joint_pos",
+            "reference_joint_vel",
+            "reference_body_pos_w",
+            "reference_body_quat_w",
+        )
+    )
 
 
 def check_joint_order(
@@ -1009,7 +1028,7 @@ def check_source_contract(
         return
     reference_enabled = as_bool(section_cfg.get("enable_reference_motion", False), False)
     reference_source = normalize_token(section_cfg.get("reference_motion_source", "auto"))
-    required_reference_any = any(required_reference_features.values())
+    required_reference_any = required_reference_source_any(required_reference_features)
 
     imu_input = to_dict(source_contract.get("imu_input"))
     if not imu_input:
@@ -1163,7 +1182,7 @@ def check_reference_contract(
 
     if not as_bool(section_cfg.get("enable_reference_motion", False), False):
         return
-    if not any(required_reference_features.values()):
+    if not required_reference_source_any(required_reference_features):
         return
 
     if reference_source in {"file", "auto"}:
@@ -1201,7 +1220,7 @@ def check_reference_contract(
         if anchor_body and file_anchor and anchor_body != file_anchor:
             issues.warn(
                 context,
-                f"reference_anchor_body='{anchor_body}' differs from file anchor_body='{file_anchor}'; config overrides file metadata",
+                f"reference_anchor_body='{anchor_body}' differs from file anchor_body='{file_anchor}'; runtime currently uses file anchor_body when present",
             )
 
         contract_quat_order = normalize_token(reference_file_contract.get("body_quat_order", ""))
@@ -1242,10 +1261,61 @@ def check_reference_contract(
                     )
                     continue
                 if not to_list(raw_value):
-                    issues.error(
-                        context,
-                        f"structured reference file frame[{frame_index}] configured {field_name}='{configured_key}' is empty",
-                    )
+                        issues.error(
+                            context,
+                            f"structured reference file frame[{frame_index}] configured {field_name}='{configured_key}' is empty",
+                        )
+
+
+def check_named_body_layout_contract(
+    section_cfg: Dict[str, Any],
+    root_dir: Path,
+    required_reference_features: Dict[str, bool],
+    issues: IssueCollector,
+    context: str,
+) -> None:
+    if not required_reference_features.get("named_body_layout", False):
+        return
+
+    body_names = [str(x) for x in to_list(section_cfg.get("reference_body_names"))]
+    anchor_body = str(section_cfg.get("reference_anchor_body", "")).strip()
+    reference_enabled = as_bool(section_cfg.get("enable_reference_motion", False), False)
+    reference_source = normalize_token(section_cfg.get("reference_motion_source", "auto"))
+
+    file_body_names: List[str] = []
+    file_anchor = ""
+    if reference_enabled and reference_source in {"file", "auto"}:
+        reference_path = get_reference_motion_path(section_cfg, root_dir)
+        if reference_path.exists() and reference_path.suffix.lower() in {".yaml", ".yml", ".json"}:
+            try:
+                with reference_path.open("r", encoding="utf-8") as f:
+                    raw = yaml.safe_load(f) or {}
+                motion_root = to_dict(raw.get("reference_motion", raw))
+                file_body_names = [str(x) for x in to_list(motion_root.get("body_names"))]
+                file_anchor = str(motion_root.get("anchor_body", "")).strip()
+            except Exception:
+                return
+
+    effective_body_names = file_body_names if file_body_names else body_names
+    effective_anchor = file_anchor if file_anchor else anchor_body
+
+    if not effective_body_names:
+        issues.error(
+            context,
+            "enabled body-name-based observation terms require reference_body_names or structured reference file body_names",
+        )
+        return
+    if not effective_anchor:
+        issues.error(
+            context,
+            "enabled body-name-based observation terms require reference_anchor_body or structured reference file anchor_body",
+        )
+        return
+    if effective_anchor not in effective_body_names:
+        issues.error(
+            context,
+            f"enabled body-name-based observation terms require anchor_body '{effective_anchor}' to be present in effective body_names",
+        )
 
 
 def parse_int_metadata(value: str) -> Optional[int]:
@@ -1846,6 +1916,13 @@ def validate_profile(
         root_dir,
         required_reference_features,
         reference_order,
+        issues,
+        context,
+    )
+    check_named_body_layout_contract(
+        section_cfg,
+        root_dir,
+        required_reference_features,
         issues,
         context,
     )

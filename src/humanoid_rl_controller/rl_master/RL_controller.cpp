@@ -99,6 +99,12 @@ void markRequiredReferenceSource(
     {
         requirements->reference_body_pos_w = true;
         requirements->reference_body_quat_w = true;
+        requirements->named_body_layout = true;
+    }
+    else if (canonical_source == "robot_body_pos" ||
+             canonical_source == "robot_body_ori")
+    {
+        requirements->named_body_layout = true;
     }
 }
 
@@ -151,6 +157,10 @@ ReferenceFeatureRequirements collectRequiredReferenceFeatures(const ObservationM
         {
             markRequiredReferenceSource(term.source, &requirements);
         }
+        if (term.name == "robot_body_pos" || term.name == "robot_body_ori")
+        {
+            requirements.named_body_layout = true;
+        }
     }
     return requirements;
 }
@@ -175,7 +185,7 @@ void validateRequiredReferenceSourceContract(
     const ReferenceFeatureRequirements &requirements,
     const std::string &tag)
 {
-    if (!cfg.enable_reference_motion || !requirements.any())
+    if (!cfg.enable_reference_motion || !requirements.sourceAny())
     {
         return;
     }
@@ -267,6 +277,75 @@ void validateRequiredReferenceSourceContract(
                 "source_contract.policy_extra_outputs",
                 "reference_body_quat_w_key");
         }
+    }
+}
+
+std::vector<std::string> effectiveReferenceBodyNames(
+    const Sim2realCfg &cfg,
+    const ReferenceMotionProvider *provider)
+{
+    std::vector<std::string> body_names = cfg.reference_body_names;
+    if (provider && provider->available())
+    {
+        const auto &metadata = provider->metadata();
+        if (!metadata.body_names.empty())
+        {
+            body_names = metadata.body_names;
+        }
+    }
+    return body_names;
+}
+
+std::string effectiveReferenceAnchorBody(
+    const Sim2realCfg &cfg,
+    const ReferenceMotionProvider *provider)
+{
+    std::string anchor_body = cfg.reference_anchor_body;
+    if (provider && provider->available())
+    {
+        const auto &metadata = provider->metadata();
+        if (!metadata.anchor_body.empty())
+        {
+            anchor_body = metadata.anchor_body;
+        }
+    }
+    return anchor_body;
+}
+
+void validateRequiredNamedBodyLayout(
+    const Sim2realCfg &cfg,
+    const ReferenceFeatureRequirements &requirements,
+    const ReferenceMotionProvider *provider,
+    const std::string &tag)
+{
+    if (!requirements.named_body_layout)
+    {
+        return;
+    }
+
+    const std::vector<std::string> body_names = effectiveReferenceBodyNames(cfg, provider);
+    const std::string anchor_body = effectiveReferenceAnchorBody(cfg, provider);
+    if (body_names.empty())
+    {
+        throw std::runtime_error(
+            "[RL_controller][" + tag +
+            "] active observation manifest requires body-name-based features, "
+            "but no explicit body_names are available from reference_body_names or reference file metadata.");
+    }
+    if (anchor_body.empty())
+    {
+        throw std::runtime_error(
+            "[RL_controller][" + tag +
+            "] active observation manifest requires body-name-based features, "
+            "but anchor_body is empty.");
+    }
+    const auto it = std::find(body_names.begin(), body_names.end(), anchor_body);
+    if (it == body_names.end())
+    {
+        throw std::runtime_error(
+            "[RL_controller][" + tag +
+            "] active observation manifest requires body-name-based features, "
+            "but anchor_body '" + anchor_body + "' is not present in the effective body_names.");
     }
 }
 
@@ -543,25 +622,24 @@ std::vector<float> convertQuatVectorToCanonical(
     return convertQuatVectorToXyzw(values, source_order);
 }
 
-size_t resolveAnchorIndex(
+bool resolveAnchorIndex(
     const std::vector<std::string> &body_names,
-    const std::string &anchor_body)
+    const std::string &anchor_body,
+    size_t *anchor_index)
 {
-    if (body_names.empty())
+    if (!anchor_index || body_names.empty() || anchor_body.empty())
     {
-        return 0;
+        return false;
     }
-    if (!anchor_body.empty())
+    for (size_t i = 0; i < body_names.size(); ++i)
     {
-        for (size_t i = 0; i < body_names.size(); ++i)
+        if (body_names[i] == anchor_body)
         {
-            if (body_names[i] == anchor_body)
-            {
-                return i;
-            }
+            *anchor_index = i;
+            return true;
         }
     }
-    return 0;
+    return false;
 }
 
 bool buildReferenceMotionLocalFeatures(
@@ -1192,6 +1270,11 @@ void RL_controller::initModeProfiles()
             profile.required_reference_features,
             &profile.reference_motion,
             profile.tag);
+        validateRequiredNamedBodyLayout(
+            profile.cfg,
+            profile.required_reference_features,
+            &profile.reference_motion,
+            profile.tag);
 
         mode_to_profile_index_[profile.mode_id] = mode_profiles_.size();
         mode_profiles_.push_back(std::move(profile));
@@ -1466,7 +1549,7 @@ void RL_controller::initReferenceMotionProvider(
     {
         return;
     }
-    if (!required_features.any())
+    if (!required_features.sourceAny())
     {
         return;
     }
@@ -1535,24 +1618,13 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
         feature_context.named_features.emplace(std::move(kv.first), std::move(kv.second));
     }
 
-    const bool enable_reference = cfg.enable_reference_motion && required_features.any();
+    const bool enable_reference = cfg.enable_reference_motion && required_features.sourceAny();
     const bool use_file_source = enable_reference && source != "policy_outputs";
     const bool use_policy_source = enable_reference && source != "file";
+    const bool need_named_body_layout = required_features.named_body_layout;
     const int reference_motion_dim = cfg.reference_motion_dim > 0 ? cfg.reference_motion_dim : activeReferenceMotionProvider().dim();
-    std::vector<std::string> body_names = cfg.reference_body_names;
-    std::string anchor_body = cfg.reference_anchor_body;
-    if (activeReferenceMotionProvider().available())
-    {
-        const auto &provider_metadata = activeReferenceMotionProvider().metadata();
-        if (!provider_metadata.body_names.empty())
-        {
-            body_names = provider_metadata.body_names;
-        }
-        if (!provider_metadata.anchor_body.empty())
-        {
-            anchor_body = provider_metadata.anchor_body;
-        }
-    }
+    std::vector<std::string> body_names = effectiveReferenceBodyNames(cfg, &activeReferenceMotionProvider());
+    std::string anchor_body = effectiveReferenceAnchorBody(cfg, &activeReferenceMotionProvider());
 
     if (use_file_source && activeReferenceMotionProvider().available())
     {
@@ -1670,23 +1742,16 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
 
     const auto *reference_body_pos_w = findNamedFeature(feature_context.named_features, "reference_body_pos_w");
     const auto *reference_body_quat_w = findNamedFeature(feature_context.named_features, "reference_body_quat_w");
-    if (reference_body_pos_w && reference_body_quat_w &&
+    if (need_named_body_layout &&
+        reference_body_pos_w && reference_body_quat_w &&
         reference_body_pos_w->size() % 3 == 0 && reference_body_quat_w->size() % 4 == 0)
     {
         const size_t body_count = std::min(reference_body_pos_w->size() / 3, reference_body_quat_w->size() / 4);
-        if (body_names.empty())
-        {
-            body_names.reserve(body_count);
-            for (size_t i = 0; i < body_count; ++i)
-            {
-                body_names.push_back("body_" + std::to_string(i));
-            }
-        }
-
-        const size_t anchor_index = resolveAnchorIndex(body_names, anchor_body);
+        size_t anchor_index = 0;
         Vec3 anchor_pos{};
         std::vector<float> anchor_quat;
-        if (anchor_index < body_count &&
+        if (resolveAnchorIndex(body_names, anchor_body, &anchor_index) &&
+            anchor_index < body_count &&
             extractVec3(*reference_body_pos_w, anchor_index, &anchor_pos) &&
             extractQuatXyzw(*reference_body_quat_w, anchor_index, &anchor_quat))
         {
@@ -1739,24 +1804,18 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
 
     const auto *robot_body_pos_w = findNamedFeature(feature_context.named_features, "robot_body_pos_w");
     const auto *robot_body_quat_w = findNamedFeature(feature_context.named_features, "robot_body_quat_w");
-    if (robot_body_pos_w && robot_body_quat_w &&
+    if (need_named_body_layout &&
+        robot_body_pos_w && robot_body_quat_w &&
         robot_body_pos_w->size() % 3 == 0 && robot_body_quat_w->size() % 4 == 0)
     {
         const size_t body_count = std::min(robot_body_pos_w->size() / 3, robot_body_quat_w->size() / 4);
         if (body_count > 0)
         {
-            if (body_names.empty())
-            {
-                body_names.reserve(body_count);
-                for (size_t i = 0; i < body_count; ++i)
-                {
-                    body_names.push_back("body_" + std::to_string(i));
-                }
-            }
-            const size_t anchor_index = resolveAnchorIndex(body_names, anchor_body);
+            size_t anchor_index = 0;
             std::vector<float> robot_body_pos_b;
             std::vector<float> robot_body_ori_b;
-            if (buildRobotBodyLocalFeatures(
+            if (resolveAnchorIndex(body_names, anchor_body, &anchor_index) &&
+                buildRobotBodyLocalFeatures(
                     *robot_body_pos_w,
                     *robot_body_quat_w,
                     anchor_index,
