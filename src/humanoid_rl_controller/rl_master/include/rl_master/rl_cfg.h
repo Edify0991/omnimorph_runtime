@@ -1451,15 +1451,6 @@ public:
                 {
                     throw std::runtime_error("source_contract.reference_file.body_quat_order must be 'xyzw' or 'wxyz'");
                 }
-                if (source_contract.reference_file.reference_motion_key.empty() ||
-                    source_contract.reference_file.reference_joint_pos_key.empty() ||
-                    source_contract.reference_file.reference_joint_vel_key.empty() ||
-                    source_contract.reference_file.reference_body_pos_w_key.empty() ||
-                    source_contract.reference_file.reference_body_quat_w_key.empty())
-                {
-                    throw std::runtime_error(
-                        "source_contract.reference_file keys must all be non-empty");
-                }
                 if (source_contract.reference_file.body_quat_representation != "quat")
                 {
                     throw std::runtime_error("source_contract.reference_file.body_quat_representation must be 'quat'");
@@ -1485,15 +1476,6 @@ public:
                 if (source_contract.policy_extra_outputs.body_quat_frame != "world")
                 {
                     throw std::runtime_error("source_contract.policy_extra_outputs.body_quat_frame must be 'world'");
-                }
-                if (source_contract.policy_extra_outputs.reference_motion_key.empty() ||
-                    source_contract.policy_extra_outputs.reference_joint_pos_key.empty() ||
-                    source_contract.policy_extra_outputs.reference_joint_vel_key.empty() ||
-                    source_contract.policy_extra_outputs.reference_body_pos_w_key.empty() ||
-                    source_contract.policy_extra_outputs.reference_body_quat_w_key.empty())
-                {
-                    throw std::runtime_error(
-                        "source_contract.policy_extra_outputs keys must all be non-empty");
                 }
             }
             if (observation_canonical_contract.joint_order != "robot_global_joint_order")

@@ -101,6 +101,7 @@ private:
         PolicyRuntimeGroup policy_group;
         std::unique_ptr<OnnxPolicyRunner> amp_discriminator;
         ReferenceMotionProvider reference_motion;
+        ReferenceFeatureRequirements required_reference_features;
         bool reference_alignment_initialized = false;
         std::vector<float> reference_anchor_init_pos_w;
         std::vector<float> reference_anchor_init_quat_w;
@@ -133,7 +134,11 @@ private:
         const std::vector<float> &stacked_obs,
         const std::vector<float> &current_observation,
         const ObservationFeatureContext &feature_context);
-    void initReferenceMotionProvider(const Sim2realCfg &cfg, ReferenceMotionProvider *provider, const std::string &tag);
+    void initReferenceMotionProvider(
+        const Sim2realCfg &cfg,
+        const ReferenceFeatureRequirements &required_features,
+        ReferenceMotionProvider *provider,
+        const std::string &tag);
     ObservationFeatureContext buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t);
     bool canHotSwitch(int from_mode, int to_mode) const;
     const ModeProfile &modeProfileForModeId(int mode_id) const;

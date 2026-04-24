@@ -60,6 +60,216 @@ std::vector<float> fitDim(const std::vector<float> &values, size_t dim)
     return out;
 }
 
+void markRequiredReferenceSource(
+    const std::string &canonical_source_raw,
+    ReferenceFeatureRequirements *requirements)
+{
+    if (!requirements)
+    {
+        return;
+    }
+
+    const std::string canonical_source = toLowerCopy(canonical_source_raw);
+    if (canonical_source == "reference_motion")
+    {
+        requirements->reference_motion = true;
+    }
+    else if (canonical_source == "reference_joint_pos")
+    {
+        requirements->reference_joint_pos = true;
+    }
+    else if (canonical_source == "reference_joint_vel")
+    {
+        requirements->reference_joint_vel = true;
+    }
+    else if (canonical_source == "reference_body_pos_w")
+    {
+        requirements->reference_body_pos_w = true;
+    }
+    else if (canonical_source == "reference_body_quat_w")
+    {
+        requirements->reference_body_quat_w = true;
+    }
+    else if (canonical_source == "motion_anchor_pos_b" ||
+             canonical_source == "motion_ref_pos_b" ||
+             canonical_source == "motion_anchor_ori_b" ||
+             canonical_source == "motion_ref_ori_b" ||
+             canonical_source == "motion_body_pos_b" ||
+             canonical_source == "motion_body_ori_b")
+    {
+        requirements->reference_body_pos_w = true;
+        requirements->reference_body_quat_w = true;
+    }
+}
+
+ReferenceFeatureRequirements collectRequiredReferenceFeatures(const ObservationManifest &manifest)
+{
+    ReferenceFeatureRequirements requirements;
+    for (const auto &term : manifest.terms())
+    {
+        if (!term.enabled)
+        {
+            continue;
+        }
+
+        if (term.name == "reference_motion")
+        {
+            requirements.reference_motion = true;
+            continue;
+        }
+
+        if (term.name == "reference_joint_pos")
+        {
+            markRequiredReferenceSource(
+                term.source.empty() ? "reference_joint_pos" : term.source,
+                &requirements);
+            continue;
+        }
+
+        if (term.name == "reference_joint_vel")
+        {
+            markRequiredReferenceSource(
+                term.source.empty() ? "reference_joint_vel" : term.source,
+                &requirements);
+            continue;
+        }
+
+        if (term.name == "motion_anchor_pos_b" ||
+            term.name == "motion_ref_pos_b" ||
+            term.name == "motion_anchor_ori_b" ||
+            term.name == "motion_ref_ori_b" ||
+            term.name == "motion_body_pos_b" ||
+            term.name == "motion_body_ori_b")
+        {
+            markRequiredReferenceSource(
+                term.source.empty() ? term.name : term.source,
+                &requirements);
+            continue;
+        }
+
+        if ((term.name == "feature" || term.name == "external_sensor") && !term.source.empty())
+        {
+            markRequiredReferenceSource(term.source, &requirements);
+        }
+    }
+    return requirements;
+}
+
+void requireNonEmptyReferenceKey(
+    const std::string &key_value,
+    const std::string &tag,
+    const char *contract_scope,
+    const char *field_name)
+{
+    if (!key_value.empty())
+    {
+        return;
+    }
+    throw std::runtime_error(
+        "[RL_controller][" + tag + "] " + contract_scope + "." + field_name +
+        " must be non-empty because the active observation manifest requires that reference feature.");
+}
+
+void validateRequiredReferenceSourceContract(
+    const Sim2realCfg &cfg,
+    const ReferenceFeatureRequirements &requirements,
+    const std::string &tag)
+{
+    if (!cfg.enable_reference_motion || !requirements.any())
+    {
+        return;
+    }
+
+    const std::string source = toLowerCopy(cfg.reference_motion_source);
+    if (source != "policy_outputs")
+    {
+        if (requirements.reference_motion)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.reference_file.reference_motion_key,
+                tag,
+                "source_contract.reference_file",
+                "reference_motion_key");
+        }
+        if (requirements.reference_joint_pos)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.reference_file.reference_joint_pos_key,
+                tag,
+                "source_contract.reference_file",
+                "reference_joint_pos_key");
+        }
+        if (requirements.reference_joint_vel)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.reference_file.reference_joint_vel_key,
+                tag,
+                "source_contract.reference_file",
+                "reference_joint_vel_key");
+        }
+        if (requirements.reference_body_pos_w)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.reference_file.reference_body_pos_w_key,
+                tag,
+                "source_contract.reference_file",
+                "reference_body_pos_w_key");
+        }
+        if (requirements.reference_body_quat_w)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.reference_file.reference_body_quat_w_key,
+                tag,
+                "source_contract.reference_file",
+                "reference_body_quat_w_key");
+        }
+    }
+
+    if (source != "file")
+    {
+        if (requirements.reference_motion)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.policy_extra_outputs.reference_motion_key,
+                tag,
+                "source_contract.policy_extra_outputs",
+                "reference_motion_key");
+        }
+        if (requirements.reference_joint_pos)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.policy_extra_outputs.reference_joint_pos_key,
+                tag,
+                "source_contract.policy_extra_outputs",
+                "reference_joint_pos_key");
+        }
+        if (requirements.reference_joint_vel)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.policy_extra_outputs.reference_joint_vel_key,
+                tag,
+                "source_contract.policy_extra_outputs",
+                "reference_joint_vel_key");
+        }
+        if (requirements.reference_body_pos_w)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.policy_extra_outputs.reference_body_pos_w_key,
+                tag,
+                "source_contract.policy_extra_outputs",
+                "reference_body_pos_w_key");
+        }
+        if (requirements.reference_body_quat_w)
+        {
+            requireNonEmptyReferenceKey(
+                cfg.source_contract.policy_extra_outputs.reference_body_quat_w_key,
+                tag,
+                "source_contract.policy_extra_outputs",
+                "reference_body_quat_w_key");
+        }
+    }
+}
+
 Mat3 makeIdentity()
 {
     Mat3 out;
@@ -965,6 +1175,8 @@ void RL_controller::initModeProfiles()
         profile.obs_index_map = layout.obs_global_indices;
         profile.reference_index_map = layout.reference_global_indices;
         profile.observation_manifest = ObservationManifest::loadFromYAML(profile.cfg.observation_manifest_path);
+        profile.required_reference_features = collectRequiredReferenceFeatures(profile.observation_manifest);
+        validateRequiredReferenceSourceContract(profile.cfg, profile.required_reference_features, profile.tag);
         profile.observation_builder = std::make_unique<ObservationBuilder>(profile.observation_manifest);
         if (profile.observation_builder->expectedDim() != static_cast<size_t>(profile.cfg.obs_dim))
         {
@@ -975,7 +1187,11 @@ void RL_controller::initModeProfiles()
         }
         initPolicyGroup(profile.cfg, profile.tag, &profile.policy_group);
         initAmpDiscriminatorRunner(profile.cfg, profile.tag, &profile.amp_discriminator);
-        initReferenceMotionProvider(profile.cfg, &profile.reference_motion, profile.tag);
+        initReferenceMotionProvider(
+            profile.cfg,
+            profile.required_reference_features,
+            &profile.reference_motion,
+            profile.tag);
 
         mode_to_profile_index_[profile.mode_id] = mode_profiles_.size();
         mode_profiles_.push_back(std::move(profile));
@@ -1234,7 +1450,11 @@ RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(
     return output;
 }
 
-void RL_controller::initReferenceMotionProvider(const Sim2realCfg &cfg, ReferenceMotionProvider *provider, const std::string &tag)
+void RL_controller::initReferenceMotionProvider(
+    const Sim2realCfg &cfg,
+    const ReferenceFeatureRequirements &required_features,
+    ReferenceMotionProvider *provider,
+    const std::string &tag)
 {
     if (!provider)
     {
@@ -1243,6 +1463,10 @@ void RL_controller::initReferenceMotionProvider(const Sim2realCfg &cfg, Referenc
 
     provider->clear();
     if (!cfg.enable_reference_motion)
+    {
+        return;
+    }
+    if (!required_features.any())
     {
         return;
     }
@@ -1256,8 +1480,9 @@ void RL_controller::initReferenceMotionProvider(const Sim2realCfg &cfg, Referenc
     {
         if (source == "file")
         {
-            std::cerr << "[RL_controller][" << tag << "] reference_motion_source=file but reference_motion_path is empty."
-                      << std::endl;
+            throw std::runtime_error(
+                "[RL_controller][" + tag +
+                "] reference_motion_source=file but reference_motion_path is empty.");
         }
         return;
     }
@@ -1272,12 +1497,13 @@ void RL_controller::initReferenceMotionProvider(const Sim2realCfg &cfg, Referenc
     if (!provider->load(
             cfg.reference_motion_path,
             cfg.reference_motion_dim,
+            required_features,
             field_map,
             cfg.source_contract.reference_file.body_quat_order))
     {
-        std::cerr << "[RL_controller][" << tag << "] failed to load reference motion file: "
-                  << cfg.reference_motion_path << std::endl;
-        return;
+        throw std::runtime_error(
+            "[RL_controller][" + tag + "] failed to load reference motion file: " +
+            cfg.reference_motion_path);
     }
 
     const auto &metadata = provider->metadata();
@@ -1291,6 +1517,7 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
 {
     ObservationFeatureContext feature_context;
     auto &profile = activeModeProfile();
+    const ReferenceFeatureRequirements &required_features = profile.required_reference_features;
     std::string source = toLowerCopy(cfg.reference_motion_source);
 
     const ObservationFeatureContract reference_joint_contract{
@@ -1308,7 +1535,7 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
         feature_context.named_features.emplace(std::move(kv.first), std::move(kv.second));
     }
 
-    const bool enable_reference = cfg.enable_reference_motion;
+    const bool enable_reference = cfg.enable_reference_motion && required_features.any();
     const bool use_file_source = enable_reference && source != "policy_outputs";
     const bool use_policy_source = enable_reference && source != "file";
     const int reference_motion_dim = cfg.reference_motion_dim > 0 ? cfg.reference_motion_dim : activeReferenceMotionProvider().dim();
@@ -1439,30 +1666,6 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                 quat_xyzw,
                 reference_body_quat_contract);
         }
-    }
-
-    if (findNamedFeature(feature_context.named_features, "reference_motion") == nullptr)
-    {
-        const auto *joint_pos = findNamedFeature(feature_context.named_features, "reference_joint_pos");
-        const auto *joint_vel = findNamedFeature(feature_context.named_features, "reference_joint_vel");
-        if (joint_pos && joint_vel)
-        {
-            std::vector<float> packed;
-            packed.reserve(joint_pos->size() + joint_vel->size());
-            packed.insert(packed.end(), joint_pos->begin(), joint_pos->end());
-            packed.insert(packed.end(), joint_vel->begin(), joint_vel->end());
-            if (reference_motion_dim > 0)
-            {
-                packed = fitDim(packed, static_cast<size_t>(reference_motion_dim));
-            }
-            setFeatureIfNonEmpty(&feature_context, "reference_motion", packed);
-        }
-    }
-    if (reference_motion_dim > 0 &&
-        findNamedFeature(feature_context.named_features, "reference_motion") == nullptr)
-    {
-        feature_context.named_features["reference_motion"] =
-            std::vector<float>(static_cast<size_t>(reference_motion_dim), 0.0f);
     }
 
     const auto *reference_body_pos_w = findNamedFeature(feature_context.named_features, "reference_body_pos_w");

@@ -35,12 +35,28 @@ struct ReferenceMotionFieldMap
     std::string body_quat_w_key = "body_quat_w";
 };
 
+struct ReferenceFeatureRequirements
+{
+    bool reference_motion = false;
+    bool reference_joint_pos = false;
+    bool reference_joint_vel = false;
+    bool reference_body_pos_w = false;
+    bool reference_body_quat_w = false;
+
+    bool any() const
+    {
+        return reference_motion || reference_joint_pos || reference_joint_vel ||
+               reference_body_pos_w || reference_body_quat_w;
+    }
+};
+
 class ReferenceMotionProvider
 {
 public:
     bool load(
         const std::string &file_path,
         int expected_dim,
+        const ReferenceFeatureRequirements &requirements = {},
         const ReferenceMotionFieldMap &field_map = {},
         const std::string &body_quat_format_override = "");
     void clear();
@@ -61,6 +77,7 @@ private:
     bool loadStructuredFile(
         const std::string &file_path,
         int expected_dim,
+        const ReferenceFeatureRequirements &requirements,
         const ReferenceMotionFieldMap &field_map,
         const std::string &body_quat_format_override);
     bool loadLegacyTextFile(const std::string &file_path, int expected_dim);

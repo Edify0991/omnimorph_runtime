@@ -63,6 +63,35 @@ bool parseFloatVectorNode(
     }
 }
 
+bool hasNodeField(const YAML::Node &frame_node, const std::string &field_name)
+{
+    return !field_name.empty() && static_cast<bool>(frame_node[field_name]);
+}
+
+bool requireStructuredField(
+    const YAML::Node &frame_node,
+    const std::string &field_name,
+    const std::vector<float> &values,
+    size_t frame_index,
+    const char *label)
+{
+    if (!hasNodeField(frame_node, field_name))
+    {
+        std::cerr << "[ReferenceMotionProvider] frame[" << frame_index
+                  << "] missing required field '" << field_name
+                  << "' for " << label << "." << std::endl;
+        return false;
+    }
+    if (values.empty())
+    {
+        std::cerr << "[ReferenceMotionProvider] frame[" << frame_index
+                  << "] required field '" << field_name
+                  << "' for " << label << " is empty." << std::endl;
+        return false;
+    }
+    return true;
+}
+
 bool finiteAndBounded(
     const std::vector<float> &values,
     float abs_limit,
@@ -190,6 +219,7 @@ ReferenceMotionFrame emptyFrame(int expected_dim)
 bool ReferenceMotionProvider::load(
     const std::string &file_path,
     int expected_dim,
+    const ReferenceFeatureRequirements &requirements,
     const ReferenceMotionFieldMap &field_map,
     const std::string &body_quat_format_override)
 {
@@ -203,7 +233,7 @@ bool ReferenceMotionProvider::load(
     const std::string extension = toLower(std::filesystem::path(file_path).extension().string());
     const bool prefer_structured = extension == ".yaml" || extension == ".yml" || extension == ".json";
 
-    if (loadStructuredFile(file_path, expected_dim, field_map, body_quat_format_override))
+    if (loadStructuredFile(file_path, expected_dim, requirements, field_map, body_quat_format_override))
     {
         return true;
     }
@@ -276,7 +306,7 @@ ReferenceMotionFrame ReferenceMotionProvider::sampleFrameByStep(size_t step_inde
     }
 
     const int dim = expected_dim > 0 ? expected_dim : dim_;
-    if (dim > 0)
+    if (dim > 0 && !frame.reference_motion.empty())
     {
         frame.reference_motion = fitDim(frame.reference_motion, static_cast<size_t>(dim));
     }
@@ -302,6 +332,7 @@ size_t ReferenceMotionProvider::sampleIndexByPhase(size_t frame_count, double ph
 bool ReferenceMotionProvider::loadStructuredFile(
     const std::string &file_path,
     int expected_dim,
+    const ReferenceFeatureRequirements &requirements,
     const ReferenceMotionFieldMap &field_map,
     const std::string &body_quat_format_override)
 {
@@ -395,11 +426,55 @@ bool ReferenceMotionProvider::loadStructuredFile(
                 return false;
             }
 
-            if (frame.reference_motion.empty() && !frame.joint_pos.empty() && !frame.joint_vel.empty())
+            if (requirements.reference_motion &&
+                !requireStructuredField(
+                    frame_node,
+                    field_map.reference_motion_key,
+                    frame.reference_motion,
+                    frame_index,
+                    "reference_motion"))
             {
-                frame.reference_motion.reserve(frame.joint_pos.size() + frame.joint_vel.size());
-                frame.reference_motion.insert(frame.reference_motion.end(), frame.joint_pos.begin(), frame.joint_pos.end());
-                frame.reference_motion.insert(frame.reference_motion.end(), frame.joint_vel.begin(), frame.joint_vel.end());
+                return false;
+            }
+            if (requirements.reference_joint_pos &&
+                !requireStructuredField(
+                    frame_node,
+                    field_map.joint_pos_key,
+                    frame.joint_pos,
+                    frame_index,
+                    "reference_joint_pos"))
+            {
+                return false;
+            }
+            if (requirements.reference_joint_vel &&
+                !requireStructuredField(
+                    frame_node,
+                    field_map.joint_vel_key,
+                    frame.joint_vel,
+                    frame_index,
+                    "reference_joint_vel"))
+            {
+                return false;
+            }
+            if (requirements.reference_body_pos_w &&
+                !requireStructuredField(
+                    frame_node,
+                    field_map.body_pos_w_key,
+                    frame.body_pos_w,
+                    frame_index,
+                    "reference_body_pos_w"))
+            {
+                return false;
+            }
+            if (requirements.reference_body_quat_w &&
+                !requireStructuredField(
+                    frame_node,
+                    field_map.body_quat_w_key,
+                    frame.body_quat_w,
+                    frame_index,
+                    "reference_body_quat_w"))
+            {
+                return false;
             }
 
             if (!frame.body_pos_w.empty() || !frame.body_quat_w.empty())
@@ -453,7 +528,7 @@ bool ReferenceMotionProvider::loadStructuredFile(
             parsed_frames.push_back(std::move(frame));
         }
 
-        if (parsed_frames.empty() || resolved_dim <= 0)
+        if (parsed_frames.empty())
         {
             return false;
         }
@@ -479,7 +554,10 @@ bool ReferenceMotionProvider::loadStructuredFile(
         structured_frames_.reserve(parsed_frames.size());
         for (auto &frame : parsed_frames)
         {
-            frame.reference_motion = fitDim(frame.reference_motion, static_cast<size_t>(resolved_dim));
+            if (!frame.reference_motion.empty() && resolved_dim > 0)
+            {
+                frame.reference_motion = fitDim(frame.reference_motion, static_cast<size_t>(resolved_dim));
+            }
             frames_.push_back(frame.reference_motion);
             structured_frames_.push_back(std::move(frame));
         }

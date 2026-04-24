@@ -739,6 +739,89 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
     return total_dim
 
 
+def load_manifest_terms(
+    manifest_path: Path,
+    issues: IssueCollector,
+    context: str,
+) -> List[Dict[str, Any]]:
+    if not manifest_path.exists():
+        issues.error(context, f"manifest file not found: {manifest_path}")
+        return []
+    try:
+        with manifest_path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except Exception as exc:
+        issues.error(context, f"failed to parse manifest YAML: {exc}")
+        return []
+
+    root = to_dict(data.get("observation_manifest"))
+    terms = to_list(root.get("terms"))
+    if not terms:
+        issues.error(context, "observation_manifest.terms is missing or empty")
+        return []
+    return [to_dict(term) for term in terms]
+
+
+def empty_reference_requirements() -> Dict[str, bool]:
+    return {
+        "reference_motion": False,
+        "reference_joint_pos": False,
+        "reference_joint_vel": False,
+        "reference_body_pos_w": False,
+        "reference_body_quat_w": False,
+    }
+
+
+def mark_required_reference_feature(requirements: Dict[str, bool], source_name: str) -> None:
+    source = normalize_token(source_name)
+    if source in requirements:
+        requirements[source] = True
+        return
+    if source in {
+        "motion_anchor_pos_b",
+        "motion_ref_pos_b",
+        "motion_anchor_ori_b",
+        "motion_ref_ori_b",
+        "motion_body_pos_b",
+        "motion_body_ori_b",
+    }:
+        requirements["reference_body_pos_w"] = True
+        requirements["reference_body_quat_w"] = True
+
+
+def collect_required_reference_features(
+    manifest_path: Path,
+    issues: IssueCollector,
+    context: str,
+) -> Dict[str, bool]:
+    requirements = empty_reference_requirements()
+    for term in load_manifest_terms(manifest_path, issues, context):
+        enabled = as_bool(term.get("enabled", True), True)
+        if not enabled:
+            continue
+
+        name = manifest_term_name(term)
+        source = str(term.get("source", "")).strip()
+        if name == "reference_motion":
+            requirements["reference_motion"] = True
+        elif name == "reference_joint_pos":
+            mark_required_reference_feature(requirements, source or "reference_joint_pos")
+        elif name == "reference_joint_vel":
+            mark_required_reference_feature(requirements, source or "reference_joint_vel")
+        elif name in {
+            "motion_anchor_pos_b",
+            "motion_ref_pos_b",
+            "motion_anchor_ori_b",
+            "motion_ref_ori_b",
+            "motion_body_pos_b",
+            "motion_body_ori_b",
+        }:
+            mark_required_reference_feature(requirements, source or name)
+        elif name in {"feature", "external_sensor"} and source:
+            mark_required_reference_feature(requirements, source)
+    return requirements
+
+
 def check_joint_order(
     action_dim: int,
     motor_n: int,
@@ -914,13 +997,19 @@ def build_feature_dim_map(section_cfg: Dict[str, Any], reference_order: List[str
     return feature_dims
 
 
-def check_source_contract(section_cfg: Dict[str, Any], issues: IssueCollector, context: str) -> None:
+def check_source_contract(
+    section_cfg: Dict[str, Any],
+    required_reference_features: Dict[str, bool],
+    issues: IssueCollector,
+    context: str,
+) -> None:
     source_contract = to_dict(section_cfg.get("source_contract"))
     if not source_contract:
         issues.error(context, "missing source_contract section")
         return
     reference_enabled = as_bool(section_cfg.get("enable_reference_motion", False), False)
     reference_source = normalize_token(section_cfg.get("reference_motion_source", "auto"))
+    required_reference_any = any(required_reference_features.values())
 
     imu_input = to_dict(source_contract.get("imu_input"))
     if not imu_input:
@@ -991,18 +1080,18 @@ def check_source_contract(section_cfg: Dict[str, Any], issues: IssueCollector, c
             issues.error(context, "source_contract.sim_base.quat_source_order must be 'wxyz' for MuJoCo qpos")
 
     reference_file = to_dict(source_contract.get("reference_file"))
-    if reference_enabled and reference_source != "policy_outputs":
+    if reference_enabled and required_reference_any and reference_source != "policy_outputs":
         if not reference_file:
             issues.error(context, "missing source_contract.reference_file")
         else:
-            for field_name in (
-                "reference_motion_key",
-                "reference_joint_pos_key",
-                "reference_joint_vel_key",
-                "reference_body_pos_w_key",
-                "reference_body_quat_w_key",
+            for feature_name, field_name in (
+                ("reference_motion", "reference_motion_key"),
+                ("reference_joint_pos", "reference_joint_pos_key"),
+                ("reference_joint_vel", "reference_joint_vel_key"),
+                ("reference_body_pos_w", "reference_body_pos_w_key"),
+                ("reference_body_quat_w", "reference_body_quat_w_key"),
             ):
-                if not str(reference_file.get(field_name, "")).strip():
+                if required_reference_features.get(feature_name, False) and not str(reference_file.get(field_name, "")).strip():
                     issues.error(context, f"source_contract.reference_file.{field_name} must be non-empty")
             body_quat_order = normalize_token(reference_file.get("body_quat_order", ""))
             if body_quat_order not in SUPPORTED_QUAT_ORDERS:
@@ -1019,18 +1108,18 @@ def check_source_contract(section_cfg: Dict[str, Any], issues: IssueCollector, c
             )
 
     policy_extra_outputs = to_dict(source_contract.get("policy_extra_outputs"))
-    if reference_enabled and reference_source != "file":
+    if reference_enabled and required_reference_any and reference_source != "file":
         if not policy_extra_outputs:
             issues.error(context, "missing source_contract.policy_extra_outputs")
         else:
-            for field_name in (
-                "reference_motion_key",
-                "reference_joint_pos_key",
-                "reference_joint_vel_key",
-                "reference_body_pos_w_key",
-                "reference_body_quat_w_key",
+            for feature_name, field_name in (
+                ("reference_motion", "reference_motion_key"),
+                ("reference_joint_pos", "reference_joint_pos_key"),
+                ("reference_joint_vel", "reference_joint_vel_key"),
+                ("reference_body_pos_w", "reference_body_pos_w_key"),
+                ("reference_body_quat_w", "reference_body_quat_w_key"),
             ):
-                if not str(policy_extra_outputs.get(field_name, "")).strip():
+                if required_reference_features.get(feature_name, False) and not str(policy_extra_outputs.get(field_name, "")).strip():
                     issues.error(context, f"source_contract.policy_extra_outputs.{field_name} must be non-empty")
             body_quat_order = normalize_token(policy_extra_outputs.get("body_quat_order", ""))
             if body_quat_order not in SUPPORTED_QUAT_ORDERS:
@@ -1052,6 +1141,7 @@ def check_source_contract(section_cfg: Dict[str, Any], issues: IssueCollector, c
 def check_reference_contract(
     section_cfg: Dict[str, Any],
     root_dir: Path,
+    required_reference_features: Dict[str, bool],
     reference_order: List[str],
     issues: IssueCollector,
     context: str,
@@ -1071,16 +1161,9 @@ def check_reference_contract(
     if body_names and anchor_body and anchor_body not in body_names:
         issues.error(context, "reference_anchor_body must be listed in reference_body_names")
 
-    if reference_order and as_int(section_cfg.get("reference_motion_dim"), 0) > 0:
-        expected_joint_dim = len(reference_order) * 2
-        configured_dim = as_int(section_cfg.get("reference_motion_dim"), 0)
-        if configured_dim not in {0, expected_joint_dim}:
-            issues.warn(
-                context,
-                f"reference_motion_dim={configured_dim} differs from 2 * len(reference_joint_order)={expected_joint_dim}",
-            )
-
     if not as_bool(section_cfg.get("enable_reference_motion", False), False):
+        return
+    if not any(required_reference_features.values()):
         return
 
     if reference_source in {"file", "auto"}:
@@ -1130,19 +1213,38 @@ def check_reference_contract(
             )
 
         frames = to_list(motion_root.get("frames"))
-        if frames:
-            sample_frame = to_dict(frames[0])
-            for field_name, configured_key in (
-                ("reference_motion_key", configured_reference_motion_key),
-                ("reference_joint_pos_key", configured_joint_pos_key),
-                ("reference_joint_vel_key", configured_joint_vel_key),
-                ("reference_body_pos_w_key", configured_body_pos_key),
-                ("reference_body_quat_w_key", configured_body_quat_key),
-            ):
-                if configured_key and configured_key not in sample_frame:
-                    issues.warn(
+        if not frames:
+            issues.error(context, "structured reference file frames is missing or empty")
+            return
+
+        required_fields = []
+        if required_reference_features.get("reference_motion", False):
+            required_fields.append(("reference_motion_key", configured_reference_motion_key))
+        if required_reference_features.get("reference_joint_pos", False):
+            required_fields.append(("reference_joint_pos_key", configured_joint_pos_key))
+        if required_reference_features.get("reference_joint_vel", False):
+            required_fields.append(("reference_joint_vel_key", configured_joint_vel_key))
+        if required_reference_features.get("reference_body_pos_w", False):
+            required_fields.append(("reference_body_pos_w_key", configured_body_pos_key))
+        if required_reference_features.get("reference_body_quat_w", False):
+            required_fields.append(("reference_body_quat_w_key", configured_body_quat_key))
+
+        for frame_index, raw_frame in enumerate(frames):
+            frame = to_dict(raw_frame)
+            for field_name, configured_key in required_fields:
+                if not configured_key:
+                    continue
+                raw_value = frame.get(configured_key, None)
+                if raw_value is None:
+                    issues.error(
                         context,
-                        f"structured reference file first frame does not contain configured {field_name}='{configured_key}'",
+                        f"structured reference file frame[{frame_index}] is missing configured {field_name}='{configured_key}'",
+                    )
+                    continue
+                if not to_list(raw_value):
+                    issues.error(
+                        context,
+                        f"structured reference file frame[{frame_index}] configured {field_name}='{configured_key}' is empty",
                     )
 
 
@@ -1736,11 +1838,19 @@ def validate_profile(
     )
     validate_robot_cfg_against_global_joint_order(section_cfg, global_joint_order, issues, context)
     validate_zero_pose_contract(section_cfg, global_joint_order, issues, context)
-    check_source_contract(section_cfg, issues, context)
-    check_reference_contract(section_cfg, root_dir, reference_order, issues, context)
+    manifest_path = get_manifest_path(section_cfg, root_dir)
+    required_reference_features = collect_required_reference_features(manifest_path, issues, context)
+    check_source_contract(section_cfg, required_reference_features, issues, context)
+    check_reference_contract(
+        section_cfg,
+        root_dir,
+        required_reference_features,
+        reference_order,
+        issues,
+        context,
+    )
     feature_dims = build_feature_dim_map(section_cfg, reference_order)
 
-    manifest_path = get_manifest_path(section_cfg, root_dir)
     manifest_dim = parse_manifest_dim(manifest_path, issues, context)
     if obs_dim > 0 and manifest_dim > 0 and manifest_dim != obs_dim:
         issues.error(
