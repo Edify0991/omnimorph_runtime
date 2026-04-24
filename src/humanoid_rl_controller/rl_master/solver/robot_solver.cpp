@@ -22,7 +22,13 @@ namespace rl_master::solver
 {
 namespace
 {
-constexpr long kControlPeriodNs = 2'000'000; // 500 Hz
+constexpr long kNanosecondsPerSecond = 1'000'000'000L;
+
+long resolveControlPeriodNs(const Sim2realCfg &cfg)
+{
+    const long solver_control_hz = std::max(1L, static_cast<long>(cfg.solver_control_hz));
+    return std::max(1L, kNanosecondsPerSecond / solver_control_hz);
+}
 
 std::vector<JointData> extractJointGroup(
     const std::vector<JointData> &full,
@@ -996,7 +1002,7 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
         oss << "\"action_dim\":" << cfg.action_dim << ",";
         oss << "\"obs_stack_n\":" << cfg.obs_stack_N << ",";
         oss << "\"policy_hz\":" << cfg.RL_control_f << ",";
-        oss << "\"solver_control_hz\":1000,";
+        oss << "\"solver_control_hz\":" << cfg.solver_control_hz << ",";
         oss << "\"installed_joint_run_modes\":";
         appendStringMap(oss, cfg.installed_joint_run_modes);
         oss << ",";
@@ -1270,6 +1276,7 @@ void RobotSolver::run()
             const rl_master::RobotCommandData controller_command =
                 controller_runtime_.step(io_state, teleop_sample, mode_control_word);
             syncRuntimeCfgFromController();
+            const long control_period_ns = resolveControlPeriodNs(sim2real_cfg_);
             const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
             emitDerivedRuntimeEvents(controller_snapshot);
             applyRuntimeCommand(controller_command, true);
@@ -1330,7 +1337,7 @@ void RobotSolver::run()
                 }
             }
 
-            next.tv_nsec += kControlPeriodNs;
+            next.tv_nsec += control_period_ns;
             if (next.tv_nsec >= 1'000'000'000)
             {
                 next.tv_nsec -= 1'000'000'000;

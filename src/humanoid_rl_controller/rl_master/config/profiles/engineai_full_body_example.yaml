@@ -53,6 +53,7 @@ engineai_full_body_example:
   action_dim: 20
   motor_N: 20
   RL_control_f: 100
+  solver_control_hz: 500
   installed_joint_run_modes:
     right_hip_roll: cst
     right_hip_yaw: cst

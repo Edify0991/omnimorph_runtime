@@ -670,6 +670,7 @@ public:
     int action_dim = 0;
     int motor_N = 0;
     int RL_control_f = 100;
+    int solver_control_hz = 500;
     std::vector<std::string> action_joint_order;
     std::map<std::string, std::string> installed_joint_run_modes;
     std::vector<std::string> obs_joint_order;
@@ -977,9 +978,14 @@ public:
             action_dim = cfg["action_dim"].as<int>();
             motor_N = cfg["motor_N"].as<int>();
             RL_control_f = cfg["RL_control_f"].as<int>();
+            solver_control_hz = yamlReadOr<int>(cfg, "solver_control_hz", 500);
             action_joint_order = yamlReadOr<std::vector<std::string>>(cfg, "action_joint_order", {});
             installed_joint_run_modes = yamlReadStringMapOr(cfg, "installed_joint_run_modes");
             obs_joint_order = yamlReadOr<std::vector<std::string>>(cfg, "obs_joint_order", {});
+            if (solver_control_hz <= 0)
+            {
+                throw std::runtime_error("solver_control_hz must be > 0");
+            }
             if (obs_joint_order.empty())
             {
                 obs_joint_order = action_joint_order;
@@ -1680,6 +1686,7 @@ public:
         std::cout << "Installed Joint Run Modes: " << installed_joint_run_modes.size() << std::endl;
         std::cout << "Startup Completion Action: " << startup_completion_action << std::endl;
         std::cout << "Policy Frequency: " << RL_control_f << std::endl;
+        std::cout << "Solver Control Frequency: " << solver_control_hz << std::endl;
         std::cout << "Sub Models: " << sub_models.size() << std::endl;
         std::cout << "AMP Discriminator Enabled: " << (amp_discriminator.enabled ? "true" : "false") << std::endl;
         std::cout << "AMP Discriminator Path: " << amp_discriminator.policy_path << std::endl;

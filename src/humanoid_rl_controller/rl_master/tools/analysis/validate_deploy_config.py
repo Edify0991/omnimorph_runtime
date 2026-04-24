@@ -1832,6 +1832,10 @@ def validate_profile(
             + str(sorted(SUPPORTED_STARTUP_COMPLETION_ACTIONS)),
         )
 
+    solver_control_hz = as_int(section_cfg.get("solver_control_hz", 500), 0)
+    if solver_control_hz <= 0:
+        issues.error(context, "solver_control_hz must be > 0")
+
     check_joint_order(
         action_dim,
         motor_n,

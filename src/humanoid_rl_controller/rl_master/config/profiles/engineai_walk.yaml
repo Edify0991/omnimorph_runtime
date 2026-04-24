@@ -36,7 +36,8 @@ engineai_walk:
   obs_dim: 47
   action_dim: 12
   motor_N: 12
-  RL_control_f: 100
+  RL_control_f: 50
+  solver_control_hz: 500
   installed_joint_run_modes:
     left_hip_roll: cst
     left_hip_yaw: cst
