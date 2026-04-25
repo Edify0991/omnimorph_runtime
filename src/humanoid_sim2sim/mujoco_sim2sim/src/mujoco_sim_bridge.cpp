@@ -598,6 +598,28 @@ void MujocoSimBridge::resolveModelMappings()
         base_free_qpos_adr_ = model_->jnt_qposadr[base_free_joint_id_];
         base_free_qvel_adr_ = model_->jnt_dofadr[base_free_joint_id_];
     }
+
+    const bool requires_free_joint =
+        fix_base_ ||
+        enable_fixed_base_zeroing_ ||
+        enable_fixed_base_hold_after_zeroing_ ||
+        enable_release_before_running_;
+    if (requires_free_joint && base_free_joint_id_ < 0)
+    {
+        std::ostringstream oss;
+        oss << "MuJoCo model must provide a free joint for base lock features. "
+            << "base_body_name='" << base_body_name_ << "'";
+        if (!base_free_joint_name_.empty())
+        {
+            oss << ", requested base_free_joint_name='" << base_free_joint_name_ << "'";
+        }
+        oss << ", enabled features={fix_base=" << (fix_base_ ? "true" : "false")
+            << ", enable_fixed_base_zeroing=" << (enable_fixed_base_zeroing_ ? "true" : "false")
+            << ", enable_fixed_base_hold_after_zeroing=" << (enable_fixed_base_hold_after_zeroing_ ? "true" : "false")
+            << ", enable_release_before_running=" << (enable_release_before_running_ ? "true" : "false")
+            << "}. Add a free joint to the base body or disable these features.";
+        throw std::runtime_error(oss.str());
+    }
 }
 
 void MujocoSimBridge::setupRosInterfaces()

@@ -102,3 +102,21 @@ C++ fused backend (physics + controller) -> ROS2 frame stream -> Python MuJoCo v
 ```
 
 It is the only supported Python GUI path now.
+
+## JC01 Legs Example
+
+For the JC01 legs-only `engineai_walk` policy preset, use:
+
+```bash
+./script/sim2sim_engineai_python.sh \
+  --model-path /home/edify/Code/jingchu01/jingchu01_legs.xml \
+  --mode-id 0 \
+  --bridge-config /home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
+  --auto-start-mode
+```
+
+This preset assumes the MuJoCo XML exposes:
+
+- base body `Body`
+- free joint `root_free`
+- 12 leg joints only
