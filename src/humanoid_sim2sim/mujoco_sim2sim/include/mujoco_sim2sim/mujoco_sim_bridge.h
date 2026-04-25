@@ -37,6 +37,15 @@ public:
     MujocoSimBridge();
     ~MujocoSimBridge() override;
 
+    enum class BaseLockReason
+    {
+        kNone = 0,
+        kStartupZeroing,
+        kExplicitZeroing,
+        kIncompatibleSwitchZeroing,
+        kPreRunHold,
+    };
+
 private:
     struct ViewerState;
 
@@ -56,7 +65,13 @@ private:
     void teleopCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
     void modeControlCallback(const std_msgs::msg::Int32::SharedPtr msg);
     void controlLoopTick();
+    int prepareModeControlWordForTick(int raw_control_word);
     void enforceBaseLock();
+    bool shouldEnforceBaseLock() const;
+    void captureBaseLockPoseFromModel();
+    void activateDynamicBaseLock(BaseLockReason reason, bool apply_prepose);
+    void deactivateDynamicBaseLock(const char *reason);
+    void applyPreposeSnap();
     void startInputExecutor();
     void stopInputExecutor();
     void startStateTelemetry();
@@ -120,6 +135,12 @@ private:
     std::string no_command_behavior_ = "hold_position";
     bool fix_base_ = false;
     double fixed_base_height_ = -1.0;
+    bool enable_fixed_base_zeroing_ = false;
+    bool enable_fixed_base_hold_after_zeroing_ = false;
+    bool enable_release_before_running_ = false;
+    int post_release_settle_ticks_ = 0;
+    bool enable_prepose_snap_ = false;
+    std::vector<double> prepose_joint_q_;
     std::string actuator_control_mode_ = "auto";
     bool use_position_actuator_control_ = false;
     bool enable_viewer_ = false;
@@ -158,6 +179,14 @@ private:
 
     std::array<double, 7> fixed_base_qpos_{};
     bool fixed_base_pose_initialized_ = false;
+    bool dynamic_base_lock_active_ = false;
+    BaseLockReason dynamic_base_lock_reason_ = BaseLockReason::kNone;
+    bool zeroing_injection_pending_ = false;
+    int release_settle_ticks_remaining_ = 0;
+    int last_completed_zeroing_mode_id_ = std::numeric_limits<int>::min();
+    int last_controller_mode_id_ = std::numeric_limits<int>::min();
+    rl_master::DeployLifecycleState last_controller_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
+    bool controller_state_initialized_ = false;
 
     int base_body_id_ = -1;
     int base_free_joint_id_ = -1;

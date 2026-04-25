@@ -58,6 +58,31 @@ def generate_launch_description():
         default_value="-1.0",
         description="Override locked base height (meters). Negative keeps model initial value.",
     )
+    enable_fixed_base_zeroing_arg = DeclareLaunchArgument(
+        "enable_fixed_base_zeroing",
+        default_value="true",
+        description="Lock base in air during startup/zeroing and required sim2sim re-zeroing paths.",
+    )
+    enable_fixed_base_hold_after_zeroing_arg = DeclareLaunchArgument(
+        "enable_fixed_base_hold_after_zeroing",
+        default_value="true",
+        description="Keep base locked after zeroing while waiting for explicit start.",
+    )
+    enable_release_before_running_arg = DeclareLaunchArgument(
+        "enable_release_before_running",
+        default_value="true",
+        description="Release fixed base before entering physical running.",
+    )
+    post_release_settle_ticks_arg = DeclareLaunchArgument(
+        "post_release_settle_ticks",
+        default_value="20",
+        description="Number of control ticks to stay in hold after base release before allowing running.",
+    )
+    enable_prepose_snap_arg = DeclareLaunchArgument(
+        "enable_prepose_snap",
+        default_value="false",
+        description="Snap controlled joints to prepose_joint_q before fixed-base zeroing.",
+    )
     actuator_mode_arg = DeclareLaunchArgument(
         "actuator_control_mode",
         default_value="auto",
@@ -123,6 +148,11 @@ def generate_launch_description():
             "no_command_behavior": LaunchConfiguration("no_command_behavior"),
             "fix_base": ParameterValue(LaunchConfiguration("fixed_base"), value_type=bool),
             "fixed_base_height": ParameterValue(LaunchConfiguration("fixed_base_height"), value_type=float),
+            "enable_fixed_base_zeroing": ParameterValue(LaunchConfiguration("enable_fixed_base_zeroing"), value_type=bool),
+            "enable_fixed_base_hold_after_zeroing": ParameterValue(LaunchConfiguration("enable_fixed_base_hold_after_zeroing"), value_type=bool),
+            "enable_release_before_running": ParameterValue(LaunchConfiguration("enable_release_before_running"), value_type=bool),
+            "post_release_settle_ticks": ParameterValue(LaunchConfiguration("post_release_settle_ticks"), value_type=int),
+            "enable_prepose_snap": ParameterValue(LaunchConfiguration("enable_prepose_snap"), value_type=bool),
             "actuator_control_mode": LaunchConfiguration("actuator_control_mode"),
             "enable_viewer": ParameterValue(LaunchConfiguration("enable_viewer"), value_type=bool),
             "viewer_fps": ParameterValue(LaunchConfiguration("viewer_fps"), value_type=float),
@@ -206,6 +236,11 @@ def generate_launch_description():
             no_cmd_behavior_arg,
             fixed_base_arg,
             fixed_base_height_arg,
+            enable_fixed_base_zeroing_arg,
+            enable_fixed_base_hold_after_zeroing_arg,
+            enable_release_before_running_arg,
+            post_release_settle_ticks_arg,
+            enable_prepose_snap_arg,
             actuator_mode_arg,
             enable_viewer_arg,
             viewer_fps_arg,

@@ -80,6 +80,24 @@ std::string normalizeNoCommandBehavior(const std::string &raw)
     return "hold_position";
 }
 
+const char *baseLockReasonName(mujoco_sim2sim::MujocoSimBridge::BaseLockReason reason)
+{
+    switch (reason)
+    {
+    case mujoco_sim2sim::MujocoSimBridge::BaseLockReason::kStartupZeroing:
+        return "startup_zeroing";
+    case mujoco_sim2sim::MujocoSimBridge::BaseLockReason::kExplicitZeroing:
+        return "explicit_zeroing";
+    case mujoco_sim2sim::MujocoSimBridge::BaseLockReason::kIncompatibleSwitchZeroing:
+        return "incompatible_switch_zeroing";
+    case mujoco_sim2sim::MujocoSimBridge::BaseLockReason::kPreRunHold:
+        return "pre_run_hold";
+    case mujoco_sim2sim::MujocoSimBridge::BaseLockReason::kNone:
+    default:
+        return "none";
+    }
+}
+
 } // namespace
 
 namespace mujoco_sim2sim
@@ -154,7 +172,7 @@ MujocoSimBridge::MujocoSimBridge()
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s",
+        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, settle_ticks=%d, prepose_snap=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
@@ -166,7 +184,12 @@ MujocoSimBridge::MujocoSimBridge()
         no_command_behavior_.c_str(),
         enable_state_telemetry_ ? "on" : "off",
         state_telemetry_hz_,
-        controller_runtime_.runtimeCfg().source_contract.sim_base.quat_source_order.c_str());
+        controller_runtime_.runtimeCfg().source_contract.sim_base.quat_source_order.c_str(),
+        enable_fixed_base_zeroing_ ? "on" : "off",
+        enable_fixed_base_hold_after_zeroing_ ? "on" : "off",
+        enable_release_before_running_ ? "on" : "off",
+        post_release_settle_ticks_,
+        enable_prepose_snap_ ? "on" : "off");
 }
 
 MujocoSimBridge::~MujocoSimBridge()
@@ -217,6 +240,12 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::string>("no_command_behavior", "hold_position");
     this->declare_parameter<bool>("fix_base", false);
     this->declare_parameter<double>("fixed_base_height", -1.0);
+    this->declare_parameter<bool>("enable_fixed_base_zeroing", false);
+    this->declare_parameter<bool>("enable_fixed_base_hold_after_zeroing", false);
+    this->declare_parameter<bool>("enable_release_before_running", false);
+    this->declare_parameter<int>("post_release_settle_ticks", 0);
+    this->declare_parameter<bool>("enable_prepose_snap", false);
+    this->declare_parameter<std::vector<double>>("prepose_joint_q", std::vector<double>{});
     this->declare_parameter<std::string>("actuator_control_mode", "auto");
     this->declare_parameter<bool>("enable_viewer", false);
     this->declare_parameter<bool>("enable_python_viewer_stream", false);
@@ -249,6 +278,12 @@ void MujocoSimBridge::loadParameters()
     no_command_behavior_ = normalizeNoCommandBehavior(this->get_parameter("no_command_behavior").as_string());
     fix_base_ = this->get_parameter("fix_base").as_bool();
     fixed_base_height_ = this->get_parameter("fixed_base_height").as_double();
+    enable_fixed_base_zeroing_ = this->get_parameter("enable_fixed_base_zeroing").as_bool();
+    enable_fixed_base_hold_after_zeroing_ = this->get_parameter("enable_fixed_base_hold_after_zeroing").as_bool();
+    enable_release_before_running_ = this->get_parameter("enable_release_before_running").as_bool();
+    post_release_settle_ticks_ = std::max<int>(0, static_cast<int>(this->get_parameter("post_release_settle_ticks").as_int()));
+    enable_prepose_snap_ = this->get_parameter("enable_prepose_snap").as_bool();
+    prepose_joint_q_ = this->get_parameter("prepose_joint_q").as_double_array();
     actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
     enable_viewer_ = this->get_parameter("enable_viewer").as_bool();
     enable_python_viewer_stream_ = this->get_parameter("enable_python_viewer_stream").as_bool();
@@ -308,6 +343,13 @@ void MujocoSimBridge::loadParameters()
     if (!hold_actuator_names_.empty() && hold_actuator_names_.size() != hold_joint_names_.size())
     {
         throw std::runtime_error("hold_actuator_names size must match hold_joint_names");
+    }
+
+    if (!prepose_joint_q_.empty() &&
+        prepose_joint_q_.size() != 1 &&
+        prepose_joint_q_.size() != joint_names_.size())
+    {
+        throw std::runtime_error("prepose_joint_q size must be 1 or match joint_names");
     }
 
     kp_ = normalizeGainParam(this->get_parameter("kp").as_double_array(), 80.0, joint_names_.size());
@@ -819,6 +861,11 @@ void MujocoSimBridge::initRuntimeRecorder()
              << "\"model_path\":\"" << model_path_ << "\","
              << "\"control_hz\":" << control_hz_ << ","
              << "\"policy_hz\":" << runtime_cfg.RL_control_f << ","
+             << "\"enable_fixed_base_zeroing\":" << (enable_fixed_base_zeroing_ ? "true" : "false") << ","
+             << "\"enable_fixed_base_hold_after_zeroing\":" << (enable_fixed_base_hold_after_zeroing_ ? "true" : "false") << ","
+             << "\"enable_release_before_running\":" << (enable_release_before_running_ ? "true" : "false") << ","
+             << "\"post_release_settle_ticks\":" << post_release_settle_ticks_ << ","
+             << "\"enable_prepose_snap\":" << (enable_prepose_snap_ ? "true" : "false") << ","
              << "\"sim_dt\":" << sim_dt_
              << "}";
 
@@ -1151,17 +1198,10 @@ void MujocoSimBridge::initializeState()
             hold_target_q_.size());
     }
 
-    if (fix_base_ && base_free_qpos_adr_ >= 0 && (base_free_qpos_adr_ + 6) < model_->nq)
+    captureBaseLockPoseFromModel();
+
+    if (fix_base_ && fixed_base_pose_initialized_)
     {
-        for (size_t i = 0; i < fixed_base_qpos_.size(); ++i)
-        {
-            fixed_base_qpos_[i] = data_->qpos[base_free_qpos_adr_ + static_cast<int>(i)];
-        }
-        if (fixed_base_height_ >= 0.0)
-        {
-            fixed_base_qpos_[2] = fixed_base_height_;
-        }
-        fixed_base_pose_initialized_ = true;
         enforceBaseLock();
         mj_forward(model_, data_);
         RCLCPP_INFO(
@@ -1178,6 +1218,118 @@ void MujocoSimBridge::initializeState()
             "fix_base=true but free base joint is unavailable; base lock disabled.");
         fix_base_ = false;
     }
+
+    if (enable_fixed_base_zeroing_)
+    {
+        activateDynamicBaseLock(BaseLockReason::kStartupZeroing, enable_prepose_snap_);
+    }
+}
+
+bool MujocoSimBridge::shouldEnforceBaseLock() const
+{
+    return fix_base_ || dynamic_base_lock_active_;
+}
+
+void MujocoSimBridge::captureBaseLockPoseFromModel()
+{
+    if (base_free_qpos_adr_ < 0 || (base_free_qpos_adr_ + 6) >= model_->nq)
+    {
+        fixed_base_pose_initialized_ = false;
+        return;
+    }
+
+    for (size_t i = 0; i < fixed_base_qpos_.size(); ++i)
+    {
+        fixed_base_qpos_[i] = data_->qpos[base_free_qpos_adr_ + static_cast<int>(i)];
+    }
+    if (fixed_base_height_ >= 0.0)
+    {
+        fixed_base_qpos_[2] = fixed_base_height_;
+    }
+    fixed_base_pose_initialized_ = true;
+}
+
+void MujocoSimBridge::applyPreposeSnap()
+{
+    if (prepose_joint_q_.empty())
+    {
+        return;
+    }
+
+    for (size_t i = 0; i < joint_names_.size(); ++i)
+    {
+        const int qpos_adr = qpos_addrs_[i];
+        const int qvel_adr = qvel_addrs_[i];
+        if (qpos_adr < 0 || qpos_adr >= model_->nq)
+        {
+            continue;
+        }
+        const double target_q =
+            (prepose_joint_q_.size() == 1)
+                ? prepose_joint_q_.front()
+                : prepose_joint_q_[i];
+        data_->qpos[qpos_adr] = target_q;
+        if (qvel_adr >= 0 && qvel_adr < model_->nv)
+        {
+            data_->qvel[qvel_adr] = 0.0;
+        }
+        last_target_q_[i] = static_cast<float>(target_q);
+    }
+
+    mj_forward(model_, data_);
+    RCLCPP_INFO(this->get_logger(), "Applied sim prepose snap before fixed-base zeroing.");
+}
+
+void MujocoSimBridge::activateDynamicBaseLock(BaseLockReason reason, bool apply_prepose)
+{
+    const bool was_active = dynamic_base_lock_active_;
+    const BaseLockReason previous_reason = dynamic_base_lock_reason_;
+    if (!fixed_base_pose_initialized_)
+    {
+        captureBaseLockPoseFromModel();
+    }
+    if (!fixed_base_pose_initialized_)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Dynamic base lock requested for %s, but base free joint pose is unavailable.",
+            baseLockReasonName(reason));
+        return;
+    }
+
+    dynamic_base_lock_active_ = true;
+    dynamic_base_lock_reason_ = reason;
+
+    if (apply_prepose)
+    {
+        applyPreposeSnap();
+    }
+
+    enforceBaseLock();
+    mj_forward(model_, data_);
+
+    if (!was_active || previous_reason != reason)
+    {
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Dynamic base lock active: reason=%s, fixed xyz=(%.4f, %.4f, %.4f)",
+            baseLockReasonName(reason),
+            fixed_base_qpos_[0],
+            fixed_base_qpos_[1],
+            fixed_base_qpos_[2]);
+    }
+}
+
+void MujocoSimBridge::deactivateDynamicBaseLock(const char *reason)
+{
+    if (!dynamic_base_lock_active_)
+    {
+        return;
+    }
+    dynamic_base_lock_active_ = false;
+    dynamic_base_lock_reason_ = BaseLockReason::kNone;
+    zeroing_injection_pending_ = false;
+    RCLCPP_INFO(this->get_logger(), "Dynamic base lock released: %s", reason ? reason : "unspecified");
 }
 
 void MujocoSimBridge::initializeViewer()
@@ -1547,7 +1699,7 @@ void MujocoSimBridge::handleViewerKey(int key, int action, int)
 
 void MujocoSimBridge::enforceBaseLock()
 {
-    if (!fix_base_ || !fixed_base_pose_initialized_ || base_free_qpos_adr_ < 0 || base_free_qvel_adr_ < 0)
+    if (!shouldEnforceBaseLock() || !fixed_base_pose_initialized_ || base_free_qpos_adr_ < 0 || base_free_qvel_adr_ < 0)
     {
         return;
     }
@@ -1564,6 +1716,91 @@ void MujocoSimBridge::enforceBaseLock()
     {
         data_->qvel[base_free_qvel_adr_ + i] = 0.0;
     }
+}
+
+int MujocoSimBridge::prepareModeControlWordForTick(int raw_control_word)
+{
+    const rl_master::DecodedControlWord decoded =
+        rl_master::DeployStateMachine::decodeControlWord(
+            raw_control_word,
+            controller_state_initialized_ ? last_controller_mode_id_ : startup_mode_id_);
+
+    if (decoded.request_estop)
+    {
+        release_settle_ticks_remaining_ = 0;
+        zeroing_injection_pending_ = false;
+        return raw_control_word;
+    }
+
+    if (decoded.request_zero && enable_fixed_base_zeroing_)
+    {
+        activateDynamicBaseLock(BaseLockReason::kExplicitZeroing, enable_prepose_snap_);
+        release_settle_ticks_remaining_ = 0;
+        return raw_control_word;
+    }
+
+    if (zeroing_injection_pending_ && enable_fixed_base_zeroing_)
+    {
+        activateDynamicBaseLock(BaseLockReason::kIncompatibleSwitchZeroing, enable_prepose_snap_);
+        zeroing_injection_pending_ = false;
+        release_settle_ticks_remaining_ = 0;
+        return rl_master::kCtrlWordZeroing;
+    }
+
+    if (!controller_state_initialized_)
+    {
+        return raw_control_word;
+    }
+
+    const bool active_mode_needs_zeroing =
+        last_completed_zeroing_mode_id_ !=
+        (decoded.request_start ? decoded.locomotion_mode : last_controller_mode_id_);
+    const bool current_state_is_hold =
+        last_controller_deploy_state_ == rl_master::DeployLifecycleState::kHold;
+    const bool current_state_is_zeroing =
+        last_controller_deploy_state_ == rl_master::DeployLifecycleState::kZeroing;
+
+    if (enable_fixed_base_zeroing_ &&
+        decoded.request_start &&
+        current_state_is_hold &&
+        active_mode_needs_zeroing)
+    {
+        activateDynamicBaseLock(BaseLockReason::kIncompatibleSwitchZeroing, enable_prepose_snap_);
+        zeroing_injection_pending_ = true;
+        release_settle_ticks_remaining_ = 0;
+        return rl_master::kCtrlWordSetModeBase + decoded.locomotion_mode;
+    }
+
+    if (decoded.request_start &&
+        dynamic_base_lock_active_ &&
+        current_state_is_zeroing)
+    {
+        return rl_master::kCtrlWordStopPolicy;
+    }
+
+    if (decoded.request_start &&
+        enable_release_before_running_ &&
+        dynamic_base_lock_active_ &&
+        dynamic_base_lock_reason_ == BaseLockReason::kPreRunHold &&
+        current_state_is_hold)
+    {
+        if (release_settle_ticks_remaining_ <= 0)
+        {
+            deactivateDynamicBaseLock("pre-running release");
+            release_settle_ticks_remaining_ = post_release_settle_ticks_;
+        }
+        if (release_settle_ticks_remaining_ > 0)
+        {
+            return rl_master::kCtrlWordStopPolicy;
+        }
+    }
+
+    if (release_settle_ticks_remaining_ > 0 && decoded.request_start)
+    {
+        return rl_master::kCtrlWordStopPolicy;
+    }
+
+    return raw_control_word;
 }
 
 void MujocoSimBridge::teleopCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
@@ -1602,15 +1839,19 @@ void MujocoSimBridge::controlLoopTick()
     const rclcpp::Time now = this->now();
     const bool should_step = !viewer_paused_ || viewer_step_once_;
     const int speed_substeps = std::max(1, static_cast<int>(std::lround(substeps_per_control_ * sim_speed_scale_)));
+    const int raw_mode_control_word = mode_command_cache_.load();
+    const int effective_mode_control_word = prepareModeControlWordForTick(raw_mode_control_word);
 
     const rl_master::RobotStateData state = buildRobotState();
     const rl_master::TeleopCommand teleop_command = latestTeleopCommand();
     const rl_master::RobotCommandData command =
-        controller_runtime_.step(state, teleop_command, mode_command_cache_.load());
+        controller_runtime_.step(state, teleop_command, effective_mode_control_word);
     const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
     emitDerivedRuntimeEvents(controller_snapshot);
     const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
     const bool control_active = runtime_mode.open_rl_active;
+    const auto controller_state = static_cast<rl_master::DeployLifecycleState>(controller_snapshot.deploy_state);
+    const int controller_mode_id = controller_snapshot.active_mode_id;
 
     if (!control_active)
     {
@@ -1633,10 +1874,54 @@ void MujocoSimBridge::controlLoopTick()
         hold_target_latched_ = false;
     }
 
+    if (controller_state == rl_master::DeployLifecycleState::kZeroing &&
+        enable_fixed_base_zeroing_)
+    {
+        if (!dynamic_base_lock_active_)
+        {
+            activateDynamicBaseLock(BaseLockReason::kExplicitZeroing, false);
+        }
+    }
+
+    if (controller_state_initialized_)
+    {
+        if (last_controller_deploy_state_ == rl_master::DeployLifecycleState::kZeroing &&
+            controller_state != rl_master::DeployLifecycleState::kZeroing)
+        {
+            last_completed_zeroing_mode_id_ = controller_mode_id;
+            if (controller_state == rl_master::DeployLifecycleState::kHold &&
+                enable_fixed_base_hold_after_zeroing_)
+            {
+                dynamic_base_lock_active_ = true;
+                dynamic_base_lock_reason_ = BaseLockReason::kPreRunHold;
+            }
+            else if (controller_state == rl_master::DeployLifecycleState::kHold &&
+                     !fix_base_)
+            {
+                deactivateDynamicBaseLock("zeroing completed into hold without fixed-base hold");
+            }
+            else if (controller_state == rl_master::DeployLifecycleState::kRunning &&
+                     !fix_base_)
+            {
+                deactivateDynamicBaseLock("zeroing completed into running");
+            }
+        }
+
+        if (last_controller_deploy_state_ == rl_master::DeployLifecycleState::kRunning &&
+            controller_state == rl_master::DeployLifecycleState::kHold &&
+            controller_mode_id != last_controller_mode_id_ &&
+            enable_fixed_base_zeroing_)
+        {
+            activateDynamicBaseLock(BaseLockReason::kIncompatibleSwitchZeroing, false);
+            zeroing_injection_pending_ = true;
+        }
+    }
+
     enforceBaseLock();
     updateControlInput(command, control_active, now);
 
-    if (should_step && (control_active || !pause_when_no_command_))
+    const bool allow_inactive_step_for_release = (release_settle_ticks_remaining_ > 0);
+    if (should_step && (control_active || !pause_when_no_command_ || allow_inactive_step_for_release))
     {
         for (int i = 0; i < speed_substeps; ++i)
         {
@@ -1646,6 +1931,10 @@ void MujocoSimBridge::controlLoopTick()
         }
         mj_forward(model_, data_);
         viewer_step_once_ = false;
+        if (release_settle_ticks_remaining_ > 0)
+        {
+            --release_settle_ticks_remaining_;
+        }
     }
     else
     {
@@ -1667,6 +1956,13 @@ void MujocoSimBridge::controlLoopTick()
     if (static_cast<double>(loop_elapsed_us) > budget_us)
     {
         ++sim_loop_overrun_count_;
+    }
+
+    if (controller_snapshot.valid)
+    {
+        last_controller_mode_id_ = controller_mode_id;
+        last_controller_deploy_state_ = controller_state;
+        controller_state_initialized_ = true;
     }
 }
 
@@ -1961,7 +2257,7 @@ void MujocoSimBridge::publishViewerFrameMirror(
     msg.data.push_back(static_cast<float>(model_->nu));
     msg.data.push_back(sim_time);
     msg.data.push_back(control_hz_ > 0.0 ? static_cast<float>(1.0 / control_hz_) : 0.0f);
-    msg.data.push_back(fix_base_ ? 1.0f : 0.0f);
+    msg.data.push_back(shouldEnforceBaseLock() ? 1.0f : 0.0f);
 
     for (size_t i = 0; i < qpos.size(); ++i)
     {

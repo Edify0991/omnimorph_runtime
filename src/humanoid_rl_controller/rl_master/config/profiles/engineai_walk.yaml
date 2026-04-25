@@ -86,25 +86,6 @@ engineai_walk:
     - right_ankle_roll
   observation_manifest_file: observation_manifest_velloco.yaml
   enable_reference_motion: false
-  reference_motion_dim: 24
-  reference_motion_sampling: step
-  reference_motion_source: auto
-  reference_motion_file: reference_motion/walk_ref.txt
-  reference_anchor_body: base
-  reference_body_names: []
-  reference_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
-    - left_hip_roll
-    - left_hip_yaw
-    - left_hip_pitch
-    - left_knee_pitch
-    - left_ankle_pitch
-    - left_ankle_roll
   source_contract:
     imu_input:
       payload: euler_compat
@@ -115,15 +96,6 @@ engineai_walk:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-    policy_extra_outputs:
-      reference_motion_key: reference_motion
-      reference_joint_pos_key: joint_pos
-      reference_joint_vel_key: joint_vel
-      reference_body_pos_w_key: body_pos_w
-      reference_body_quat_w_key: body_quat_w
-      body_quat_order: wxyz
-      body_quat_representation: quat
-      body_quat_frame: world
   observation_contract:
     canonical:
       joint_order: robot_global_joint_order
@@ -131,13 +103,6 @@ engineai_walk:
       quat_representation: quat
       body_quat_frame: world
       body_orientation_representation: rot6
-  external_observations:
-    - name: vision_latent
-      dim: 64
-      required: false
-    - name: lidar_latent
-      dim: 32
-      required: false
   onnx_intra_threads: 1
   onnx_inter_threads: 1
   policy_io:
@@ -154,23 +119,6 @@ engineai_walk:
     reset_policy_on_mode_switch: true
     extra_output_names: []
     onnx_inputs: []
-  amp_discriminator:
-    enabled: false
-    input_source: stacked_observation
-    policy_file: policies/amp_discriminator.onnx
-    policy_io:
-      obs_input_name: obs
-      score_output_name: disc_score
-      enable_time_step_input: false
-      time_step_input_name: time_step
-      time_step_start: 0
-      strict_model_io: false
-      enable_metadata_check: false
-      metadata_check_strict: true
-      required_metadata_keys: []
-      expected_metadata: {}
-      extra_output_names: []
-      warn_below: -1.0e9
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12
   loop_overrun_warn_us: 2000

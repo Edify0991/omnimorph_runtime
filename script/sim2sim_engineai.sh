@@ -15,6 +15,16 @@ Options:
   --mode-id <int>                 startup deploy mode_id (default: 0)
   --control-hz <float>            control_hz launch arg (default: 100.0)
   --fixed-base <true|false>       fixed_base launch arg (default: false)
+  --enable-fixed-base-zeroing <true|false>
+                                  lock base in air for startup/required re-zeroing (default: true)
+  --enable-fixed-base-hold-after-zeroing <true|false>
+                                  keep base locked in hold after zeroing (default: true)
+  --enable-release-before-running <true|false>
+                                  release base before entering running (default: true)
+  --post-release-settle-ticks <int>
+                                  hold ticks after release before running (default: 20)
+  --enable-prepose-snap <true|false>
+                                  snap controlled joints to prepose_joint_q before zeroing (default: false)
   --enable-viewer <bool>          enable_viewer launch arg (default: true)
   --pause-when-no-command <bool>  pause stepping when controller output is inactive (default: false)
   --no-command-behavior <value>   hold_position|hold_last|zero_torque (default: hold_position)
@@ -33,6 +43,11 @@ MODEL_PATH=""
 MODE_ID=0
 CONTROL_HZ="100.0"
 FIXED_BASE="false"
+ENABLE_FIXED_BASE_ZEROING="true"
+ENABLE_FIXED_BASE_HOLD_AFTER_ZEROING="true"
+ENABLE_RELEASE_BEFORE_RUNNING="true"
+POST_RELEASE_SETTLE_TICKS="20"
+ENABLE_PREPOSE_SNAP="false"
 ENABLE_VIEWER="true"
 PAUSE_WHEN_NO_COMMAND="false"
 NO_COMMAND_BEHAVIOR="hold_position"
@@ -60,6 +75,26 @@ while [[ $# -gt 0 ]]; do
       ;;
     --fixed-base)
       FIXED_BASE="${2:-}"
+      shift 2
+      ;;
+    --enable-fixed-base-zeroing)
+      ENABLE_FIXED_BASE_ZEROING="${2:-}"
+      shift 2
+      ;;
+    --enable-fixed-base-hold-after-zeroing)
+      ENABLE_FIXED_BASE_HOLD_AFTER_ZEROING="${2:-}"
+      shift 2
+      ;;
+    --enable-release-before-running)
+      ENABLE_RELEASE_BEFORE_RUNNING="${2:-}"
+      shift 2
+      ;;
+    --post-release-settle-ticks)
+      POST_RELEASE_SETTLE_TICKS="${2:-}"
+      shift 2
+      ;;
+    --enable-prepose-snap)
+      ENABLE_PREPOSE_SNAP="${2:-}"
       shift 2
       ;;
     --enable-viewer)
@@ -165,6 +200,11 @@ LAUNCH_CMD=(
   "mode_id:=${MODE_ID}"
   "control_hz:=${CONTROL_HZ}"
   "fixed_base:=${FIXED_BASE}"
+  "enable_fixed_base_zeroing:=${ENABLE_FIXED_BASE_ZEROING}"
+  "enable_fixed_base_hold_after_zeroing:=${ENABLE_FIXED_BASE_HOLD_AFTER_ZEROING}"
+  "enable_release_before_running:=${ENABLE_RELEASE_BEFORE_RUNNING}"
+  "post_release_settle_ticks:=${POST_RELEASE_SETTLE_TICKS}"
+  "enable_prepose_snap:=${ENABLE_PREPOSE_SNAP}"
   "enable_viewer:=${ENABLE_VIEWER}"
   "pause_when_no_command:=${PAUSE_WHEN_NO_COMMAND}"
   "no_command_behavior:=${NO_COMMAND_BEHAVIOR}"
