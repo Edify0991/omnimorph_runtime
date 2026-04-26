@@ -24,3 +24,8 @@ Standard startup:
 ```
 
 The Python interactive backend is kept only as a legacy / experimental path and is no longer the standard deploy runtime.
+
+Useful references:
+
+- [MuJoCo Sim2Sim Deploy Guide](/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_mujoco_deploy_guide.md)
+- [Sim2Sim Runtime Environment Notes](/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_runtime_environment_notes.md)

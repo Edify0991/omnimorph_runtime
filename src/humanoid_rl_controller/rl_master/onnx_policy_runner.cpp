@@ -154,13 +154,24 @@ void OnnxPolicyRunner::init()
     std::vector<bool> bound_inputs(static_cast<size_t>(input_count), false);
 
     auto defaultShapeForInput = [&](int input_index) {
-        auto input_info = session_->GetInputTypeInfo(input_index).GetTensorTypeAndShapeInfo();
-        auto normalized_shape = normalizedShape(input_info.GetShape());
-        if (normalized_shape.empty())
+        try
         {
-            normalized_shape = {1};
+            auto input_type_info = session_->GetInputTypeInfo(input_index);
+            auto tensor_info = input_type_info.GetTensorTypeAndShapeInfo();
+            auto normalized_shape = normalizedShape(tensor_info.GetShape());
+            if (normalized_shape.empty())
+            {
+                normalized_shape = {1};
+            }
+            return normalized_shape;
         }
-        return normalized_shape;
+        catch (const std::exception &e)
+        {
+            throw std::runtime_error(
+                "[" + policy_tag_ + "] failed to query ONNX shape for input '" +
+                input_names_[static_cast<size_t>(input_index)] + "': " + e.what() +
+                ". Configure policy_io.onnx_inputs[*].shape explicitly if this input cannot be inferred.");
+        }
     };
 
     auto appendBinding = [&](InputBinding binding) {

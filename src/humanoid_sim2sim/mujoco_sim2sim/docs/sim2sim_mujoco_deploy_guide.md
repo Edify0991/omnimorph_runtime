@@ -1,5 +1,9 @@
 # MuJoCo Sim2Sim Deploy Guide (Fused Runtime)
 
+For runtime environment pitfalls and verification commands, see:
+
+- [sim2sim_runtime_environment_notes.md](/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_runtime_environment_notes.md)
+
 ## 1. Standard Architecture
 
 The standard sim2sim path is now:

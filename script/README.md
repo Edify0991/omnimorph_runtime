@@ -120,3 +120,7 @@ This preset assumes the MuJoCo XML exposes:
 - base body `Body`
 - a free joint under `Body` (name can be omitted)
 - 12 leg joints only
+
+For environment troubleshooting around ROS setup, Conda, FastDDS, ONNX Runtime, and launch commands, see:
+
+- [Sim2Sim Runtime Environment Notes](/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_runtime_environment_notes.md)
