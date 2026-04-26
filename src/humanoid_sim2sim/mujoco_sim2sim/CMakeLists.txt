@@ -111,6 +111,27 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
     mujoco_sim2sim_arch_flags
   )
 
+  set(_mujoco_sim2sim_rpath_dirs "")
+  if(DEFINED ONNXRUNTIME_LIBRARY AND ONNXRUNTIME_LIBRARY)
+    get_filename_component(_mujoco_sim2sim_onnxruntime_lib_dir "${ONNXRUNTIME_LIBRARY}" DIRECTORY)
+    if(_mujoco_sim2sim_onnxruntime_lib_dir)
+      list(APPEND _mujoco_sim2sim_rpath_dirs "${_mujoco_sim2sim_onnxruntime_lib_dir}")
+    endif()
+  endif()
+  list(REMOVE_DUPLICATES _mujoco_sim2sim_rpath_dirs)
+  if(_mujoco_sim2sim_rpath_dirs)
+    string(JOIN ":" MUJOCO_SIM2SIM_RPATH ${_mujoco_sim2sim_rpath_dirs})
+    set_target_properties(mujoco_sim_bridge PROPERTIES
+      BUILD_RPATH "${MUJOCO_SIM2SIM_RPATH}"
+      INSTALL_RPATH "${MUJOCO_SIM2SIM_RPATH}"
+      INSTALL_RPATH_USE_LINK_PATH TRUE
+    )
+  else()
+    set_target_properties(mujoco_sim_bridge PROPERTIES
+      INSTALL_RPATH_USE_LINK_PATH TRUE
+    )
+  endif()
+
   if(MUJOCO_SIM2SIM_WITH_VIEWER)
     target_compile_definitions(mujoco_sim_bridge PRIVATE MUJOCO_SIM2SIM_WITH_VIEWER=1)
     target_link_libraries(mujoco_sim_bridge ${MUJOCO_SIM2SIM_GLFW_LIB})
