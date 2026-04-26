@@ -171,11 +171,11 @@ This preset is intentionally narrow:
 
 - 12 leg joints only
 - `base_body_name=Body`
-- `base_free_joint_name=root_free`
+- `base_free_joint_name=""` with auto-discovery on `Body`
 - `control_hz=500`
 - `backend:=python_frontend`
 
 Important:
 
-- the XML must expose the `root_free` free joint if fixed-base zeroing / hold / release features are enabled
+- the XML must expose a free joint on `Body` if fixed-base zeroing / hold / release features are enabled
 - if those safety features are enabled and the model has no base free joint, `mujoco_sim_bridge` now fails fast at startup instead of silently degrading

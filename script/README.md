@@ -118,5 +118,5 @@ For the JC01 legs-only `engineai_walk` policy preset, use:
 This preset assumes the MuJoCo XML exposes:
 
 - base body `Body`
-- free joint `root_free`
+- a free joint under `Body` (name can be omitted)
 - 12 leg joints only
