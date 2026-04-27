@@ -185,6 +185,7 @@ MujocoSimBridge::MujocoSimBridge()
     loadParameters();
     loadModel();
     resolveModelMappings();
+    applyPositionActuatorTuning();
     controller_runtime_.initialize(startup_mode_id_);
     initializeState();
     initRuntimeRecorder();
@@ -197,7 +198,7 @@ MujocoSimBridge::MujocoSimBridge()
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, settle_ticks=%d, prepose_snap=%s",
+        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, release_settle_ticks=%d, hold_settle_ticks=%d, prepose_snap=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
@@ -214,6 +215,7 @@ MujocoSimBridge::MujocoSimBridge()
         enable_fixed_base_hold_after_zeroing_ ? "on" : "off",
         enable_release_before_running_ ? "on" : "off",
         post_release_settle_ticks_,
+        post_zeroing_hold_settle_ticks_,
         enable_prepose_snap_ ? "on" : "off");
 }
 
@@ -270,6 +272,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<bool>("enable_fixed_base_hold_after_zeroing", false);
     this->declare_parameter<bool>("enable_release_before_running", false);
     this->declare_parameter<int>("post_release_settle_ticks", 0);
+    this->declare_parameter<int>("post_zeroing_hold_settle_ticks", 0);
     this->declare_parameter<bool>("enable_prepose_snap", false);
     this->declare_parameter<std::vector<double>>("prepose_joint_q", std::vector<double>{});
     this->declare_parameter<std::string>("actuator_control_mode", "auto");
@@ -294,6 +297,9 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::vector<double>>("hold_kd", std::vector<double>{2.0});
     this->declare_parameter<std::vector<double>>("hold_torque_limit", std::vector<double>{120.0});
     this->declare_parameter<std::vector<double>>("hold_joint_target_q", std::vector<double>{});
+    this->declare_parameter<std::vector<double>>("position_actuator_kp", std::vector<double>{80.0});
+    this->declare_parameter<std::vector<double>>("position_actuator_kv", std::vector<double>{2.0});
+    this->declare_parameter<std::vector<double>>("position_actuator_forcerange", std::vector<double>{120.0});
 
     model_path_ = this->get_parameter("model_path").as_string();
     base_body_name_ = this->get_parameter("base_body_name").as_string();
@@ -310,6 +316,9 @@ void MujocoSimBridge::loadParameters()
     enable_fixed_base_hold_after_zeroing_ = this->get_parameter("enable_fixed_base_hold_after_zeroing").as_bool();
     enable_release_before_running_ = this->get_parameter("enable_release_before_running").as_bool();
     post_release_settle_ticks_ = std::max<int>(0, static_cast<int>(this->get_parameter("post_release_settle_ticks").as_int()));
+    post_zeroing_hold_settle_ticks_ = std::max<int>(
+        0,
+        static_cast<int>(this->get_parameter("post_zeroing_hold_settle_ticks").as_int()));
     enable_prepose_snap_ = this->get_parameter("enable_prepose_snap").as_bool();
     prepose_joint_q_ = this->get_parameter("prepose_joint_q").as_double_array();
     actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
@@ -359,6 +368,23 @@ void MujocoSimBridge::loadParameters()
     if (position_joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
     {
         position_actuator_joint_names_ = position_joint_names_param_obj.as_string_array();
+    }
+    const size_t position_actuator_count = position_actuator_joint_names_.size();
+    position_actuator_kp_ = normalizeGainParam(
+        this->get_parameter("position_actuator_kp").as_double_array(),
+        80.0,
+        position_actuator_count);
+    position_actuator_kv_ = normalizeGainParam(
+        this->get_parameter("position_actuator_kv").as_double_array(),
+        2.0,
+        position_actuator_count);
+    position_actuator_forcerange_ = normalizeGainParam(
+        this->get_parameter("position_actuator_forcerange").as_double_array(),
+        120.0,
+        position_actuator_count);
+    for (size_t i = 0; i < position_actuator_forcerange_.size(); ++i)
+    {
+        position_actuator_forcerange_[i] = std::abs(position_actuator_forcerange_[i]);
     }
 
     hold_joint_names_.clear();
@@ -592,6 +618,7 @@ void MujocoSimBridge::resolveModelMappings()
     hold_actuator_ids_.assign(hold_joint_names_.size(), -1);
     hold_main_joint_indices_.assign(hold_joint_names_.size(), -1);
     hold_applied_tau_.assign(hold_joint_names_.size(), 0.0f);
+    latched_hold_target_q_.assign(hold_joint_names_.size(), 0.0);
     joint_hold_config_indices_.assign(joint_names_.size(), -1);
 
     size_t hold_extra_joint_count = 0;
@@ -759,6 +786,86 @@ void MujocoSimBridge::resolveModelMappings()
             << "}. Add a free joint to the base body or disable these features.";
         throw std::runtime_error(oss.str());
     }
+}
+
+void MujocoSimBridge::applyPositionActuatorTuning()
+{
+    if (!model_ || position_actuator_joint_names_.empty())
+    {
+        return;
+    }
+    if (position_actuator_kp_.size() != position_actuator_joint_names_.size() ||
+        position_actuator_kv_.size() != position_actuator_joint_names_.size() ||
+        position_actuator_forcerange_.size() != position_actuator_joint_names_.size())
+    {
+        throw std::runtime_error(
+            "position actuator tuning vectors must match position_actuator_joint_names");
+    }
+
+    for (size_t i = 0; i < position_actuator_joint_names_.size(); ++i)
+    {
+        const auto joint_it = std::find(joint_names_.begin(), joint_names_.end(), position_actuator_joint_names_[i]);
+        if (joint_it == joint_names_.end())
+        {
+            throw std::runtime_error(
+                "position actuator tuning references unknown joint '" +
+                position_actuator_joint_names_[i] + "'");
+        }
+        const size_t joint_index = static_cast<size_t>(std::distance(joint_names_.begin(), joint_it));
+        if (joint_index >= actuator_ids_.size())
+        {
+            throw std::runtime_error(
+                "position actuator tuning resolved invalid joint index for '" +
+                position_actuator_joint_names_[i] + "'");
+        }
+
+        const int actuator_id = actuator_ids_[joint_index];
+        if (actuator_id < 0 || actuator_id >= model_->nu)
+        {
+            throw std::runtime_error(
+                "position actuator tuning resolved invalid actuator id for '" +
+                position_actuator_joint_names_[i] + "'");
+        }
+        if (joint_actuator_backends_[joint_index] != ActuatorBackend::kPosition)
+        {
+            throw std::runtime_error(
+                "position actuator tuning requires a MuJoCo position actuator for joint '" +
+                position_actuator_joint_names_[i] + "'");
+        }
+        if (model_->actuator_gaintype[actuator_id] != mjGAIN_FIXED ||
+            model_->actuator_biastype[actuator_id] != mjBIAS_AFFINE)
+        {
+            throw std::runtime_error(
+                "position actuator tuning expects MuJoCo position shortcut layout "
+                "(gaintype=fixed, biastype=affine) for joint '" +
+                position_actuator_joint_names_[i] + "'");
+        }
+
+        const double kp = position_actuator_kp_[i];
+        const double kv = position_actuator_kv_[i];
+        const double force_limit = std::abs(position_actuator_forcerange_[i]);
+        model_->actuator_gainprm[actuator_id * mjNGAIN + 0] = kp;
+        model_->actuator_biasprm[actuator_id * mjNBIAS + 1] = -kp;
+        model_->actuator_biasprm[actuator_id * mjNBIAS + 2] = -kv;
+        model_->actuator_forcelimited[actuator_id] = 1;
+        model_->actuator_forcerange[2 * actuator_id + 0] = -force_limit;
+        model_->actuator_forcerange[2 * actuator_id + 1] = force_limit;
+    }
+
+    std::ostringstream summary;
+    summary << "Applied position actuator tuning:";
+    for (size_t i = 0; i < position_actuator_joint_names_.size(); ++i)
+    {
+        summary << " " << position_actuator_joint_names_[i]
+                << "(kp=" << position_actuator_kp_[i]
+                << ", kv=" << position_actuator_kv_[i]
+                << ", force=" << position_actuator_forcerange_[i] << ")";
+        if (i + 1 < position_actuator_joint_names_.size())
+        {
+            summary << ",";
+        }
+    }
+    RCLCPP_INFO(this->get_logger(), "%s", summary.str().c_str());
 }
 
 void MujocoSimBridge::setupRosInterfaces()
@@ -1026,6 +1133,7 @@ void MujocoSimBridge::initRuntimeRecorder()
              << "\"enable_fixed_base_hold_after_zeroing\":" << (enable_fixed_base_hold_after_zeroing_ ? "true" : "false") << ","
              << "\"enable_release_before_running\":" << (enable_release_before_running_ ? "true" : "false") << ","
              << "\"post_release_settle_ticks\":" << post_release_settle_ticks_ << ","
+             << "\"post_zeroing_hold_settle_ticks\":" << post_zeroing_hold_settle_ticks_ << ","
              << "\"enable_prepose_snap\":" << (enable_prepose_snap_ ? "true" : "false") << ","
              << "\"sim_dt\":" << sim_dt_
              << "}";
@@ -2200,6 +2308,12 @@ int MujocoSimBridge::prepareModeControlWordForTick(int raw_control_word)
     }
 
     if (decoded.request_start &&
+        hold_settle_ticks_remaining_ > 0)
+    {
+        return rl_master::kCtrlWordStopPolicy;
+    }
+
+    if (decoded.request_start &&
         enable_release_before_running_ &&
         dynamic_base_lock_active_ &&
         dynamic_base_lock_reason_ == BaseLockReason::kPreRunHold &&
@@ -2274,27 +2388,6 @@ void MujocoSimBridge::controlLoopTick()
     const auto controller_state = static_cast<rl_master::DeployLifecycleState>(controller_snapshot.deploy_state);
     const int controller_mode_id = controller_snapshot.active_mode_id;
 
-    if (!control_active)
-    {
-        if (!hold_target_latched_)
-        {
-            for (size_t i = 0; i < joint_names_.size(); ++i)
-            {
-                const int qpos_adr = qpos_addrs_[i];
-                if (qpos_adr >= 0 && qpos_adr < model_->nq)
-                {
-                    last_target_q_[i] = static_cast<float>(data_->qpos[qpos_adr]);
-                }
-            }
-            hold_target_latched_ = true;
-            RCLCPP_INFO(this->get_logger(), "Controller inactive, latch current pose for hold behavior.");
-        }
-    }
-    else
-    {
-        hold_target_latched_ = false;
-    }
-
     if (controller_state == rl_master::DeployLifecycleState::kZeroing &&
         enable_fixed_base_zeroing_)
     {
@@ -2316,10 +2409,21 @@ void MujocoSimBridge::controlLoopTick()
                 dynamic_base_lock_active_ = true;
                 dynamic_base_lock_reason_ = BaseLockReason::kPreRunHold;
             }
-            else if (controller_state == rl_master::DeployLifecycleState::kHold &&
-                     !fix_base_)
+            if (controller_state == rl_master::DeployLifecycleState::kHold)
             {
-                deactivateDynamicBaseLock("zeroing completed into hold without fixed-base hold");
+                hold_settle_ticks_remaining_ = post_zeroing_hold_settle_ticks_;
+                hold_target_latched_ = false;
+                if (hold_settle_ticks_remaining_ > 0)
+                {
+                    RCLCPP_INFO(
+                        this->get_logger(),
+                        "Post-zeroing hold settle active for %d ticks before latching HOLD target.",
+                        hold_settle_ticks_remaining_);
+                }
+                if (!enable_fixed_base_hold_after_zeroing_ && !fix_base_)
+                {
+                    deactivateDynamicBaseLock("zeroing completed into hold without fixed-base hold");
+                }
             }
             else if (controller_state == rl_master::DeployLifecycleState::kRunning &&
                      !fix_base_)
@@ -2337,12 +2441,50 @@ void MujocoSimBridge::controlLoopTick()
             zeroing_injection_pending_ = true;
         }
     }
+    if (controller_state != rl_master::DeployLifecycleState::kHold &&
+        hold_settle_ticks_remaining_ > 0)
+    {
+        hold_settle_ticks_remaining_ = 0;
+    }
+
+    const bool hold_settle_active = (hold_settle_ticks_remaining_ > 0);
+    if (!control_active)
+    {
+        if (!hold_settle_active && !hold_target_latched_)
+        {
+            for (size_t i = 0; i < joint_names_.size(); ++i)
+            {
+                const int qpos_adr = qpos_addrs_[i];
+                if (qpos_adr >= 0 && qpos_adr < model_->nq)
+                {
+                    last_target_q_[i] = static_cast<float>(data_->qpos[qpos_adr]);
+                }
+            }
+            for (size_t i = 0; i < hold_qpos_addrs_.size(); ++i)
+            {
+                const int qpos_adr = hold_qpos_addrs_[i];
+                if (qpos_adr >= 0 && qpos_adr < model_->nq)
+                {
+                    latched_hold_target_q_[i] = data_->qpos[qpos_adr];
+                }
+            }
+            hold_target_latched_ = true;
+            RCLCPP_INFO(this->get_logger(), "Controller inactive, latch current pose for hold behavior.");
+        }
+    }
+    else
+    {
+        hold_target_latched_ = false;
+    }
 
     enforceBaseLock();
     updateControlInput(command, control_active, now);
 
     const bool allow_inactive_step_for_release = (release_settle_ticks_remaining_ > 0);
-    if (should_step && (control_active || !pause_when_no_command_ || allow_inactive_step_for_release))
+    const bool allow_inactive_step_for_hold_settle = (hold_settle_ticks_remaining_ > 0);
+    if (should_step &&
+        (control_active || !pause_when_no_command_ || allow_inactive_step_for_release ||
+         allow_inactive_step_for_hold_settle))
     {
         for (int i = 0; i < speed_substeps; ++i)
         {
@@ -2355,6 +2497,10 @@ void MujocoSimBridge::controlLoopTick()
         if (release_settle_ticks_remaining_ > 0)
         {
             --release_settle_ticks_remaining_;
+        }
+        if (hold_settle_ticks_remaining_ > 0)
+        {
+            --hold_settle_ticks_remaining_;
         }
     }
     else
@@ -2511,6 +2657,7 @@ void MujocoSimBridge::updateControlInput(
 
     const bool inactive_hold_position = !control_active && (no_command_behavior_ == "hold_position");
     const bool inactive_zero_torque = !control_active && (no_command_behavior_ == "zero_torque");
+    const bool allow_hold_latch_targets = !control_active && (hold_settle_ticks_remaining_ <= 0);
     if (inactive_hold_position &&
         !use_mixed_actuator_control_ &&
         !use_position_actuator_control_ &&
@@ -2569,10 +2716,6 @@ void MujocoSimBridge::updateControlInput(
         if (!control_active)
         {
             joint_mode = SimJointRuntimeMode::kCsp;
-            if (hold_cfg_idx >= 0 && i < resolved_hold_target_q_.size())
-            {
-                q_des = static_cast<double>(resolved_hold_target_q_[i]);
-            }
         }
         else if (mode_policy)
         {
@@ -2689,11 +2832,15 @@ void MujocoSimBridge::updateControlInput(
 
         const double q = data_->qpos[qpos_adr];
         const double dq = data_->qvel[qvel_adr];
-        const double q_des =
+        double q_des =
             (i < resolved_hold_config_target_q_.size() &&
              hold_target_source_ != HoldTargetSource::kExplicit)
                 ? resolved_hold_config_target_q_[i]
                 : hold_target_q_[i];
+        if (allow_hold_latch_targets && i < latched_hold_target_q_.size())
+        {
+            q_des = latched_hold_target_q_[i];
+        }
         const ActuatorBackend actuator_backend =
             i < hold_actuator_backends_.size() ? hold_actuator_backends_[i]
                                                : (use_position_actuator_control_ ? ActuatorBackend::kPosition

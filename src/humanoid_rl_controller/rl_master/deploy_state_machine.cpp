@@ -8,6 +8,8 @@ namespace rl_master
 void DeployStateMachine::configure(const Sim2realCfg &cfg)
 {
     zeroing_duration_s_ = std::max(0.05, cfg.zeroing_duration_s);
+    zeroing_position_tolerance_ = std::max(0.0, cfg.zeroing_position_tolerance);
+    zeroing_velocity_tolerance_ = std::max(0.0, cfg.zeroing_velocity_tolerance);
     startup_completion_state_ =
         (cfg.startup_completion_action == "running")
             ? DeployLifecycleState::kRunning
@@ -50,11 +52,22 @@ void DeployStateMachine::setHotSwitchPredicate(std::function<bool(int, int)> pre
     hot_switch_predicate_ = std::move(predicate);
 }
 
-DeployStateOutput DeployStateMachine::update(int control_word, double now_s, const std::vector<float> &current_q)
+DeployStateOutput DeployStateMachine::update(
+    int control_word,
+    double now_s,
+    const std::vector<float> &current_q,
+    const std::vector<float> &current_dq)
 {
     if (!initialized_)
     {
         initialize(current_q, current_q, active_locomotion_mode_);
+    }
+    if (current_dq.size() != current_q.size())
+    {
+        throw std::runtime_error(
+            "DeployStateMachine update dim mismatch. current_q=" +
+            std::to_string(current_q.size()) +
+            ", current_dq=" + std::to_string(current_dq.size()));
     }
 
     const DecodedControlWord command = decodeControlWord(control_word, pending_locomotion_mode_);
@@ -165,7 +178,25 @@ DeployStateOutput DeployStateMachine::update(int control_word, double now_s, con
                 (zeroing_target_pose_[i] - zeroing_start_pose_[i]) * alpha);
         }
 
+        double max_position_error = 0.0;
+        double max_velocity = 0.0;
         if (alpha >= 1.0)
+        {
+            for (size_t i = 0; i < dim; ++i)
+            {
+                max_position_error = std::max(
+                    max_position_error,
+                    std::abs(static_cast<double>(current_q[i]) -
+                             static_cast<double>(zeroing_target_pose_[i])));
+                max_velocity = std::max(
+                    max_velocity,
+                    std::abs(static_cast<double>(current_dq[i])));
+            }
+        }
+
+        if (alpha >= 1.0 &&
+            max_position_error <= zeroing_position_tolerance_ &&
+            max_velocity <= zeroing_velocity_tolerance_)
         {
             const bool mode_changed_during_zeroing =
                 (pending_locomotion_mode_ != active_locomotion_mode_);

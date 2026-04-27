@@ -710,6 +710,8 @@ public:
 
     std::string startup_completion_action = "hold";
     double zeroing_duration_s = 2.0;
+    double zeroing_position_tolerance = 0.05;
+    double zeroing_velocity_tolerance = 0.2;
 
     bool enable_cmd_watchdog = true;
     double cmd_timeout_s = 0.12;
@@ -1534,6 +1536,16 @@ public:
                     "startup_completion_action must be 'hold' or 'running'");
             }
             zeroing_duration_s = yamlReadOr<double>(cfg, "zeroing_duration_s", 2.0);
+            zeroing_position_tolerance = yamlReadOr<double>(cfg, "zeroing_position_tolerance", 0.05);
+            if (zeroing_position_tolerance < 0.0)
+            {
+                throw std::runtime_error("zeroing_position_tolerance must be >= 0");
+            }
+            zeroing_velocity_tolerance = yamlReadOr<double>(cfg, "zeroing_velocity_tolerance", 0.2);
+            if (zeroing_velocity_tolerance < 0.0)
+            {
+                throw std::runtime_error("zeroing_velocity_tolerance must be >= 0");
+            }
             if (cfg["zero_pose"])
             {
                 throw std::runtime_error(

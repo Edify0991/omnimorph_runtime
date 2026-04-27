@@ -71,7 +71,11 @@ public:
     void initialize(const std::vector<float> &current_q, const std::vector<float> &zero_pose, int initial_mode);
     void setZeroPose(const std::vector<float> &zero_pose);
     void setHotSwitchPredicate(std::function<bool(int, int)> predicate);
-    DeployStateOutput update(int control_word, double now_s, const std::vector<float> &current_q);
+    DeployStateOutput update(
+        int control_word,
+        double now_s,
+        const std::vector<float> &current_q,
+        const std::vector<float> &current_dq);
 
     DeployLifecycleState state() const { return state_; }
     int activeLocomotionMode() const { return active_locomotion_mode_; }
@@ -89,6 +93,8 @@ private:
 
     bool initialized_ = false;
     double zeroing_duration_s_ = 2.0;
+    double zeroing_position_tolerance_ = 0.05;
+    double zeroing_velocity_tolerance_ = 0.2;
     bool startup_zeroing_pending_ = true;
 
     int active_locomotion_mode_ = kModeCodeMin;

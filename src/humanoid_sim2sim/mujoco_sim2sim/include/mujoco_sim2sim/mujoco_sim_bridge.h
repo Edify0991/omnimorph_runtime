@@ -72,6 +72,7 @@ private:
     void loadParameters();
     void loadModel();
     void resolveModelMappings();
+    void applyPositionActuatorTuning();
     void setupRosInterfaces();
     void initializeState();
     void initializeViewer();
@@ -194,6 +195,9 @@ private:
     std::vector<double> hold_kd_;
     std::vector<double> hold_torque_limit_;
     std::vector<double> hold_target_q_;
+    std::vector<double> position_actuator_kp_;
+    std::vector<double> position_actuator_kv_;
+    std::vector<double> position_actuator_forcerange_;
     bool enable_state_telemetry_ = true;
     double state_telemetry_hz_ = 50.0;
 
@@ -212,6 +216,7 @@ private:
     std::vector<int> hold_main_joint_indices_;
     std::vector<ActuatorBackend> hold_actuator_backends_;
     std::vector<float> hold_applied_tau_;
+    std::vector<double> latched_hold_target_q_;
     std::vector<int> joint_hold_config_indices_;
     std::vector<SimJointRuntimeMode> resolved_joint_runtime_modes_;
     std::vector<bool> joint_is_policy_controlled_;
@@ -229,6 +234,8 @@ private:
     BaseLockReason dynamic_base_lock_reason_ = BaseLockReason::kNone;
     bool zeroing_injection_pending_ = false;
     int release_settle_ticks_remaining_ = 0;
+    int post_zeroing_hold_settle_ticks_ = 0;
+    int hold_settle_ticks_remaining_ = 0;
     int last_completed_zeroing_mode_id_ = std::numeric_limits<int>::min();
     int last_controller_mode_id_ = std::numeric_limits<int>::min();
     rl_master::DeployLifecycleState last_controller_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;

@@ -1836,6 +1836,22 @@ def validate_profile(
     if solver_control_hz <= 0:
         issues.error(context, "solver_control_hz must be > 0")
 
+    zeroing_duration_s = float(section_cfg.get("zeroing_duration_s", 2.0) or 0.0)
+    if zeroing_duration_s <= 0.0:
+        issues.error(context, "zeroing_duration_s must be > 0")
+
+    zeroing_position_tolerance = float(
+        section_cfg.get("zeroing_position_tolerance", 0.05) or 0.0
+    )
+    if zeroing_position_tolerance < 0.0:
+        issues.error(context, "zeroing_position_tolerance must be >= 0")
+
+    zeroing_velocity_tolerance = float(
+        section_cfg.get("zeroing_velocity_tolerance", 0.2) or 0.0
+    )
+    if zeroing_velocity_tolerance < 0.0:
+        issues.error(context, "zeroing_velocity_tolerance must be >= 0")
+
     check_joint_order(
         action_dim,
         motor_n,

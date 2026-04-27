@@ -150,7 +150,7 @@ Main control flow:
 1. `updateStateFromIO(state)`
 2. `updateCommandFromIO(command)`
 3. initialize deploy state machine if first tick
-4. `deploy_state_machine_.update(mode_command, now_s, robot->joint_q)`
+4. `deploy_state_machine_.update(mode_command, now_s, robot->joint_q, robot->joint_dq)`
 5. `refreshPolicyMode(...)`
 6. `handlePolicySwitch()` if needed
 7. depending on lifecycle output:

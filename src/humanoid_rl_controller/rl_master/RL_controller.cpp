@@ -1888,7 +1888,11 @@ rl_master::RobotCommandData RL_controller::step(
     }
 
     const double now_s = rl_master::monotonicTimeSec();
-    const auto deploy_output = deploy_state_machine_.update(mode_command, now_s, robot->joint_q);
+    const auto deploy_output = deploy_state_machine_.update(
+        mode_command,
+        now_s,
+        robot->joint_q,
+        robot->joint_dq);
     const auto previous_state = last_deploy_state_;
 
     refreshPolicyMode(deploy_output.locomotion_mode, true);

@@ -142,6 +142,8 @@ engineai_walk:
   state_telemetry_hz: 50.0
   startup_completion_action: hold
   zeroing_duration_s: 2.0
+  zeroing_position_tolerance: 0.05
+  zeroing_velocity_tolerance: 0.2
   tau_limit:
     left_hip_roll: 130.0
     left_hip_yaw: 130.0

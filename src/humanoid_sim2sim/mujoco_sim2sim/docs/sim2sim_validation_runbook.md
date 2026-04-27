@@ -44,8 +44,11 @@ For the current `jc01_fullbody_engineai_walk_sim2sim.yaml` preset:
 - the remaining 16 joints are still present in MuJoCo, but are not driven by the walk policy
 - those 16 non-policy joints are held by the sim bridge using `hold_joint_names`
 - those 16 non-policy joints also use MuJoCo `<position>` actuators in the sim-only XML
-- the hold target comes from `hold_target_source: zero_joint_angles`, so they are pulled toward `robot.zero_joint_angles` from the active profile
+- while the controller is active, those 16 joints are pulled toward `hold_target_source: zero_joint_angles`
+- when the controller is inactive in `HOLD`, the bridge now latches the first settled `HOLD` pose and keeps that current pose instead of re-chasing zero
 - the policy-controlled joints still resolve their runtime mode from profile `installed_joint_run_modes`, unless a sim-only `joint_runtime_mode_overrides` entry overrides one joint
+- `post_zeroing_hold_settle_ticks` inserts a sim-only settle window after zeroing and before the `HOLD` latch
+- `position_actuator_kp` / `position_actuator_kv` / `position_actuator_forcerange` let you tune waist and upper-body position actuators from YAML without editing XML
 
 This is the first-stage sim2sim alignment toward sim2real semantics:
 
