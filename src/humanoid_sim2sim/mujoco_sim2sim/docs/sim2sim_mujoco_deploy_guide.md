@@ -57,7 +57,7 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
 - `pause_when_no_command`: pause stepping when controller output is inactive
 - `no_command_behavior`: inactive behavior for actuators
 - `actuator_control_mode`: `auto | torque | position | mixed`
-- `position_actuator_kp` / `position_actuator_kv` / `position_actuator_forcerange`: sim-only runtime tuning for MuJoCo `<position>` actuators
+- `position_actuator_kp` / `position_actuator_kv` / `position_actuator_forcerange`: sim-only runtime tuning for MuJoCo `<position>` actuators keyed by joint name
 - `post_zeroing_hold_settle_ticks`: sim-only settle window after zeroing and before HOLD pose latch
 - `enable_state_telemetry`: enable low-frequency asynchronous `/humanoid/rl/state`
 - `state_telemetry_hz`: publish rate for asynchronous `/humanoid/rl/state`
@@ -185,3 +185,17 @@ Important:
 
 - the XML must expose a free joint on `Body` if fixed-base zeroing / hold / release features are enabled
 - if those safety features are enabled and the model has no base free joint, `mujoco_sim_bridge` now fails fast at startup instead of silently degrading
+
+## 10. Passive Check XML For `simulate`
+
+If you want to inspect passive free-fall and contact behavior directly in MuJoCo `simulate`, use:
+
+- [jc01_fullbody_engineai_walk_passive_check.xml](/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/models/jc01_fullbody_engineai_walk_passive_check.xml)
+
+This model keeps the same joints, inertias, sensors, and contact setup as the sim2sim fullbody model, but converts the waist and upper-body actuators from MuJoCo `<position>` actuators to plain `<motor>` actuators.
+
+That means:
+
+- `ctrl=0` no longer implies active position tracking on waist and arms
+- loading the XML in `simulate` tests passive body/contact behavior more directly
+- this XML is not intended for the current `actuator_control_mode=mixed` sim2sim preset, because the mixed backend expects those joints to be MuJoCo `<position>` actuators

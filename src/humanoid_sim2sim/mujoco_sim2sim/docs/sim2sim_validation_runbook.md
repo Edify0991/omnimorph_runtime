@@ -48,7 +48,7 @@ For the current `jc01_fullbody_engineai_walk_sim2sim.yaml` preset:
 - when the controller is inactive in `HOLD`, the bridge now latches the first settled `HOLD` pose and keeps that current pose instead of re-chasing zero
 - the policy-controlled joints still resolve their runtime mode from profile `installed_joint_run_modes`, unless a sim-only `joint_runtime_mode_overrides` entry overrides one joint
 - `post_zeroing_hold_settle_ticks` inserts a sim-only settle window after zeroing and before the `HOLD` latch
-- `position_actuator_kp` / `position_actuator_kv` / `position_actuator_forcerange` let you tune waist and upper-body position actuators from YAML without editing XML
+- `position_actuator_kp` / `position_actuator_kv` / `position_actuator_forcerange` let you tune waist and upper-body position actuators by joint name from YAML without editing XML
 
 This is the first-stage sim2sim alignment toward sim2real semantics:
 

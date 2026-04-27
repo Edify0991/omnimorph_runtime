@@ -42,6 +42,11 @@ std::vector<float> toStateQ(const rl_master::RobotStateData &state)
     return std::vector<float>(state.joint_q.begin(), state.joint_q.end());
 }
 
+std::vector<float> toStateDq(const rl_master::RobotStateData &state)
+{
+    return std::vector<float>(state.joint_dq.begin(), state.joint_dq.end());
+}
+
 float safeRead(const std::vector<float> &values, size_t index, float fallback = 0.0f)
 {
     return index < values.size() ? values[index] : fallback;
@@ -776,7 +781,11 @@ rl_master::DeployStateOutput JointMotorTestRunner::updateStateMachine(double now
         mode_command = latest_mode_command_;
     }
 
-    return state_machine_.update(mode_command, now_sec, toStateQ(state));
+    return state_machine_.update(
+        mode_command,
+        now_sec,
+        toStateQ(state),
+        toStateDq(state));
 }
 
 rl_master::RobotCommandData JointMotorTestRunner::buildPlaybackCommand()

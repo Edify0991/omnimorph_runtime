@@ -387,6 +387,52 @@ void MujocoSimBridge::loadParameters()
         position_actuator_forcerange_[i] = std::abs(position_actuator_forcerange_[i]);
     }
 
+    auto overrideFromNamedPositionActuatorParams =
+        [this, &position_actuator_count](
+            const std::string &prefix,
+            std::vector<double> *values,
+            bool absolute_value) {
+            if (!values)
+            {
+                return;
+            }
+            std::vector<double> named_values(position_actuator_count, std::numeric_limits<double>::quiet_NaN());
+            bool any_named_override = false;
+            for (size_t i = 0; i < position_actuator_joint_names_.size(); ++i)
+            {
+                const std::string param_name = prefix + "." + position_actuator_joint_names_[i];
+                this->declare_parameter<double>(
+                    param_name,
+                    std::numeric_limits<double>::quiet_NaN());
+                const double raw_value = this->get_parameter(param_name).as_double();
+                if (std::isfinite(raw_value))
+                {
+                    named_values[i] = absolute_value ? std::abs(raw_value) : raw_value;
+                    any_named_override = true;
+                }
+            }
+
+            if (!any_named_override)
+            {
+                return;
+            }
+
+            for (size_t i = 0; i < position_actuator_joint_names_.size(); ++i)
+            {
+                if (!std::isfinite(named_values[i]))
+                {
+                    throw std::runtime_error(
+                        "named position actuator parameter set '" + prefix +
+                        "' is partial; missing joint '" + position_actuator_joint_names_[i] + "'");
+                }
+            }
+            *values = std::move(named_values);
+        };
+
+    overrideFromNamedPositionActuatorParams("position_actuator_kp", &position_actuator_kp_, false);
+    overrideFromNamedPositionActuatorParams("position_actuator_kv", &position_actuator_kv_, false);
+    overrideFromNamedPositionActuatorParams("position_actuator_forcerange", &position_actuator_forcerange_, true);
+
     hold_joint_names_.clear();
     const auto hold_joint_names_param_obj = this->get_parameter("hold_joint_names");
     if (hold_joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)

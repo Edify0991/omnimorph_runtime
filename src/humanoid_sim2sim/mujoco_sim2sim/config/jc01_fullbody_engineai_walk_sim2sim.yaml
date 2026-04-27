@@ -120,56 +120,56 @@ mujoco_sim_bridge:
       - "left_wrist_pitch"
       - "left_wrist_roll"
     position_actuator_kp:
-      - 300.0
-      - 300.0
-      - 220.0
-      - 220.0
-      - 180.0
-      - 160.0
-      - 140.0
-      - 90.0
-      - 90.0
-      - 220.0
-      - 220.0
-      - 180.0
-      - 160.0
-      - 140.0
-      - 90.0
-      - 90.0
+      waist_roll: 300.0
+      waist_yaw: 300.0
+      right_shoulder_pitch: 220.0
+      right_shoulder_roll: 220.0
+      right_shoulder_yaw: 180.0
+      right_elbow_pitch: 160.0
+      right_elbow_yaw: 140.0
+      right_wrist_pitch: 90.0
+      right_wrist_roll: 90.0
+      left_shoulder_pitch: 220.0
+      left_shoulder_roll: 220.0
+      left_shoulder_yaw: 180.0
+      left_elbow_pitch: 160.0
+      left_elbow_yaw: 140.0
+      left_wrist_pitch: 90.0
+      left_wrist_roll: 90.0
     position_actuator_kv:
-      - 20.0
-      - 20.0
-      - 14.0
-      - 14.0
-      - 12.0
-      - 10.0
-      - 10.0
-      - 6.0
-      - 6.0
-      - 14.0
-      - 14.0
-      - 12.0
-      - 10.0
-      - 10.0
-      - 6.0
-      - 6.0
+      waist_roll: 20.0
+      waist_yaw: 20.0
+      right_shoulder_pitch: 14.0
+      right_shoulder_roll: 14.0
+      right_shoulder_yaw: 12.0
+      right_elbow_pitch: 10.0
+      right_elbow_yaw: 10.0
+      right_wrist_pitch: 6.0
+      right_wrist_roll: 6.0
+      left_shoulder_pitch: 14.0
+      left_shoulder_roll: 14.0
+      left_shoulder_yaw: 12.0
+      left_elbow_pitch: 10.0
+      left_elbow_yaw: 10.0
+      left_wrist_pitch: 6.0
+      left_wrist_roll: 6.0
     position_actuator_forcerange:
-      - 220.0
-      - 220.0
-      - 160.0
-      - 160.0
-      - 140.0
-      - 120.0
-      - 120.0
-      - 80.0
-      - 80.0
-      - 160.0
-      - 160.0
-      - 140.0
-      - 120.0
-      - 120.0
-      - 80.0
-      - 80.0
+      waist_roll: 130.0
+      waist_yaw: 130.0
+      right_shoulder_pitch: 80.0
+      right_shoulder_roll: 80.0
+      right_shoulder_yaw: 80.0
+      right_elbow_pitch: 80.0
+      right_elbow_yaw: 80.0
+      right_wrist_pitch: 80.0
+      right_wrist_roll: 80.0
+      left_shoulder_pitch: 80.0
+      left_shoulder_roll: 80.0
+      left_shoulder_yaw: 80.0
+      left_elbow_pitch: 80.0
+      left_elbow_yaw: 80.0
+      left_wrist_pitch: 80.0
+      left_wrist_roll: 80.0
     hold_joint_names:
       - "waist_roll"
       - "waist_yaw"
@@ -187,6 +187,6 @@ mujoco_sim_bridge:
       - "left_elbow_yaw"
       - "left_wrist_pitch"
       - "left_wrist_roll"
-    kp: [1000.0]
-    kd: [300.0]
+    kp: [60.0]
+    kd: [5.0]
     torque_limit: [120.0]
