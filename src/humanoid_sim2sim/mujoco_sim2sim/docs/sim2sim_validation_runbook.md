@@ -7,7 +7,7 @@ Current target flow:
 - policy: `2026-04-09_15-00-05v2.onnx`
 - profile: `engineai_walk`
 - bridge preset: `jc01_fullbody_engineai_walk_sim2sim.yaml`
-- model: `jingchu01_fullbody_standard.xml`
+- model: `jc01_fullbody_engineai_walk_sim2sim.xml`
 
 ## 1. Shared Shell Setup
 
@@ -36,7 +36,26 @@ With the current sim-only safety configuration:
 
 So seeing `HOLD` after startup is expected. It does not mean the backend failed.
 
-## 3. Headless Validation
+## 3. Current Fullbody Control Semantics
+
+For the current `jc01_fullbody_engineai_walk_sim2sim.yaml` preset:
+
+- lower-body 12 joints are the policy-controlled joints for `engineai_walk`
+- the remaining 16 joints are still present in MuJoCo, but are not driven by the walk policy
+- those 16 non-policy joints are held by the sim bridge using `hold_joint_names`
+- those 16 non-policy joints also use MuJoCo `<position>` actuators in the sim-only XML
+- the hold target comes from `hold_target_source: zero_joint_angles`, so they are pulled toward `robot.zero_joint_angles` from the active profile
+- the policy-controlled joints still resolve their runtime mode from profile `installed_joint_run_modes`, unless a sim-only `joint_runtime_mode_overrides` entry overrides one joint
+
+This is the first-stage sim2sim alignment toward sim2real semantics:
+
+- policy joints follow the mode profile contract
+- non-policy joints are not left floating in sim
+- non-policy upper-body and waist joints are on a MuJoCo position backend, not a fake torque-only hold path
+- no XML-side fake joints are introduced
+- no `rl_master` profile semantics were widened just for sim2sim
+
+## 4. Headless Validation
 
 ### Terminal 1: Start the fused sim2sim backend
 
@@ -49,7 +68,6 @@ mkdir -p /tmp/roslog
 
 ros2 run mujoco_sim2sim mujoco_sim_bridge --ros-args \
   --params-file /home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_fullbody_engineai_walk_sim2sim.yaml \
-  -p model_path:="/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_fullbody_standard.xml" \
   -p startup_mode_id:=0 \
   -p enable_viewer:=false
 ```
@@ -57,6 +75,7 @@ ros2 run mujoco_sim2sim mujoco_sim_bridge --ros-args \
 Expected early logs include:
 
 - `Loaded MuJoCo model`
+- `Actuator control mode: mixed (... resolved_torque_joints=12, resolved_position_joints=16 ... hold_target_source=zero_joint_angles)`
 - `ONNX policy loaded`
 - `MuJoCo sim2sim fused runtime ready`
 - `lifecycle -> ZEROING`
@@ -78,6 +97,7 @@ Expected logs in Terminal 1:
 - `lifecycle -> RUNNING`
 
 After that, the terminal may become quiet. That is normal. The runtime does not print per-tick policy outputs by default.
+Also, the warning about `inactive behavior hold_position ... fallback to torque PD hold-last` is expected before `RUNNING` when the backend is still inactive and actuators are torque-driven.
 
 ### Terminal 3: Publish teleop commands
 
@@ -140,7 +160,7 @@ Headless validation is considered successful when:
 - Terminal 3 teleop publish succeeds
 - Terminal 4 shows `/humanoid/rl/state` publishing steadily
 
-## 4. Visual Validation with Python GUI
+## 5. Visual Validation with Python GUI
 
 This path keeps the C++ fused backend for physics and control, and uses the Python viewer only as a frontend.
 
@@ -155,11 +175,11 @@ mkdir -p /tmp/roslog
 
 ros2 run mujoco_sim2sim mujoco_sim_bridge --ros-args \
   --params-file /home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_fullbody_engineai_walk_sim2sim.yaml \
-  -p model_path:="/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_fullbody_standard.xml" \
   -p startup_mode_id:=0 \
   -p enable_viewer:=false \
   -p enable_python_viewer_stream:=true \
-  -p enable_python_viewer_inspector:=true
+  -p enable_python_viewer_inspector:=true \
+  -p fixed_base_height:=0.4
 ```
 
 ### Terminal 2: Start the Python viewer frontend
@@ -170,7 +190,7 @@ source /home/edify/Code/jc01_deploy/install/setup.bash
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
 ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
-  -p model_path:="/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_fullbody_standard.xml" \
+  -p model_path:="/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/models/jc01_fullbody_engineai_walk_sim2sim.xml" \
   -p enable_viewer:=true \
   -p viewer_fps:=60.0
 ```
@@ -240,7 +260,7 @@ Visual validation is considered successful when:
 - Terminal 1 reaches `RUNNING`
 - the robot visibly responds to Terminal 4 teleop commands
 
-## 5. Common Control Commands
+## 6. Common Control Commands
 
 Stop policy and return to hold:
 

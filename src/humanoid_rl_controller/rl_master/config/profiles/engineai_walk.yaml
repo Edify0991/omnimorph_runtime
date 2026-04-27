@@ -51,6 +51,22 @@ engineai_walk:
     right_knee_pitch: cst
     right_ankle_pitch: cst
     right_ankle_roll: cst
+    waist_roll: cst
+    waist_yaw: cst
+    right_shoulder_pitch: cst
+    right_shoulder_roll: cst
+    right_shoulder_yaw: cst
+    right_elbow_pitch: cst
+    right_elbow_yaw: cst
+    right_wrist_pitch: cst
+    right_wrist_roll: cst
+    left_shoulder_pitch: cst
+    left_shoulder_roll: cst
+    left_shoulder_yaw: cst
+    left_elbow_pitch: cst
+    left_elbow_yaw: cst
+    left_wrist_pitch: cst
+    left_wrist_roll: cst
   realtime:
     enabled: true
     lock_memory: true

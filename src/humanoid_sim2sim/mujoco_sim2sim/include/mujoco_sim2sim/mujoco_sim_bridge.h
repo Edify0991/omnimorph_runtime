@@ -37,6 +37,26 @@ public:
     MujocoSimBridge();
     ~MujocoSimBridge() override;
 
+    enum class SimJointRuntimeMode
+    {
+        kCsp = 0,
+        kCst,
+        kR1,
+    };
+
+    enum class HoldTargetSource
+    {
+        kZeroJointAngles = 0,
+        kDefaultJointAngles,
+        kExplicit,
+    };
+
+    enum class ActuatorBackend
+    {
+        kTorque = 0,
+        kPosition,
+    };
+
     enum class BaseLockReason
     {
         kNone = 0,
@@ -109,6 +129,7 @@ private:
         const rl_master::CommandRuntimeDecision &runtime_mode);
     void publishViewerFrameMirror(const std::vector<float> &qpos, const std::vector<float> &qvel, const std::vector<float> &ctrl, float sim_time);
     void publishViewerInspectorText(const std::string &text);
+    void resolvePerJointControlConfig(int active_mode_id);
 
     static std::array<float, 3> quatXyzwToRpy(const std::array<float, 4> &quat_xyzw);
     static std::vector<double> normalizeGainParam(
@@ -118,12 +139,21 @@ private:
     static std::vector<std::string> normalizeNameParam(
         const std::vector<std::string> &input,
         const std::vector<std::string> &fallback);
+    static SimJointRuntimeMode parseSimJointRuntimeMode(
+        const std::string &raw_mode,
+        const std::string &context);
+    static const char *simJointRuntimeModeName(SimJointRuntimeMode mode);
+    static HoldTargetSource parseHoldTargetSource(const std::string &raw_source);
+    static const char *holdTargetSourceName(HoldTargetSource source);
+    static ActuatorBackend classifyModelActuatorBackend(const mjModel_ *model, int actuator_id);
+    static const char *actuatorBackendName(ActuatorBackend backend);
 
     std::string model_path_;
     std::string base_body_name_;
     std::string base_free_joint_name_;
     std::vector<std::string> joint_names_;
     std::vector<std::string> actuator_names_;
+    std::vector<std::string> position_actuator_joint_names_;
     std::vector<std::string> hold_joint_names_;
     std::vector<std::string> hold_actuator_names_;
 
@@ -142,7 +172,10 @@ private:
     bool enable_prepose_snap_ = false;
     std::vector<double> prepose_joint_q_;
     std::string actuator_control_mode_ = "auto";
+    std::vector<std::string> joint_runtime_mode_override_entries_;
+    HoldTargetSource hold_target_source_ = HoldTargetSource::kZeroJointAngles;
     bool use_position_actuator_control_ = false;
+    bool use_mixed_actuator_control_ = false;
     bool enable_viewer_ = false;
     bool enable_python_viewer_stream_ = false;
     std::string viewer_frame_topic_ = "/humanoid/sim2sim/mujoco_viewer_frame";
@@ -168,6 +201,7 @@ private:
     std::vector<int> qpos_addrs_;
     std::vector<int> qvel_addrs_;
     std::vector<int> actuator_ids_;
+    std::vector<ActuatorBackend> joint_actuator_backends_;
     std::vector<float> applied_tau_;
     std::vector<float> last_target_q_;
 
@@ -175,7 +209,19 @@ private:
     std::vector<int> hold_qpos_addrs_;
     std::vector<int> hold_qvel_addrs_;
     std::vector<int> hold_actuator_ids_;
+    std::vector<int> hold_main_joint_indices_;
+    std::vector<ActuatorBackend> hold_actuator_backends_;
     std::vector<float> hold_applied_tau_;
+    std::vector<int> joint_hold_config_indices_;
+    std::vector<SimJointRuntimeMode> resolved_joint_runtime_modes_;
+    std::vector<bool> joint_is_policy_controlled_;
+    std::vector<float> resolved_hold_target_q_;
+    std::vector<double> resolved_hold_config_target_q_;
+    std::vector<float> joint_cmd_q_;
+    std::vector<float> joint_cmd_dq_;
+    std::vector<float> joint_cmd_tau_;
+    std::vector<float> joint_cmd_mode_;
+    int resolved_control_mode_id_ = std::numeric_limits<int>::min();
 
     std::array<double, 7> fixed_base_qpos_{};
     bool fixed_base_pose_initialized_ = false;

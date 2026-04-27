@@ -159,7 +159,7 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
-install(DIRECTORY launch config docs
+install(DIRECTORY launch config docs models
   DESTINATION share/${PROJECT_NAME}
 )
 

@@ -80,6 +80,31 @@ std::string normalizeNoCommandBehavior(const std::string &raw)
     return "hold_position";
 }
 
+std::string trimCopy(const std::string &raw)
+{
+    size_t begin = 0;
+    while (begin < raw.size() && std::isspace(static_cast<unsigned char>(raw[begin])) != 0)
+    {
+        ++begin;
+    }
+
+    size_t end = raw.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(raw[end - 1])) != 0)
+    {
+        --end;
+    }
+    return raw.substr(begin, end - begin);
+}
+
+std::string toLowerCopy(const std::string &raw)
+{
+    std::string out = raw;
+    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return out;
+}
+
 const char *baseLockReasonName(mujoco_sim2sim::MujocoSimBridge::BaseLockReason reason)
 {
     switch (reason)
@@ -160,8 +185,8 @@ MujocoSimBridge::MujocoSimBridge()
     loadParameters();
     loadModel();
     resolveModelMappings();
-    initializeState();
     controller_runtime_.initialize(startup_mode_id_);
+    initializeState();
     initRuntimeRecorder();
     mode_command_cache_.store(rl_master::kCtrlWordSetModeBase + startup_mode_id_);
     initializeViewer();
@@ -230,6 +255,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::string>("base_free_joint_name", "");
     this->declare_parameter<std::vector<std::string>>("joint_names", canonical_names);
     this->declare_parameter<std::vector<std::string>>("actuator_names", canonical_names);
+    this->declare_parameter<std::vector<std::string>>("position_actuator_joint_names", std::vector<std::string>{});
     this->declare_parameter<std::vector<std::string>>("hold_joint_names", std::vector<std::string>{});
     this->declare_parameter<std::vector<std::string>>("hold_actuator_names", std::vector<std::string>{});
     this->declare_parameter<int>("startup_mode_id", rl_master::kModeCodeMin);
@@ -247,6 +273,8 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<bool>("enable_prepose_snap", false);
     this->declare_parameter<std::vector<double>>("prepose_joint_q", std::vector<double>{});
     this->declare_parameter<std::string>("actuator_control_mode", "auto");
+    this->declare_parameter<std::vector<std::string>>("joint_runtime_mode_overrides", std::vector<std::string>{});
+    this->declare_parameter<std::string>("hold_target_source", "zero_joint_angles");
     this->declare_parameter<bool>("enable_viewer", false);
     this->declare_parameter<bool>("enable_python_viewer_stream", false);
     this->declare_parameter<std::string>("viewer_frame_topic", kDefaultViewerFrameTopic);
@@ -285,6 +313,8 @@ void MujocoSimBridge::loadParameters()
     enable_prepose_snap_ = this->get_parameter("enable_prepose_snap").as_bool();
     prepose_joint_q_ = this->get_parameter("prepose_joint_q").as_double_array();
     actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
+    joint_runtime_mode_override_entries_ = this->get_parameter("joint_runtime_mode_overrides").as_string_array();
+    hold_target_source_ = parseHoldTargetSource(this->get_parameter("hold_target_source").as_string());
     enable_viewer_ = this->get_parameter("enable_viewer").as_bool();
     enable_python_viewer_stream_ = this->get_parameter("enable_python_viewer_stream").as_bool();
     viewer_frame_topic_ = this->get_parameter("viewer_frame_topic").as_string();
@@ -323,6 +353,13 @@ void MujocoSimBridge::loadParameters()
         actuator_names_param = actuator_names_param_obj.as_string_array();
     }
     actuator_names_ = normalizeNameParam(actuator_names_param, joint_names_);
+
+    position_actuator_joint_names_.clear();
+    const auto position_joint_names_param_obj = this->get_parameter("position_actuator_joint_names");
+    if (position_joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
+    {
+        position_actuator_joint_names_ = position_joint_names_param_obj.as_string_array();
+    }
 
     hold_joint_names_.clear();
     const auto hold_joint_names_param_obj = this->get_parameter("hold_joint_names");
@@ -383,6 +420,13 @@ void MujocoSimBridge::loadParameters()
             throw std::runtime_error("hold_joint_target_q size must be 1 or match hold_joint_names");
         }
     }
+    if (hold_target_source_ == HoldTargetSource::kExplicit &&
+        hold_count > 0 &&
+        hold_target_q_.empty())
+    {
+        throw std::runtime_error(
+            "hold_joint_target_q must be provided when hold_target_source=explicit and hold_joint_names is non-empty");
+    }
 
     if (model_path_.empty())
     {
@@ -432,7 +476,49 @@ void MujocoSimBridge::loadModel()
 
 void MujocoSimBridge::resolveModelMappings()
 {
-    int position_like_actuator_count = 0;
+    int model_position_like_actuator_count = 0;
+    joint_actuator_backends_.assign(joint_names_.size(), ActuatorBackend::kTorque);
+    hold_actuator_backends_.assign(hold_joint_names_.size(), ActuatorBackend::kTorque);
+
+    const std::string mode_lower = [&]() {
+        std::string out = actuator_control_mode_;
+        std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        return out;
+    }();
+    use_mixed_actuator_control_ = (mode_lower == "mixed");
+
+    std::vector<bool> joint_expected_position(joint_names_.size(), false);
+    if (use_mixed_actuator_control_)
+    {
+        if (position_actuator_joint_names_.empty())
+        {
+            throw std::runtime_error(
+                "actuator_control_mode=mixed requires non-empty position_actuator_joint_names");
+        }
+        if (position_actuator_joint_names_ != hold_joint_names_)
+        {
+            throw std::runtime_error(
+                "actuator_control_mode=mixed requires hold_joint_names to exactly match position_actuator_joint_names");
+        }
+        for (const auto &joint_name : position_actuator_joint_names_)
+        {
+            const auto it = std::find(joint_names_.begin(), joint_names_.end(), joint_name);
+            if (it == joint_names_.end())
+            {
+                throw std::runtime_error(
+                    "position_actuator_joint_names contains unknown joint '" + joint_name + "'");
+            }
+            const size_t joint_index = static_cast<size_t>(std::distance(joint_names_.begin(), it));
+            if (joint_expected_position[joint_index])
+            {
+                throw std::runtime_error(
+                    "position_actuator_joint_names contains duplicate joint '" + joint_name + "'");
+            }
+            joint_expected_position[joint_index] = true;
+        }
+    }
 
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
@@ -478,9 +564,25 @@ void MujocoSimBridge::resolveModelMappings()
         }
         actuator_ids_[i] = actuator_id;
 
-        if (model_->actuator_biastype[actuator_id] != mjBIAS_NONE)
+        const ActuatorBackend actual_backend = classifyModelActuatorBackend(model_, actuator_id);
+        if (actual_backend == ActuatorBackend::kPosition)
         {
-            ++position_like_actuator_count;
+            ++model_position_like_actuator_count;
+        }
+
+        if (use_mixed_actuator_control_)
+        {
+            const ActuatorBackend expected_backend =
+                joint_expected_position[i] ? ActuatorBackend::kPosition : ActuatorBackend::kTorque;
+            if (actual_backend != expected_backend)
+            {
+                throw std::runtime_error(
+                    "mixed actuator validation failed for joint '" + joint_names_[i] +
+                    "' actuator '" + actuator_names_[i] + "': expected " +
+                    actuatorBackendName(expected_backend) + ", model provides " +
+                    actuatorBackendName(actual_backend));
+            }
+            joint_actuator_backends_[i] = actual_backend;
         }
     }
 
@@ -488,20 +590,26 @@ void MujocoSimBridge::resolveModelMappings()
     hold_qpos_addrs_.assign(hold_joint_names_.size(), -1);
     hold_qvel_addrs_.assign(hold_joint_names_.size(), -1);
     hold_actuator_ids_.assign(hold_joint_names_.size(), -1);
+    hold_main_joint_indices_.assign(hold_joint_names_.size(), -1);
     hold_applied_tau_.assign(hold_joint_names_.size(), 0.0f);
+    joint_hold_config_indices_.assign(joint_names_.size(), -1);
 
+    size_t hold_extra_joint_count = 0;
+    size_t hold_main_joint_count = 0;
     for (size_t i = 0; i < hold_joint_names_.size(); ++i)
     {
         const auto existing_it = std::find(joint_names_.begin(), joint_names_.end(), hold_joint_names_[i]);
         if (existing_it != joint_names_.end())
         {
             const size_t existing_idx = static_cast<size_t>(std::distance(joint_names_.begin(), existing_it));
-            RCLCPP_WARN(
-                this->get_logger(),
-                "hold_joint_names[%zu]='%s' overlaps policy-controlled joint index %zu, skip extra-hold mapping.",
-                i,
-                hold_joint_names_[i].c_str(),
-                existing_idx);
+            if (joint_hold_config_indices_[existing_idx] >= 0)
+            {
+                throw std::runtime_error(
+                    "hold_joint_names contains duplicate main-joint entry: " + hold_joint_names_[i]);
+            }
+            hold_main_joint_indices_[i] = static_cast<int>(existing_idx);
+            joint_hold_config_indices_[existing_idx] = static_cast<int>(i);
+            ++hold_main_joint_count;
             continue;
         }
 
@@ -531,34 +639,65 @@ void MujocoSimBridge::resolveModelMappings()
             throw std::runtime_error("resolved hold actuator index out of range for " + hold_actuator_names_[i]);
         }
         hold_actuator_ids_[i] = actuator_id;
+        hold_actuator_backends_[i] = classifyModelActuatorBackend(model_, actuator_id);
+        ++hold_extra_joint_count;
     }
 
-    const std::string mode_lower = [&]() {
-        std::string out = actuator_control_mode_;
-        std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
-            return static_cast<char>(std::tolower(c));
-        });
-        return out;
-    }();
-    if (mode_lower == "position")
+    size_t resolved_torque_joint_count = 0;
+    size_t resolved_position_joint_count = 0;
+    if (use_mixed_actuator_control_)
+    {
+        use_position_actuator_control_ = false;
+        for (size_t i = 0; i < hold_main_joint_indices_.size(); ++i)
+        {
+            const int main_joint_index = hold_main_joint_indices_[i];
+            if (main_joint_index >= 0)
+            {
+                hold_actuator_backends_[i] = joint_actuator_backends_[static_cast<size_t>(main_joint_index)];
+            }
+        }
+    }
+    else if (mode_lower == "position")
     {
         use_position_actuator_control_ = true;
     }
-    else if (mode_lower == "torque")
-    {
-        use_position_actuator_control_ = false;
-    }
     else
     {
-        use_position_actuator_control_ = (position_like_actuator_count > static_cast<int>(joint_names_.size() / 2));
+        use_position_actuator_control_ =
+            (mode_lower == "auto") ? (model_position_like_actuator_count > static_cast<int>(joint_names_.size() / 2))
+                                   : false;
+    }
+
+    if (!use_mixed_actuator_control_)
+    {
+        const ActuatorBackend global_backend =
+            use_position_actuator_control_ ? ActuatorBackend::kPosition : ActuatorBackend::kTorque;
+        std::fill(joint_actuator_backends_.begin(), joint_actuator_backends_.end(), global_backend);
+        std::fill(hold_actuator_backends_.begin(), hold_actuator_backends_.end(), global_backend);
+    }
+
+    for (const ActuatorBackend backend : joint_actuator_backends_)
+    {
+        if (backend == ActuatorBackend::kPosition)
+        {
+            ++resolved_position_joint_count;
+        }
+        else
+        {
+            ++resolved_torque_joint_count;
+        }
     }
     RCLCPP_INFO(
         this->get_logger(),
-        "Actuator control mode: %s (position_like=%d/%zu), hold_extra_joints=%zu",
-        use_position_actuator_control_ ? "position" : "torque",
-        position_like_actuator_count,
+        "Actuator control mode: %s (model_position_like=%d/%zu, resolved_torque_joints=%zu, resolved_position_joints=%zu), hold_main_joints=%zu, hold_extra_joints=%zu, hold_target_source=%s",
+        use_mixed_actuator_control_ ? "mixed" : (use_position_actuator_control_ ? "position" : "torque"),
+        model_position_like_actuator_count,
         joint_names_.size(),
-        hold_joint_names_.size());
+        resolved_torque_joint_count,
+        resolved_position_joint_count,
+        hold_main_joint_count,
+        hold_extra_joint_count,
+        holdTargetSourceName(hold_target_source_));
 
     base_body_id_ = mj_name2id(model_, mjOBJ_BODY, base_body_name_.c_str());
     if (base_body_id_ < 0)
@@ -994,6 +1133,8 @@ void MujocoSimBridge::logLoopData(
     bool control_active)
 {
     (void)state;
+    (void)command;
+    (void)runtime_mode;
     if (!runtime_logging_enabled_ || !runtime_recorder_.isOpen())
     {
         return;
@@ -1037,23 +1178,19 @@ void MujocoSimBridge::logLoopData(
     record.has_amp_discriminator_score = controller_snapshot.has_amp_discriminator_score;
     record.amp_discriminator_score_mean = controller_snapshot.amp_discriminator_score_mean;
 
-    record.joint_cmd_q = command.joint_target_q;
-    record.joint_cmd_dq = command.joint_target_dq;
-    record.joint_cmd_tau = command.joint_target_tau;
+    record.joint_cmd_q = joint_cmd_q_;
+    record.joint_cmd_dq = joint_cmd_dq_;
+    record.joint_cmd_tau = joint_cmd_tau_;
     record.joint_state_q = post_state.joint_q;
     record.joint_state_dq = post_state.joint_dq;
     record.joint_state_tau = post_state.joint_tau;
-    record.motor_cmd_q = command.joint_target_q;
-    record.motor_cmd_dq = command.joint_target_dq;
+    record.motor_cmd_q = joint_cmd_q_;
+    record.motor_cmd_dq = joint_cmd_dq_;
     record.motor_cmd_tau = applied_tau_;
     record.motor_state_q = post_state.joint_q;
     record.motor_state_dq = post_state.joint_dq;
     record.motor_state_tau = applied_tau_;
-    record.motor_cmd_mode.assign(joint_names_.size(), 0.0f);
-    for (size_t i = 0; i < joint_names_.size(); ++i)
-    {
-        record.motor_cmd_mode[i] = static_cast<float>(runtime_mode.mode);
-    }
+    record.motor_cmd_mode = joint_cmd_mode_;
 
     runtime_recorder_.recordTick(record);
 
@@ -1194,6 +1331,8 @@ rl_master::TeleopCommand MujocoSimBridge::latestTeleopCommand() const
 
 void MujocoSimBridge::initializeState()
 {
+    resolvePerJointControlConfig(controller_runtime_.activeModeId());
+
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const int qpos_adr = qpos_addrs_[i];
@@ -1203,7 +1342,9 @@ void MujocoSimBridge::initializeState()
         }
     }
 
-    if (hold_target_q_.empty() && !hold_qpos_addrs_.empty())
+    if (hold_target_source_ == HoldTargetSource::kExplicit &&
+        hold_target_q_.empty() &&
+        !hold_qpos_addrs_.empty())
     {
         hold_target_q_.assign(hold_qpos_addrs_.size(), 0.0);
         for (size_t i = 0; i < hold_qpos_addrs_.size(); ++i)
@@ -1216,7 +1357,7 @@ void MujocoSimBridge::initializeState()
         }
         RCLCPP_INFO(
             this->get_logger(),
-            "hold_joint_target_q not configured, latch %zu hold joints from model initial qpos.",
+            "hold_joint_target_q not configured, latch %zu extra hold joints from model initial qpos.",
             hold_target_q_.size());
     }
 
@@ -1245,6 +1386,264 @@ void MujocoSimBridge::initializeState()
     {
         activateDynamicBaseLock(BaseLockReason::kStartupZeroing, enable_prepose_snap_);
     }
+}
+
+MujocoSimBridge::SimJointRuntimeMode MujocoSimBridge::parseSimJointRuntimeMode(
+    const std::string &raw_mode,
+    const std::string &context)
+{
+    const std::string mode = toLowerCopy(trimCopy(raw_mode));
+    if (mode == "csp")
+    {
+        return SimJointRuntimeMode::kCsp;
+    }
+    if (mode == "cst")
+    {
+        return SimJointRuntimeMode::kCst;
+    }
+    if (mode == "r1")
+    {
+        return SimJointRuntimeMode::kR1;
+    }
+    throw std::runtime_error(
+        context + " must be one of: csp, cst, r1. got='" + raw_mode + "'");
+}
+
+const char *MujocoSimBridge::simJointRuntimeModeName(SimJointRuntimeMode mode)
+{
+    switch (mode)
+    {
+    case SimJointRuntimeMode::kCsp:
+        return "csp";
+    case SimJointRuntimeMode::kCst:
+        return "cst";
+    case SimJointRuntimeMode::kR1:
+        return "r1";
+    default:
+        return "unknown";
+    }
+}
+
+MujocoSimBridge::HoldTargetSource MujocoSimBridge::parseHoldTargetSource(const std::string &raw_source)
+{
+    const std::string source = toLowerCopy(trimCopy(raw_source));
+    if (source == "zero_joint_angles")
+    {
+        return HoldTargetSource::kZeroJointAngles;
+    }
+    if (source == "default_joint_angles")
+    {
+        return HoldTargetSource::kDefaultJointAngles;
+    }
+    if (source == "explicit")
+    {
+        return HoldTargetSource::kExplicit;
+    }
+    throw std::runtime_error(
+        "hold_target_source must be one of: zero_joint_angles, default_joint_angles, explicit. got='" +
+        raw_source + "'");
+}
+
+const char *MujocoSimBridge::holdTargetSourceName(HoldTargetSource source)
+{
+    switch (source)
+    {
+    case HoldTargetSource::kZeroJointAngles:
+        return "zero_joint_angles";
+    case HoldTargetSource::kDefaultJointAngles:
+        return "default_joint_angles";
+    case HoldTargetSource::kExplicit:
+        return "explicit";
+    default:
+        return "unknown";
+    }
+}
+
+MujocoSimBridge::ActuatorBackend MujocoSimBridge::classifyModelActuatorBackend(
+    const mjModel_ *model,
+    int actuator_id)
+{
+    if (!model || actuator_id < 0 || actuator_id >= model->nu)
+    {
+        throw std::runtime_error("invalid actuator id for backend classification");
+    }
+
+    return model->actuator_biastype[actuator_id] == mjBIAS_NONE
+               ? ActuatorBackend::kTorque
+               : ActuatorBackend::kPosition;
+}
+
+const char *MujocoSimBridge::actuatorBackendName(ActuatorBackend backend)
+{
+    switch (backend)
+    {
+    case ActuatorBackend::kTorque:
+        return "torque";
+    case ActuatorBackend::kPosition:
+        return "position";
+    default:
+        return "unknown";
+    }
+}
+
+void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
+{
+    if (resolved_control_mode_id_ == active_mode_id &&
+        resolved_joint_runtime_modes_.size() == joint_names_.size() &&
+        joint_is_policy_controlled_.size() == joint_names_.size() &&
+        resolved_hold_target_q_.size() == joint_names_.size())
+    {
+        return;
+    }
+
+    const Sim2realCfg &active_cfg = controller_runtime_.runtimeCfg();
+
+    std::map<std::string, SimJointRuntimeMode> override_modes;
+    for (size_t i = 0; i < joint_runtime_mode_override_entries_.size(); ++i)
+    {
+        const std::string raw_entry = trimCopy(joint_runtime_mode_override_entries_[i]);
+        if (raw_entry.empty())
+        {
+            continue;
+        }
+
+        const size_t sep = raw_entry.find_first_of("=:");
+        if (sep == std::string::npos)
+        {
+            throw std::runtime_error(
+                "joint_runtime_mode_overrides[" + std::to_string(i) +
+                "] must have format 'joint=mode' or 'joint:mode'");
+        }
+
+        const std::string joint_name = trimCopy(raw_entry.substr(0, sep));
+        const std::string raw_mode = trimCopy(raw_entry.substr(sep + 1));
+        if (joint_name.empty() || raw_mode.empty())
+        {
+            throw std::runtime_error(
+                "joint_runtime_mode_overrides[" + std::to_string(i) +
+                "] must have non-empty joint and mode");
+        }
+        override_modes[joint_name] = parseSimJointRuntimeMode(
+            raw_mode,
+            "joint_runtime_mode_overrides[" + std::to_string(i) + "]");
+    }
+
+    std::map<std::string, float> hold_source_targets;
+    const auto &source_angles =
+        (hold_target_source_ == HoldTargetSource::kDefaultJointAngles)
+            ? active_cfg.robotCfg.default_joint_angles
+            : active_cfg.robotCfg.zero_joint_angles;
+    for (const auto &entry : source_angles)
+    {
+        hold_source_targets[entry.first] = entry.second;
+    }
+
+    resolved_joint_runtime_modes_.assign(joint_names_.size(), SimJointRuntimeMode::kCsp);
+    joint_is_policy_controlled_.assign(joint_names_.size(), false);
+    resolved_hold_target_q_.assign(joint_names_.size(), 0.0f);
+    joint_cmd_q_.assign(joint_names_.size(), 0.0f);
+    joint_cmd_dq_.assign(joint_names_.size(), 0.0f);
+    joint_cmd_tau_.assign(joint_names_.size(), 0.0f);
+    joint_cmd_mode_.assign(joint_names_.size(), 0.0f);
+    resolved_hold_config_target_q_.assign(hold_joint_names_.size(), 0.0);
+
+    for (size_t i = 0; i < joint_names_.size(); ++i)
+    {
+        const std::string &joint_name = joint_names_[i];
+        joint_is_policy_controlled_[i] =
+            std::find(active_cfg.action_joint_order.begin(), active_cfg.action_joint_order.end(), joint_name) !=
+            active_cfg.action_joint_order.end();
+        if (joint_is_policy_controlled_[i] &&
+            i < joint_actuator_backends_.size() &&
+            joint_actuator_backends_[i] == ActuatorBackend::kPosition)
+        {
+            throw std::runtime_error(
+                "mixed actuator config is invalid: policy-controlled joint '" + joint_name +
+                "' cannot use a position actuator");
+        }
+
+        auto override_it = override_modes.find(joint_name);
+        if (override_it != override_modes.end())
+        {
+            resolved_joint_runtime_modes_[i] = override_it->second;
+        }
+        else
+        {
+            const auto profile_it = active_cfg.installed_joint_run_modes.find(joint_name);
+            if (profile_it != active_cfg.installed_joint_run_modes.end())
+            {
+                resolved_joint_runtime_modes_[i] = parseSimJointRuntimeMode(
+                    profile_it->second,
+                    "installed_joint_run_modes['" + joint_name + "']");
+            }
+        }
+
+        const int hold_cfg_idx = (i < joint_hold_config_indices_.size()) ? joint_hold_config_indices_[i] : -1;
+        if (hold_cfg_idx < 0)
+        {
+            continue;
+        }
+
+        double hold_q = 0.0;
+        if (hold_target_source_ == HoldTargetSource::kExplicit)
+        {
+            if (static_cast<size_t>(hold_cfg_idx) >= hold_target_q_.size())
+            {
+                throw std::runtime_error(
+                    "hold_joint_target_q is missing explicit value for hold_joint_names[" +
+                    std::to_string(hold_cfg_idx) + "]='" + hold_joint_names_[static_cast<size_t>(hold_cfg_idx)] + "'");
+            }
+            hold_q = hold_target_q_[static_cast<size_t>(hold_cfg_idx)];
+        }
+        else
+        {
+            const auto target_it = hold_source_targets.find(joint_name);
+            if (target_it == hold_source_targets.end())
+            {
+                throw std::runtime_error(
+                    std::string("hold target source '") + holdTargetSourceName(hold_target_source_) +
+                    "' is missing joint '" + joint_name + "'");
+            }
+            hold_q = target_it->second;
+        }
+
+        resolved_hold_target_q_[i] = static_cast<float>(hold_q);
+        resolved_hold_config_target_q_[static_cast<size_t>(hold_cfg_idx)] = hold_q;
+    }
+
+    for (size_t i = 0; i < hold_joint_names_.size(); ++i)
+    {
+        if (hold_main_joint_indices_[i] >= 0)
+        {
+            continue;
+        }
+
+        double hold_q = 0.0;
+        if (hold_target_source_ == HoldTargetSource::kExplicit)
+        {
+            if (i >= hold_target_q_.size())
+            {
+                throw std::runtime_error(
+                    "hold_joint_target_q is missing explicit value for extra hold joint '" +
+                    hold_joint_names_[i] + "'");
+            }
+            hold_q = hold_target_q_[i];
+        }
+        else
+        {
+            const auto target_it = hold_source_targets.find(hold_joint_names_[i]);
+            if (target_it == hold_source_targets.end())
+            {
+                throw std::runtime_error(
+                    std::string("hold target source '") + holdTargetSourceName(hold_target_source_) +
+                    "' is missing extra hold joint '" + hold_joint_names_[i] + "'");
+            }
+            hold_q = target_it->second;
+        }
+        resolved_hold_config_target_q_[i] = hold_q;
+    }
+
+    resolved_control_mode_id_ = active_mode_id;
 }
 
 bool MujocoSimBridge::shouldEnforceBaseLock() const
@@ -2070,10 +2469,9 @@ void MujocoSimBridge::updateControlInput(
     rclcpp::Time now)
 {
     const Sim2realCfg &active_cfg = controller_runtime_.runtimeCfg();
+    resolvePerJointControlConfig(controller_runtime_.activeModeId());
     const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
     const bool mode_policy = runtime_mode.mode == rl_master::CommandRuntimeMode::kPolicy;
-    const bool mode_test_cst = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCst;
-    const bool mode_test_r1 = runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1;
 
     auto commandQAt = [&](size_t idx) -> double {
         return idx < command.joint_target_q.size() ? static_cast<double>(command.joint_target_q[idx]) : 0.0;
@@ -2113,7 +2511,10 @@ void MujocoSimBridge::updateControlInput(
 
     const bool inactive_hold_position = !control_active && (no_command_behavior_ == "hold_position");
     const bool inactive_zero_torque = !control_active && (no_command_behavior_ == "zero_torque");
-    if (inactive_hold_position && !use_position_actuator_control_ && !warned_idle_position_fallback_)
+    if (inactive_hold_position &&
+        !use_mixed_actuator_control_ &&
+        !use_position_actuator_control_ &&
+        !warned_idle_position_fallback_)
     {
         RCLCPP_WARN(
             this->get_logger(),
@@ -2121,6 +2522,18 @@ void MujocoSimBridge::updateControlInput(
             "fallback to torque PD hold-last.");
         warned_idle_position_fallback_ = true;
     }
+
+    auto streamModeToSimMode = [&](rl_master::CommandRuntimeMode mode) {
+        if (mode == rl_master::CommandRuntimeMode::kTestCst)
+        {
+            return SimJointRuntimeMode::kCst;
+        }
+        if (mode == rl_master::CommandRuntimeMode::kTestR1)
+        {
+            return SimJointRuntimeMode::kR1;
+        }
+        return SimJointRuntimeMode::kCsp;
+    };
 
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
@@ -2138,37 +2551,95 @@ void MujocoSimBridge::updateControlInput(
 
         const double q = data_->qpos[qpos_adr];
         const double dq = data_->qvel[qvel_adr];
-        const bool policy_controlled_joint = isPolicyControlledJoint(i);
+        const bool policy_controlled_joint =
+            i < joint_is_policy_controlled_.size() ? joint_is_policy_controlled_[i] : isPolicyControlledJoint(i);
+        const int hold_cfg_idx =
+            (i < joint_hold_config_indices_.size()) ? joint_hold_config_indices_[i] : -1;
+        const ActuatorBackend actuator_backend =
+            i < joint_actuator_backends_.size() ? joint_actuator_backends_[i]
+                                                : (use_position_actuator_control_ ? ActuatorBackend::kPosition
+                                                                                  : ActuatorBackend::kTorque);
 
         double q_des = static_cast<double>(last_target_q_[i]);
         double dq_des = 0.0;
         double tau_ff = 0.0;
-        if (control_active && rl_master::modeUsesPositionTargets(runtime_mode.mode))
+        double tau_cmd = 0.0;
+        SimJointRuntimeMode joint_mode = SimJointRuntimeMode::kCsp;
+
+        if (!control_active)
         {
-            q_des = commandQAt(i);
-            if (rl_master::modeUsesVelocityTargets(runtime_mode.mode))
+            joint_mode = SimJointRuntimeMode::kCsp;
+            if (hold_cfg_idx >= 0 && i < resolved_hold_target_q_.size())
+            {
+                q_des = static_cast<double>(resolved_hold_target_q_[i]);
+            }
+        }
+        else if (mode_policy)
+        {
+            joint_mode =
+                (i < resolved_joint_runtime_modes_.size()) ? resolved_joint_runtime_modes_[i] : SimJointRuntimeMode::kCsp;
+            if (policy_controlled_joint)
+            {
+                q_des = commandQAt(i);
+                if (joint_mode == SimJointRuntimeMode::kR1)
+                {
+                    dq_des = commandDqAt(i);
+                    tau_ff = use_command_torque_ff_ ? commandTauAt(i) : 0.0;
+                    tau_cmd = commandTauAt(i);
+                }
+                else if (joint_mode == SimJointRuntimeMode::kCst)
+                {
+                    tau_cmd = commandTauAt(i);
+                }
+            }
+            else
+            {
+                if (hold_cfg_idx >= 0 && i < resolved_hold_target_q_.size())
+                {
+                    q_des = static_cast<double>(resolved_hold_target_q_[i]);
+                }
+            }
+        }
+        else
+        {
+            joint_mode = streamModeToSimMode(runtime_mode.mode);
+            if (joint_mode != SimJointRuntimeMode::kCst)
+            {
+                q_des = commandQAt(i);
+            }
+            if (joint_mode == SimJointRuntimeMode::kR1)
             {
                 dq_des = commandDqAt(i);
+                tau_ff = use_command_torque_ff_ ? commandTauAt(i) : 0.0;
+                tau_cmd = commandTauAt(i);
             }
-            if (rl_master::modeUsesTorqueFeedForward(runtime_mode.mode))
+            else if (joint_mode == SimJointRuntimeMode::kCst)
             {
-                tau_ff = policy_controlled_joint ? commandTauAt(i) : 0.0;
+                tau_cmd = commandTauAt(i);
             }
+        }
+
+        if (control_active && joint_mode != SimJointRuntimeMode::kCst)
+        {
             last_target_q_[i] = static_cast<float>(q_des);
         }
+        joint_cmd_q_[i] = static_cast<float>(q_des);
+        joint_cmd_dq_[i] = static_cast<float>(dq_des);
+        joint_cmd_tau_[i] = static_cast<float>(tau_cmd);
+        joint_cmd_mode_[i] = static_cast<float>(joint_mode);
 
         if (inactive_zero_torque)
         {
-            data_->ctrl[actuator_id] = 0.0;
+            data_->ctrl[actuator_id] = (actuator_backend == ActuatorBackend::kPosition) ? q : 0.0;
             applied_tau_[i] = 0.0f;
             continue;
         }
 
-        if (use_position_actuator_control_)
+        if (actuator_backend == ActuatorBackend::kPosition)
         {
-            if (control_active && mode_test_cst)
+            if (joint_mode == SimJointRuntimeMode::kCst)
             {
-                q_des = static_cast<double>(last_target_q_[i]);
+                q_des = q;
             }
             data_->ctrl[actuator_id] = q_des;
             applied_tau_[i] = 0.0f;
@@ -2176,17 +2647,16 @@ void MujocoSimBridge::updateControlInput(
         else
         {
             double tau = 0.0;
-            if (control_active && mode_test_cst)
+            if (control_active && joint_mode == SimJointRuntimeMode::kCst)
             {
-                tau = commandTauAt(i);
+                tau = tau_cmd;
             }
             else
             {
                 tau = kp_[i] * (q_des - q) + kd_[i] * (dq_des - dq);
                 if (control_active &&
-                    policy_controlled_joint &&
-                    (mode_policy || mode_test_r1) &&
-                    use_command_torque_ff_)
+                    joint_mode == SimJointRuntimeMode::kR1 &&
+                    policy_controlled_joint)
                 {
                     tau += tau_ff;
                 }
@@ -2219,9 +2689,17 @@ void MujocoSimBridge::updateControlInput(
 
         const double q = data_->qpos[qpos_adr];
         const double dq = data_->qvel[qvel_adr];
-        const double q_des = hold_target_q_[i];
+        const double q_des =
+            (i < resolved_hold_config_target_q_.size() &&
+             hold_target_source_ != HoldTargetSource::kExplicit)
+                ? resolved_hold_config_target_q_[i]
+                : hold_target_q_[i];
+        const ActuatorBackend actuator_backend =
+            i < hold_actuator_backends_.size() ? hold_actuator_backends_[i]
+                                               : (use_position_actuator_control_ ? ActuatorBackend::kPosition
+                                                                                 : ActuatorBackend::kTorque);
 
-        if (use_position_actuator_control_)
+        if (actuator_backend == ActuatorBackend::kPosition)
         {
             data_->ctrl[actuator_id] = q_des;
             if (i < hold_applied_tau_.size())

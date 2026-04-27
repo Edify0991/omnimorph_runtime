@@ -1,6 +1,6 @@
 mujoco_sim_bridge:
   ros__parameters:
-    model_path: "/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_fullbody_standard.xml"
+    model_path: "/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jc01_fullbody_engineai_walk_sim2sim.xml"
 
     base_body_name: "Body"
     base_free_joint_name: ""
@@ -73,13 +73,13 @@ mujoco_sim_bridge:
     pause_when_no_command: false
     no_command_behavior: "hold_position"
     fix_base: false
-    fixed_base_height: -1.0
+    fixed_base_height: 0.65
     enable_fixed_base_zeroing: true
     enable_fixed_base_hold_after_zeroing: true
     enable_release_before_running: true
-    post_release_settle_ticks: 20
+    post_release_settle_ticks: 3000
     enable_prepose_snap: false
-    actuator_control_mode: "torque"
+    actuator_control_mode: "mixed"
 
     enable_viewer: false
     enable_python_viewer_stream: false
@@ -97,6 +97,44 @@ mujoco_sim_bridge:
     show_right_ui: true
 
     use_command_torque_ff: false
-    kp: [80.0]
-    kd: [2.0]
+    # Phase-1 sim2sim alignment:
+    # policy joints still follow the active profile action_joint_order and installed_joint_run_modes,
+    # while the non-policy upper-body joints below are held from robot.zero_joint_angles.
+    hold_target_source: "zero_joint_angles"
+    position_actuator_joint_names:
+      - "waist_roll"
+      - "waist_yaw"
+      - "right_shoulder_pitch"
+      - "right_shoulder_roll"
+      - "right_shoulder_yaw"
+      - "right_elbow_pitch"
+      - "right_elbow_yaw"
+      - "right_wrist_pitch"
+      - "right_wrist_roll"
+      - "left_shoulder_pitch"
+      - "left_shoulder_roll"
+      - "left_shoulder_yaw"
+      - "left_elbow_pitch"
+      - "left_elbow_yaw"
+      - "left_wrist_pitch"
+      - "left_wrist_roll"
+    hold_joint_names:
+      - "waist_roll"
+      - "waist_yaw"
+      - "right_shoulder_pitch"
+      - "right_shoulder_roll"
+      - "right_shoulder_yaw"
+      - "right_elbow_pitch"
+      - "right_elbow_yaw"
+      - "right_wrist_pitch"
+      - "right_wrist_roll"
+      - "left_shoulder_pitch"
+      - "left_shoulder_roll"
+      - "left_shoulder_yaw"
+      - "left_elbow_pitch"
+      - "left_elbow_yaw"
+      - "left_wrist_pitch"
+      - "left_wrist_roll"
+    kp: [1000.0]
+    kd: [300.0]
     torque_limit: [120.0]
