@@ -623,7 +623,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
               {
                   const int component_idx = i < component_count ? baseAngVelComponentIndex(components[static_cast<size_t>(i)]) : -1;
                   const bool valid = component_idx >= 0 && static_cast<size_t>(component_idx) < robot.base_ang_vel.size();
-                  pushPadded(out, valid ? robot.base_ang_vel[static_cast<size_t>(component_idx)] * cfg.scales.ang_vel : 0.0f, i, valid ? 1 : 0);
+                  out->push_back(valid ? robot.base_ang_vel[static_cast<size_t>(component_idx)] * cfg.scales.ang_vel : 0.0f);
               }
           },
           3,
@@ -650,7 +650,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
               {
                   const int component_idx = i < component_count ? componentIndex3(components[static_cast<size_t>(i)], {"roll", "pitch", "yaw"}) : -1;
                   const bool valid = component_idx >= 0 && static_cast<size_t>(component_idx) < rpy.size();
-                  pushPadded(out, valid ? rpy[static_cast<size_t>(component_idx)] * cfg.scales.quat : 0.0f, i, valid ? 1 : 0);
+                  out->push_back(valid ? rpy[static_cast<size_t>(component_idx)] * cfg.scales.quat : 0.0f);
               }
           },
           3,
@@ -664,7 +664,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
               {
                   const int component_idx = i < component_count ? componentIndex4(components[static_cast<size_t>(i)], {"x", "y", "z", "w"}) : -1;
                   const bool valid = component_idx >= 0 && static_cast<size_t>(component_idx) < robot.base_quat.size();
-                  pushPadded(out, valid ? robot.base_quat[static_cast<size_t>(component_idx)] * cfg.scales.quat : 0.0f, i, valid ? 1 : 0);
+                  out->push_back(valid ? robot.base_quat[static_cast<size_t>(component_idx)] * cfg.scales.quat : 0.0f);
               }
           },
           4,

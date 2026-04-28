@@ -461,16 +461,62 @@ void MujocoSimBridge::loadParameters()
         throw std::runtime_error("prepose_joint_q size must be 1 or match joint_names");
     }
 
+    auto overrideFromNamedMainJointParams =
+        [this](
+            const std::string &prefix,
+            const std::vector<std::string> &joint_names,
+            std::vector<double> *values,
+            bool absolute_value) {
+            if (!values)
+            {
+                return;
+            }
+
+            std::vector<double> named_values(joint_names.size(), std::numeric_limits<double>::quiet_NaN());
+            bool any_named_override = false;
+            for (size_t i = 0; i < joint_names.size(); ++i)
+            {
+                const std::string param_name = prefix + "." + joint_names[i];
+                this->declare_parameter<double>(
+                    param_name,
+                    std::numeric_limits<double>::quiet_NaN());
+                const double raw_value = this->get_parameter(param_name).as_double();
+                if (std::isfinite(raw_value))
+                {
+                    named_values[i] = absolute_value ? std::abs(raw_value) : raw_value;
+                    any_named_override = true;
+                }
+            }
+
+            if (!any_named_override)
+            {
+                return;
+            }
+
+            for (size_t i = 0; i < joint_names.size(); ++i)
+            {
+                if (!std::isfinite(named_values[i]))
+                {
+                    throw std::runtime_error(
+                        "named joint parameter set '" + prefix +
+                        "' is partial; missing joint '" + joint_names[i] + "'");
+                }
+            }
+            *values = std::move(named_values);
+        };
+
     kp_ = normalizeGainParam(this->get_parameter("kp").as_double_array(), 80.0, joint_names_.size());
     kd_ = normalizeGainParam(this->get_parameter("kd").as_double_array(), 2.0, joint_names_.size());
     torque_limit_ = normalizeGainParam(this->get_parameter("torque_limit").as_double_array(), 120.0, joint_names_.size());
+    overrideFromNamedMainJointParams("kp", joint_names_, &kp_, false);
+    overrideFromNamedMainJointParams("kd", joint_names_, &kd_, false);
+    overrideFromNamedMainJointParams("torque_limit", joint_names_, &torque_limit_, true);
     joint_ids_.assign(joint_names_.size(), -1);
     qpos_addrs_.assign(joint_names_.size(), -1);
     qvel_addrs_.assign(joint_names_.size(), -1);
     actuator_ids_.assign(joint_names_.size(), -1);
     applied_tau_.assign(joint_names_.size(), 0.0f);
     last_target_q_.assign(joint_names_.size(), 0.0f);
-
     const size_t hold_count = hold_joint_names_.size();
     hold_kp_ = normalizeGainParam(this->get_parameter("hold_kp").as_double_array(), 80.0, hold_count);
     hold_kd_ = normalizeGainParam(this->get_parameter("hold_kd").as_double_array(), 2.0, hold_count);
@@ -499,7 +545,6 @@ void MujocoSimBridge::loadParameters()
         throw std::runtime_error(
             "hold_joint_target_q must be provided when hold_target_source=explicit and hold_joint_names is non-empty");
     }
-
     if (model_path_.empty())
     {
         throw std::runtime_error(
@@ -1487,6 +1532,31 @@ void MujocoSimBridge::initializeState()
 {
     resolvePerJointControlConfig(controller_runtime_.activeModeId());
 
+    captureBaseLockPoseFromModel();
+
+    if (enable_fixed_base_zeroing_)
+    {
+        activateDynamicBaseLock(BaseLockReason::kStartupZeroing, enable_prepose_snap_);
+    }
+    else if (fix_base_ && fixed_base_pose_initialized_)
+    {
+        enforceBaseLock();
+        mj_forward(model_, data_);
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Base lock enabled. fixed xyz=(%.4f, %.4f, %.4f)",
+            fixed_base_qpos_[0],
+            fixed_base_qpos_[1],
+            fixed_base_qpos_[2]);
+    }
+    else if (fix_base_)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "fix_base=true but free base joint is unavailable; base lock disabled.");
+        fix_base_ = false;
+    }
+
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const int qpos_adr = qpos_addrs_[i];
@@ -1513,32 +1583,6 @@ void MujocoSimBridge::initializeState()
             this->get_logger(),
             "hold_joint_target_q not configured, latch %zu extra hold joints from model initial qpos.",
             hold_target_q_.size());
-    }
-
-    captureBaseLockPoseFromModel();
-
-    if (fix_base_ && fixed_base_pose_initialized_)
-    {
-        enforceBaseLock();
-        mj_forward(model_, data_);
-        RCLCPP_INFO(
-            this->get_logger(),
-            "Base lock enabled. fixed xyz=(%.4f, %.4f, %.4f)",
-            fixed_base_qpos_[0],
-            fixed_base_qpos_[1],
-            fixed_base_qpos_[2]);
-    }
-    else if (fix_base_)
-    {
-        RCLCPP_WARN(
-            this->get_logger(),
-            "fix_base=true but free base joint is unavailable; base lock disabled.");
-        fix_base_ = false;
-    }
-
-    if (enable_fixed_base_zeroing_)
-    {
-        activateDynamicBaseLock(BaseLockReason::kStartupZeroing, enable_prepose_snap_);
     }
 }
 

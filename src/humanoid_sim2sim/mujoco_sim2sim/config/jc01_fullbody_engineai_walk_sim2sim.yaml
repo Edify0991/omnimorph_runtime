@@ -71,16 +71,16 @@ mujoco_sim_bridge:
     command_timeout_sec: 0.1
     open_rl_enable_threshold: 1.0
     pause_when_no_command: false
-    no_command_behavior: "hold_position"
+    no_command_behavior: "hold_last"
     fix_base: false
     fixed_base_height: 0.65
     enable_fixed_base_zeroing: true
     enable_fixed_base_hold_after_zeroing: true
     enable_release_before_running: true
-    post_release_settle_ticks: 3000
+    post_release_settle_ticks: 200
     post_zeroing_hold_settle_ticks: 250
     enable_prepose_snap: false
-    actuator_control_mode: "mixed"
+    actuator_control_mode: "torque"
 
     enable_viewer: false
     enable_python_viewer_stream: false
@@ -98,95 +98,90 @@ mujoco_sim_bridge:
     show_right_ui: true
 
     use_command_torque_ff: false
-    # Phase-1 sim2sim alignment:
-    # policy joints still follow the active profile action_joint_order and installed_joint_run_modes,
-    # while the non-policy upper-body joints below are held from robot.zero_joint_angles.
-    hold_target_source: "zero_joint_angles"
-    position_actuator_joint_names:
-      - "waist_roll"
-      - "waist_yaw"
-      - "right_shoulder_pitch"
-      - "right_shoulder_roll"
-      - "right_shoulder_yaw"
-      - "right_elbow_pitch"
-      - "right_elbow_yaw"
-      - "right_wrist_pitch"
-      - "right_wrist_roll"
-      - "left_shoulder_pitch"
-      - "left_shoulder_roll"
-      - "left_shoulder_yaw"
-      - "left_elbow_pitch"
-      - "left_elbow_yaw"
-      - "left_wrist_pitch"
-      - "left_wrist_roll"
-    position_actuator_kp:
-      waist_roll: 300.0
-      waist_yaw: 300.0
-      right_shoulder_pitch: 220.0
-      right_shoulder_roll: 220.0
-      right_shoulder_yaw: 180.0
-      right_elbow_pitch: 160.0
-      right_elbow_yaw: 140.0
-      right_wrist_pitch: 90.0
-      right_wrist_roll: 90.0
-      left_shoulder_pitch: 220.0
-      left_shoulder_roll: 220.0
-      left_shoulder_yaw: 180.0
-      left_elbow_pitch: 160.0
-      left_elbow_yaw: 140.0
-      left_wrist_pitch: 90.0
-      left_wrist_roll: 90.0
-    position_actuator_kv:
-      waist_roll: 20.0
-      waist_yaw: 20.0
-      right_shoulder_pitch: 14.0
-      right_shoulder_roll: 14.0
-      right_shoulder_yaw: 12.0
-      right_elbow_pitch: 10.0
-      right_elbow_yaw: 10.0
-      right_wrist_pitch: 6.0
-      right_wrist_roll: 6.0
-      left_shoulder_pitch: 14.0
-      left_shoulder_roll: 14.0
-      left_shoulder_yaw: 12.0
-      left_elbow_pitch: 10.0
-      left_elbow_yaw: 10.0
-      left_wrist_pitch: 6.0
-      left_wrist_roll: 6.0
-    position_actuator_forcerange:
-      waist_roll: 130.0
-      waist_yaw: 130.0
-      right_shoulder_pitch: 80.0
-      right_shoulder_roll: 80.0
-      right_shoulder_yaw: 80.0
-      right_elbow_pitch: 80.0
-      right_elbow_yaw: 80.0
-      right_wrist_pitch: 80.0
-      right_wrist_roll: 80.0
-      left_shoulder_pitch: 80.0
-      left_shoulder_roll: 80.0
-      left_shoulder_yaw: 80.0
-      left_elbow_pitch: 80.0
-      left_elbow_yaw: 80.0
-      left_wrist_pitch: 80.0
-      left_wrist_roll: 80.0
-    hold_joint_names:
-      - "waist_roll"
-      - "waist_yaw"
-      - "right_shoulder_pitch"
-      - "right_shoulder_roll"
-      - "right_shoulder_yaw"
-      - "right_elbow_pitch"
-      - "right_elbow_yaw"
-      - "right_wrist_pitch"
-      - "right_wrist_roll"
-      - "left_shoulder_pitch"
-      - "left_shoulder_roll"
-      - "left_shoulder_yaw"
-      - "left_elbow_pitch"
-      - "left_elbow_yaw"
-      - "left_wrist_pitch"
-      - "left_wrist_roll"
-    kp: [60.0]
-    kd: [5.0]
-    torque_limit: [120.0]
+    kp:
+      right_hip_roll: 394.213
+      right_hip_yaw: 99.511
+      right_hip_pitch: 394.213
+      right_knee_pitch: 300.0
+      right_ankle_pitch: 138.023
+      right_ankle_roll: 138.023
+      left_hip_roll: 394.213
+      left_hip_yaw: 99.511
+      left_hip_pitch: 394.213
+      left_knee_pitch: 300.0
+      left_ankle_pitch: 138.023
+      left_ankle_roll: 138.023
+      waist_roll: 12.0
+      waist_yaw: 12.0
+      right_shoulder_pitch: 10.0
+      right_shoulder_roll: 10.0
+      right_shoulder_yaw: 6.0
+      right_elbow_pitch: 8.0
+      right_elbow_yaw: 5.0
+      right_wrist_pitch: 3.0
+      right_wrist_roll: 3.0
+      left_shoulder_pitch: 10.0
+      left_shoulder_roll: 10.0
+      left_shoulder_yaw: 2.5
+      left_elbow_pitch: 8.0
+      left_elbow_yaw: 3.0
+      left_wrist_pitch: 3.0
+      left_wrist_roll: 3.0
+    kd:
+      right_hip_roll: 23.005
+      right_hip_yaw: 5.007
+      right_hip_pitch: 23.005
+      right_knee_pitch: 17.507
+      right_ankle_pitch: 8.055
+      right_ankle_roll: 8.055
+      left_hip_roll: 23.005
+      left_hip_yaw: 5.007
+      left_hip_pitch: 23.005
+      left_knee_pitch: 17.507
+      left_ankle_pitch: 8.055
+      left_ankle_roll: 8.055
+      waist_roll: 1.5
+      waist_yaw: 1.5
+      right_shoulder_pitch: 1.2
+      right_shoulder_roll: 1.2
+      right_shoulder_yaw: 1.2
+      right_elbow_pitch: 1.0
+      right_elbow_yaw: 1.0
+      right_wrist_pitch: 0.4
+      right_wrist_roll: 0.4
+      left_shoulder_pitch: 1.2
+      left_shoulder_roll: 1.2
+      left_shoulder_yaw: 1.6
+      left_elbow_pitch: 1.0
+      left_elbow_yaw: 1.8
+      left_wrist_pitch: 0.4
+      left_wrist_roll: 0.4
+    torque_limit:
+      right_hip_roll: 60.0
+      right_hip_yaw: 60.0
+      right_hip_pitch: 100.0
+      right_knee_pitch: 100.0
+      right_ankle_pitch: 100.0
+      right_ankle_roll: 10.0
+      left_hip_roll: 60.0
+      left_hip_yaw: 60.0
+      left_hip_pitch: 100.0
+      left_knee_pitch: 100.0
+      left_ankle_pitch: 100.0
+      left_ankle_roll: 10.0
+      waist_roll: 12.0
+      waist_yaw: 12.0
+      right_shoulder_pitch: 10.0
+      right_shoulder_roll: 10.0
+      right_shoulder_yaw: 10.0
+      right_elbow_pitch: 8.0
+      right_elbow_yaw: 8.0
+      right_wrist_pitch: 3.0
+      right_wrist_roll: 3.0
+      left_shoulder_pitch: 10.0
+      left_shoulder_roll: 10.0
+      left_shoulder_yaw: 4.0
+      left_elbow_pitch: 8.0
+      left_elbow_yaw: 4.0
+      left_wrist_pitch: 3.0
+      left_wrist_roll: 3.0

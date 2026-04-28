@@ -212,22 +212,22 @@
     <motor name="motor_right_knee_pitch" joint="right_knee_pitch" gear="1" ctrllimited="true" ctrlrange="-300 300" />
     <motor name="motor_right_ankle_pitch" joint="right_ankle_pitch" gear="1" ctrllimited="true" ctrlrange="-300 300" />
     <motor name="motor_right_ankle_roll" joint="right_ankle_roll" gear="1" ctrllimited="true" ctrlrange="-300 300" />
-    <position name="motor_waist_roll" joint="waist_roll" kp="80" kv="2" ctrllimited="true" ctrlrange="-0.2617 0.2617" forcerange="-120 120" />
-    <position name="motor_waist_yaw" joint="waist_yaw" kp="80" kv="2" ctrllimited="true" ctrlrange="-0.7853 0.7853" forcerange="-120 120" />
-    <position name="motor_left_shoulder_pitch" joint="left_shoulder_pitch" kp="80" kv="2" ctrllimited="true" ctrlrange="-1.0471 3.1415" forcerange="-120 120" />
-    <position name="motor_left_shoulder_roll" joint="left_shoulder_roll" kp="80" kv="2" ctrllimited="true" ctrlrange="-0.087266 2.3562" forcerange="-120 120" />
-    <position name="motor_left_shoulder_yaw" joint="left_shoulder_yaw" kp="80" kv="2" ctrllimited="true" ctrlrange="-2.0943 2.0943" forcerange="-120 120" />
-    <position name="motor_left_elbow_pitch" joint="left_elbow_pitch" kp="80" kv="2" ctrllimited="true" ctrlrange="0 1.8325" forcerange="-120 120" />
-    <position name="motor_left_elbow_yaw" joint="left_elbow_yaw" kp="80" kv="2" ctrllimited="true" ctrlrange="-2.0943 2.0943" forcerange="-120 120" />
-    <position name="motor_left_wrist_pitch" joint="left_wrist_pitch" kp="80" kv="2" ctrllimited="true" ctrlrange="-1.2217 1.2217" forcerange="-120 120" />
-    <position name="motor_left_wrist_roll" joint="left_wrist_roll" kp="80" kv="2" ctrllimited="true" ctrlrange="-1.2217 1.2217" forcerange="-120 120" />
-    <position name="motor_right_shoulder_pitch" joint="right_shoulder_pitch" kp="80" kv="2" ctrllimited="true" ctrlrange="-1.0471 3.1415" forcerange="-120 120" />
-    <position name="motor_right_shoulder_roll" joint="right_shoulder_roll" kp="80" kv="2" ctrllimited="true" ctrlrange="-0.0872 2.2689" forcerange="-120 120" />
-    <position name="motor_right_shoulder_yaw" joint="right_shoulder_yaw" kp="80" kv="2" ctrllimited="true" ctrlrange="-2.0943 2.0943" forcerange="-120 120" />
-    <position name="motor_right_elbow_pitch" joint="right_elbow_pitch" kp="80" kv="2" ctrllimited="true" ctrlrange="0 1.8325" forcerange="-120 120" />
-    <position name="motor_right_elbow_yaw" joint="right_elbow_yaw" kp="80" kv="2" ctrllimited="true" ctrlrange="-2.0943 2.0943" forcerange="-120 120" />
-    <position name="motor_right_wrist_pitch" joint="right_wrist_pitch" kp="80" kv="2" ctrllimited="true" ctrlrange="-1.2217 1.2217" forcerange="-120 120" />
-    <position name="motor_right_wrist_roll" joint="right_wrist_roll" kp="80" kv="2" ctrllimited="true" ctrlrange="-1.2217 1.2217" forcerange="-120 120" />
+    <motor name="motor_waist_roll" joint="waist_roll" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_waist_yaw" joint="waist_yaw" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_left_shoulder_pitch" joint="left_shoulder_pitch" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_left_shoulder_roll" joint="left_shoulder_roll" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_left_shoulder_yaw" joint="left_shoulder_yaw" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_left_elbow_pitch" joint="left_elbow_pitch" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_left_elbow_yaw" joint="left_elbow_yaw" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_left_wrist_pitch" joint="left_wrist_pitch" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_left_wrist_roll" joint="left_wrist_roll" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_right_shoulder_pitch" joint="right_shoulder_pitch" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_right_shoulder_roll" joint="right_shoulder_roll" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_right_shoulder_yaw" joint="right_shoulder_yaw" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_right_elbow_pitch" joint="right_elbow_pitch" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_right_elbow_yaw" joint="right_elbow_yaw" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_right_wrist_pitch" joint="right_wrist_pitch" gear="1" ctrllimited="true" ctrlrange="-300 300" />
+    <motor name="motor_right_wrist_roll" joint="right_wrist_roll" gear="1" ctrllimited="true" ctrlrange="-300 300" />
   </actuator>
   <sensor>
     <actuatorpos name="left_hip_roll_Pos_p" actuator="motor_left_hip_roll" user="13" />
