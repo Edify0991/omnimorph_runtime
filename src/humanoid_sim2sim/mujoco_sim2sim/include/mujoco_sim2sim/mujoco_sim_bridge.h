@@ -172,6 +172,7 @@ private:
     int post_release_settle_ticks_ = 0;
     bool enable_prepose_snap_ = false;
     std::vector<double> prepose_joint_q_;
+    bool sim_only_force_policy_csp_ = false;
     std::string actuator_control_mode_ = "auto";
     std::vector<std::string> joint_runtime_mode_override_entries_;
     HoldTargetSource hold_target_source_ = HoldTargetSource::kZeroJointAngles;
@@ -220,6 +221,9 @@ private:
     std::vector<int> joint_hold_config_indices_;
     std::vector<SimJointRuntimeMode> resolved_joint_runtime_modes_;
     std::vector<bool> joint_is_policy_controlled_;
+    std::vector<double> resolved_policy_profile_kp_;
+    std::vector<double> resolved_policy_profile_kd_;
+    std::vector<double> resolved_policy_profile_torque_limit_;
     std::vector<float> resolved_hold_target_q_;
     std::vector<double> resolved_hold_config_target_q_;
     std::vector<float> joint_cmd_q_;

@@ -220,22 +220,6 @@ stand_sim2real:
       right_knee_pitch: 0.48
       right_ankle_pitch: -0.24
       right_ankle_roll: 0.0
-      waist_roll: 0.0
-      waist_yaw: 0.0
-      right_shoulder_pitch: 0.0
-      right_shoulder_roll: 0.0
-      right_shoulder_yaw: 0.0
-      right_elbow_pitch: 0.0
-      right_elbow_yaw: 0.0
-      right_wrist_pitch: 0.0
-      right_wrist_roll: 0.0
-      left_shoulder_pitch: 0.0
-      left_shoulder_roll: 0.0
-      left_shoulder_yaw: 0.0
-      left_elbow_pitch: 0.0
-      left_elbow_yaw: 0.0
-      left_wrist_pitch: 0.0
-      left_wrist_roll: 0.0
     joint_limit_range:
       right_hip_roll: [-0.2, 0.2]
       right_hip_yaw: [-1.05, 1.05]

@@ -24,7 +24,7 @@ void KinConv::configureJointGroups(
         "left_ankle_pitch",
         "left_ankle_roll",
     };
-    if (joint_groups.leg != expected_leg_group)
+    if (!joint_groups.leg.empty() && joint_groups.leg != expected_leg_group)
     {
         throw std::runtime_error(
             "joint_groups.leg must exactly match the current 12-joint leg conversion contract");
@@ -77,6 +77,10 @@ const std::vector<int> &KinConv::waistGlobalIndices() const
 
 void KinConv::validateLegGroupSize() const
 {
+    if (leg_global_indices_.empty())
+    {
+        return;
+    }
     if (leg_global_indices_.size() != LEG_MOTOR_COUNT)
     {
         throw std::runtime_error(

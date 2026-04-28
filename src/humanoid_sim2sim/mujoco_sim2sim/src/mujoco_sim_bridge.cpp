@@ -198,7 +198,7 @@ MujocoSimBridge::MujocoSimBridge()
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, release_settle_ticks=%d, hold_settle_ticks=%d, prepose_snap=%s",
+        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, release_settle_ticks=%d, hold_settle_ticks=%d, prepose_snap=%s, sim_only_force_policy_csp=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
@@ -216,7 +216,8 @@ MujocoSimBridge::MujocoSimBridge()
         enable_release_before_running_ ? "on" : "off",
         post_release_settle_ticks_,
         post_zeroing_hold_settle_ticks_,
-        enable_prepose_snap_ ? "on" : "off");
+        enable_prepose_snap_ ? "on" : "off",
+        sim_only_force_policy_csp_ ? "on" : "off");
 }
 
 MujocoSimBridge::~MujocoSimBridge()
@@ -275,6 +276,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<int>("post_zeroing_hold_settle_ticks", 0);
     this->declare_parameter<bool>("enable_prepose_snap", false);
     this->declare_parameter<std::vector<double>>("prepose_joint_q", std::vector<double>{});
+    this->declare_parameter<bool>("sim_only_force_policy_csp", false);
     this->declare_parameter<std::string>("actuator_control_mode", "auto");
     this->declare_parameter<std::vector<std::string>>("joint_runtime_mode_overrides", std::vector<std::string>{});
     this->declare_parameter<std::string>("hold_target_source", "zero_joint_angles");
@@ -321,6 +323,7 @@ void MujocoSimBridge::loadParameters()
         static_cast<int>(this->get_parameter("post_zeroing_hold_settle_ticks").as_int()));
     enable_prepose_snap_ = this->get_parameter("enable_prepose_snap").as_bool();
     prepose_joint_q_ = this->get_parameter("prepose_joint_q").as_double_array();
+    sim_only_force_policy_csp_ = this->get_parameter("sim_only_force_policy_csp").as_bool();
     actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
     joint_runtime_mode_override_entries_ = this->get_parameter("joint_runtime_mode_overrides").as_string_array();
     hold_target_source_ = parseHoldTargetSource(this->get_parameter("hold_target_source").as_string());
@@ -1226,6 +1229,7 @@ void MujocoSimBridge::initRuntimeRecorder()
              << "\"post_release_settle_ticks\":" << post_release_settle_ticks_ << ","
              << "\"post_zeroing_hold_settle_ticks\":" << post_zeroing_hold_settle_ticks_ << ","
              << "\"enable_prepose_snap\":" << (enable_prepose_snap_ ? "true" : "false") << ","
+             << "\"sim_only_force_policy_csp\":" << (sim_only_force_policy_csp_ ? "true" : "false") << ","
              << "\"sim_dt\":" << sim_dt_
              << "}";
 
@@ -1738,6 +1742,9 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
 
     resolved_joint_runtime_modes_.assign(joint_names_.size(), SimJointRuntimeMode::kCsp);
     joint_is_policy_controlled_.assign(joint_names_.size(), false);
+    resolved_policy_profile_kp_.assign(joint_names_.size(), 0.0);
+    resolved_policy_profile_kd_.assign(joint_names_.size(), 0.0);
+    resolved_policy_profile_torque_limit_.assign(joint_names_.size(), 0.0);
     resolved_hold_target_q_.assign(joint_names_.size(), 0.0f);
     joint_cmd_q_.assign(joint_names_.size(), 0.0f);
     joint_cmd_dq_.assign(joint_names_.size(), 0.0f);
@@ -1751,6 +1758,30 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
         joint_is_policy_controlled_[i] =
             std::find(active_cfg.action_joint_order.begin(), active_cfg.action_joint_order.end(), joint_name) !=
             active_cfg.action_joint_order.end();
+        if (joint_is_policy_controlled_[i])
+        {
+            const auto action_it =
+                std::find(active_cfg.action_joint_order.begin(), active_cfg.action_joint_order.end(), joint_name);
+            if (action_it != active_cfg.action_joint_order.end())
+            {
+                const size_t policy_idx =
+                    static_cast<size_t>(std::distance(active_cfg.action_joint_order.begin(), action_it));
+                resolved_policy_profile_kp_[i] =
+                    policy_idx < active_cfg.kps.size() ? static_cast<double>(active_cfg.kps[policy_idx]) : kp_[i];
+                resolved_policy_profile_kd_[i] =
+                    policy_idx < active_cfg.kds.size() ? static_cast<double>(active_cfg.kds[policy_idx]) : kd_[i];
+                resolved_policy_profile_torque_limit_[i] =
+                    policy_idx < active_cfg.tau_limit.size()
+                        ? std::abs(static_cast<double>(active_cfg.tau_limit[policy_idx]))
+                        : std::abs(torque_limit_[i]);
+            }
+            else
+            {
+                resolved_policy_profile_kp_[i] = kp_[i];
+                resolved_policy_profile_kd_[i] = kd_[i];
+                resolved_policy_profile_torque_limit_[i] = std::abs(torque_limit_[i]);
+            }
+        }
         if (joint_is_policy_controlled_[i] &&
             i < joint_actuator_backends_.size() &&
             joint_actuator_backends_[i] == ActuatorBackend::kPosition)
@@ -2802,6 +2833,7 @@ void MujocoSimBridge::updateControlInput(
         double tau_ff = 0.0;
         double tau_cmd = 0.0;
         SimJointRuntimeMode joint_mode = SimJointRuntimeMode::kCsp;
+        bool forced_policy_csp = false;
 
         if (!control_active)
         {
@@ -2811,6 +2843,13 @@ void MujocoSimBridge::updateControlInput(
         {
             joint_mode =
                 (i < resolved_joint_runtime_modes_.size()) ? resolved_joint_runtime_modes_[i] : SimJointRuntimeMode::kCsp;
+            if (sim_only_force_policy_csp_ &&
+                policy_controlled_joint &&
+                joint_mode == SimJointRuntimeMode::kCst)
+            {
+                joint_mode = SimJointRuntimeMode::kCsp;
+                forced_policy_csp = true;
+            }
             if (policy_controlled_joint)
             {
                 q_des = commandQAt(i);
@@ -2879,6 +2918,19 @@ void MujocoSimBridge::updateControlInput(
         }
         else
         {
+            double kp = kp_[i];
+            double kd = kd_[i];
+            double torque_limit = torque_limit_[i];
+            if (forced_policy_csp &&
+                i < resolved_policy_profile_kp_.size() &&
+                i < resolved_policy_profile_kd_.size() &&
+                i < resolved_policy_profile_torque_limit_.size())
+            {
+                kp = resolved_policy_profile_kp_[i];
+                kd = resolved_policy_profile_kd_[i];
+                torque_limit = resolved_policy_profile_torque_limit_[i];
+            }
+
             double tau = 0.0;
             if (control_active && joint_mode == SimJointRuntimeMode::kCst)
             {
@@ -2886,7 +2938,7 @@ void MujocoSimBridge::updateControlInput(
             }
             else
             {
-                tau = kp_[i] * (q_des - q) + kd_[i] * (dq_des - dq);
+                tau = kp * (q_des - q) + kd * (dq_des - dq);
                 if (control_active &&
                     joint_mode == SimJointRuntimeMode::kR1 &&
                     policy_controlled_joint)
@@ -2894,7 +2946,7 @@ void MujocoSimBridge::updateControlInput(
                     tau += tau_ff;
                 }
             }
-            const double limit = std::max(1e-6, std::abs(torque_limit_[i]));
+            const double limit = std::max(1e-6, std::abs(torque_limit));
             tau = std::clamp(tau, -limit, limit);
 
             data_->ctrl[actuator_id] = tau;

@@ -324,10 +324,7 @@ def get_joint_groups(
     global_joint_set = {str(name) for name in global_joint_order}
     seen_owner: Dict[str, str] = {}
     for group_name in ("leg", "arm", "waist"):
-        group_raw = raw.get(group_name, [] if group_name != "leg" else None)
-        if group_raw is None:
-            issues.error("global", f"joint_groups.{group_name} is required")
-            continue
+        group_raw = raw.get(group_name, [])
         if not isinstance(group_raw, list):
             issues.error("global", f"joint_groups.{group_name} must be a sequence")
             continue
@@ -357,33 +354,6 @@ def get_joint_groups(
             else:
                 seen_owner[name] = group_name
         groups[group_name] = names
-    expected_leg_group = [
-        "right_hip_roll",
-        "right_hip_yaw",
-        "right_hip_pitch",
-        "right_knee_pitch",
-        "right_ankle_pitch",
-        "right_ankle_roll",
-        "left_hip_roll",
-        "left_hip_yaw",
-        "left_hip_pitch",
-        "left_knee_pitch",
-        "left_ankle_pitch",
-        "left_ankle_roll",
-    ]
-    if groups["leg"] and groups["leg"] != expected_leg_group:
-        issues.error(
-            "global",
-            "joint_groups.leg must exactly match the current 12-joint leg conversion contract",
-        )
-    grouped_joint_names = set(groups["leg"]) | set(groups["arm"]) | set(groups["waist"])
-    missing_joint_names = [name for name in global_joint_order if name not in grouped_joint_names]
-    if missing_joint_names:
-        issues.error(
-            "global",
-            "joint_groups must fully cover robot_global_joint_order; missing joints: "
-            + ", ".join(missing_joint_names),
-        )
     return groups
 
 
@@ -485,13 +455,28 @@ def validate_robot_cfg_against_global_joint_order(
         if not isinstance(raw, dict):
             issues.error(context, f"robot.{field_name} must be a map")
             continue
+        field_names = [str(name) for name in raw.keys()]
         validate_named_joints_against_global_joint_order(
             f"robot.{field_name}",
-            [str(name) for name in raw.keys()],
+            field_names,
             global_joint_order,
             issues,
             context,
         )
+        missing = [name for name in global_joint_order if name not in set(field_names)]
+        if missing:
+            issues.error(
+                context,
+                f"robot.{field_name} must exactly cover robot_global_joint_order; missing: "
+                + ", ".join(missing),
+            )
+        unexpected = sorted(set(field_names) - set(global_joint_order))
+        if unexpected:
+            issues.error(
+                context,
+                f"robot.{field_name} contains joints not present in robot_global_joint_order: "
+                + ", ".join(unexpected),
+            )
 
 
 def load_rl_cfg(path: Path) -> Dict[str, Any]:
@@ -889,8 +874,6 @@ def check_reference_joint_order(
     if not reference_order:
         issues.error(context, "reference_joint_order is empty and action_joint_order is also empty")
         return reference_order
-    if motor_n > 0 and len(reference_order) != motor_n:
-        issues.error(context, "reference_joint_order length must equal motor_N")
     if len(set(reference_order)) != len(reference_order):
         issues.error(context, "reference_joint_order contains duplicates")
     for name in reference_order:
@@ -920,6 +903,12 @@ def normalize_installed_joint_run_modes(
             context,
             "installed_joint_run_modes contains joints not present in robot_global_joint_order: " + ", ".join(unknown),
         )
+    missing = [name for name in global_joint_order if name not in named_modes]
+    if missing:
+        issues.error(
+            context,
+            "installed_joint_run_modes must exactly cover robot_global_joint_order; missing: " + ", ".join(missing),
+        )
 
     for joint_name, mode in named_modes.items():
         if mode not in {"csp", "cst", "r1"}:
@@ -934,7 +923,6 @@ def normalize_named_action_joint_value_map(
     raw: Any,
     field_name: str,
     action_order: Sequence[str],
-    obs_order: Sequence[str],
     issues: IssueCollector,
     context: str,
 ) -> Dict[str, float]:
@@ -957,19 +945,11 @@ def normalize_named_action_joint_value_map(
         named_values[joint_name] = value
 
     action_names = set(action_order)
-    obs_names = set(obs_order)
     for joint_name in named_values.keys():
-        in_action = joint_name in action_names
-        in_obs = joint_name in obs_names
-        if not in_action and not in_obs:
+        if joint_name not in action_names:
             issues.error(
                 context,
-                f"{field_name} contains joint not present in action_joint_order or obs_joint_order: {joint_name}",
-            )
-        elif not in_action:
-            issues.error(
-                context,
-                f"{field_name} must match action_joint_order exactly; unexpected joint: {joint_name}",
+                f"{field_name} contains joint not present in action_joint_order: {joint_name}",
             )
 
     missing = [joint_name for joint_name in action_order if joint_name not in named_values]
@@ -1864,7 +1844,6 @@ def validate_profile(
         section_cfg.get("kps"),
         "kps",
         action_order,
-        obs_order if obs_order else action_order,
         issues,
         context,
     )
@@ -1872,7 +1851,6 @@ def validate_profile(
         section_cfg.get("kds"),
         "kds",
         action_order,
-        obs_order if obs_order else action_order,
         issues,
         context,
     )
@@ -1880,7 +1858,6 @@ def validate_profile(
         section_cfg.get("tau_limit"),
         "tau_limit",
         action_order,
-        obs_order if obs_order else action_order,
         issues,
         context,
     )
@@ -1893,11 +1870,8 @@ def validate_profile(
     )
     global_joint_order = get_global_robot_joint_order(root_cfg, issues)
     joint_groups = get_joint_groups(root_cfg, global_joint_order, issues)
-    leg_group = joint_groups.get("leg", [])
     if len(global_joint_order) > 30:
         issues.error("global", "robot_global_joint_order size exceeds kMotorShmSlotCount=30")
-    if len(leg_group) != 12:
-        issues.error("global", "joint_groups.leg must contain exactly 12 joints")
     normalize_installed_joint_run_modes(
         section_cfg.get("installed_joint_run_modes"),
         global_joint_order,

@@ -15,22 +15,6 @@ robot_global_joint_order:
 - left_knee_pitch
 - left_ankle_pitch
 - left_ankle_roll
-- waist_roll
-- waist_yaw
-- right_shoulder_pitch
-- right_shoulder_roll
-- right_shoulder_yaw
-- right_elbow_pitch
-- right_elbow_yaw
-- right_wrist_pitch
-- right_wrist_roll
-- left_shoulder_pitch
-- left_shoulder_roll
-- left_shoulder_yaw
-- left_elbow_pitch
-- left_elbow_yaw
-- left_wrist_pitch
-- left_wrist_roll
 joint_groups:
   leg:
   - right_hip_roll
@@ -45,24 +29,8 @@ joint_groups:
   - left_knee_pitch
   - left_ankle_pitch
   - left_ankle_roll
-  arm:
-  - right_shoulder_pitch
-  - right_shoulder_roll
-  - right_shoulder_yaw
-  - right_elbow_pitch
-  - right_elbow_yaw
-  - right_wrist_pitch
-  - right_wrist_roll
-  - left_shoulder_pitch
-  - left_shoulder_roll
-  - left_shoulder_yaw
-  - left_elbow_pitch
-  - left_elbow_yaw
-  - left_wrist_pitch
-  - left_wrist_roll
-  waist:
-  - waist_roll
-  - waist_yaw
+  arm: []
+  waist: []
 deploy_mode_profiles:
 - mode_id: 0
   config_section: engineai_walk

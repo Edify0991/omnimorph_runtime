@@ -27,8 +27,16 @@ std::unordered_map<std::string, size_t> buildJointIndexMap(
 
 std::vector<float> buildDefaultAngleVector(
     const Sim2realCfg::RobotCfg &robot_cfg,
-    const std::vector<std::string> &joint_order)
+    const std::vector<std::string> &joint_order,
+    const std::string &section_name)
 {
+    if (robot_cfg.default_joint_angles.empty())
+    {
+        throw std::runtime_error(
+            "config section '" + section_name +
+            "' robot.default_joint_angles is required and must cover robot_global_joint_order");
+    }
+
     std::vector<float> out(joint_order.size(), 0.0f);
     std::unordered_map<std::string, float> default_angle_map;
     default_angle_map.reserve(robot_cfg.default_joint_angles.size());
@@ -40,10 +48,14 @@ std::vector<float> buildDefaultAngleVector(
     for (size_t i = 0; i < joint_order.size(); ++i)
     {
         const auto it = default_angle_map.find(joint_order[i]);
-        if (it != default_angle_map.end())
+        if (it == default_angle_map.end())
         {
-            out[i] = it->second;
+            throw std::runtime_error(
+                "config section '" + section_name +
+                "' robot.default_joint_angles must cover robot_global_joint_order; missing: " +
+                joint_order[i]);
         }
+        out[i] = it->second;
     }
     return out;
 }
@@ -222,113 +234,63 @@ void validateJointGroupOverlap(const JointGroupsConfig &joint_groups)
     registerGroup(joint_groups.waist, "waist");
 }
 
-void validateJointGroupCoverage(
-    const JointGroupsConfig &joint_groups,
-    const std::vector<std::string> &global_joint_order)
+std::string joinNames(const std::vector<std::string> &names)
 {
-    std::unordered_set<std::string> grouped_joint_names;
-    grouped_joint_names.reserve(
-        joint_groups.leg.size() +
-        joint_groups.arm.size() +
-        joint_groups.waist.size());
+    std::ostringstream oss;
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        if (i > 0)
+        {
+            oss << ", ";
+        }
+        oss << names[i];
+    }
+    return oss.str();
+}
 
-    for (const auto &joint_name : joint_groups.leg)
+template <typename NameContainer>
+void validateExactJointCoverage(
+    const std::vector<std::string> &expected_joint_order,
+    const NameContainer &provided_names,
+    const std::string &field_name,
+    const std::string &section_name)
+{
+    std::unordered_set<std::string> expected_joint_names(
+        expected_joint_order.begin(),
+        expected_joint_order.end());
+    std::unordered_set<std::string> provided_joint_names(
+        provided_names.begin(),
+        provided_names.end());
+
+    std::vector<std::string> unexpected_joint_names;
+    for (const auto &joint_name : provided_joint_names)
     {
-        grouped_joint_names.insert(joint_name);
+        if (expected_joint_names.find(joint_name) == expected_joint_names.end())
+        {
+            unexpected_joint_names.push_back(joint_name);
+        }
     }
-    for (const auto &joint_name : joint_groups.arm)
+    std::sort(unexpected_joint_names.begin(), unexpected_joint_names.end());
+    if (!unexpected_joint_names.empty())
     {
-        grouped_joint_names.insert(joint_name);
-    }
-    for (const auto &joint_name : joint_groups.waist)
-    {
-        grouped_joint_names.insert(joint_name);
+        throw std::runtime_error(
+            "config section '" + section_name + "' " + field_name +
+            " contains joints outside its required set: " + joinNames(unexpected_joint_names));
     }
 
     std::vector<std::string> missing_joint_names;
-    for (const auto &joint_name : global_joint_order)
+    for (const auto &joint_name : expected_joint_order)
     {
-        if (grouped_joint_names.find(joint_name) == grouped_joint_names.end())
+        if (provided_joint_names.find(joint_name) == provided_joint_names.end())
         {
             missing_joint_names.push_back(joint_name);
         }
     }
-
     if (!missing_joint_names.empty())
     {
-        std::ostringstream oss;
-        for (size_t i = 0; i < missing_joint_names.size(); ++i)
-        {
-            if (i > 0)
-            {
-                oss << ", ";
-            }
-            oss << missing_joint_names[i];
-        }
         throw std::runtime_error(
-            "joint_groups must fully cover robot_global_joint_order; missing joints: " +
-            oss.str());
-    }
-}
-
-void validateLegJointGroupContract(const JointGroupsConfig &joint_groups)
-{
-    const std::vector<std::string> expected_leg_group = {
-        "right_hip_roll",
-        "right_hip_yaw",
-        "right_hip_pitch",
-        "right_knee_pitch",
-        "right_ankle_pitch",
-        "right_ankle_roll",
-        "left_hip_roll",
-        "left_hip_yaw",
-        "left_hip_pitch",
-        "left_knee_pitch",
-        "left_ankle_pitch",
-        "left_ankle_roll",
-    };
-    if (joint_groups.leg != expected_leg_group)
-    {
-        throw std::runtime_error(
-            "joint_groups.leg must exactly match the current 12-joint leg conversion contract");
-    }
-}
-
-void validateArmJointGroupContract(const JointGroupsConfig &joint_groups)
-{
-    const std::vector<std::string> expected_arm_group = {
-        "right_shoulder_pitch",
-        "right_shoulder_roll",
-        "right_shoulder_yaw",
-        "right_elbow_pitch",
-        "right_elbow_yaw",
-        "right_wrist_pitch",
-        "right_wrist_roll",
-        "left_shoulder_pitch",
-        "left_shoulder_roll",
-        "left_shoulder_yaw",
-        "left_elbow_pitch",
-        "left_elbow_yaw",
-        "left_wrist_pitch",
-        "left_wrist_roll",
-    };
-    if (joint_groups.arm != expected_arm_group)
-    {
-        throw std::runtime_error(
-            "joint_groups.arm must exactly match the current 14-joint arm conversion contract");
-    }
-}
-
-void validateWaistJointGroupContract(const JointGroupsConfig &joint_groups)
-{
-    const std::vector<std::string> expected_waist_group = {
-        "waist_roll",
-        "waist_yaw",
-    };
-    if (joint_groups.waist != expected_waist_group)
-    {
-        throw std::runtime_error(
-            "joint_groups.waist must exactly match the current 2-joint waist conversion contract");
+            "config section '" + section_name + "' " + field_name +
+            " must exactly cover its required joint set; missing: " + joinNames(missing_joint_names));
     }
 }
 
@@ -339,7 +301,7 @@ ModeProfileJointLayout buildJointLayout(
 {
     ModeProfileJointLayout layout;
     layout.joint_name_to_global_index = buildJointIndexMap(joint_order);
-    layout.default_angle = buildDefaultAngleVector(cfg.robotCfg, joint_order);
+    layout.default_angle = buildDefaultAngleVector(cfg.robotCfg, joint_order, section_name);
     layout.zero_pose = buildZeroPoseVector(cfg.robotCfg, joint_order, section_name);
     layout.action_global_indices = buildActionIndices(cfg, layout.joint_name_to_global_index, joint_order.size(), section_name);
     layout.obs_global_indices = buildObsIndices(cfg, layout.joint_name_to_global_index, joint_order.size(), section_name);
@@ -466,10 +428,6 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
     validateJointGroupSubset(joint_groups_.arm, "arm", explicit_global_joint_names);
     validateJointGroupSubset(joint_groups_.waist, "waist", explicit_global_joint_names);
     validateJointGroupOverlap(joint_groups_);
-    validateJointGroupCoverage(joint_groups_, joint_order_);
-    validateLegJointGroupContract(joint_groups_);
-    validateArmJointGroupContract(joint_groups_);
-    validateWaistJointGroupContract(joint_groups_);
     auto validateJointNames = [&](const auto &names, const std::string &field_name, const std::string &section_name) {
         for (const auto &joint_name : names)
         {
@@ -543,45 +501,101 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
         validatePairJointNames(cfg.named_kds, "kds", spec.config_section);
         validatePairJointNames(cfg.named_tau_limit, "tau_limit", spec.config_section);
         validatePairJointNames(cfg.installed_joint_run_modes, "installed_joint_run_modes", spec.config_section);
-
-        if (cfg.robotCfg.zero_joint_angles.empty())
+        std::vector<std::string> default_joint_names;
+        default_joint_names.reserve(cfg.robotCfg.default_joint_angles.size());
+        for (const auto &entry : cfg.robotCfg.default_joint_angles)
         {
-            throw std::runtime_error(
-                "config section '" + spec.config_section +
-                "' robot.zero_joint_angles is required and must cover robot_global_joint_order");
+            default_joint_names.push_back(entry.first);
         }
+        validateExactJointCoverage(
+            explicit_global_joint_order,
+            default_joint_names,
+            "robot.default_joint_angles",
+            spec.config_section);
 
-        std::unordered_set<std::string> zero_joint_names;
+        std::vector<std::string> zero_joint_names;
         zero_joint_names.reserve(cfg.robotCfg.zero_joint_angles.size());
         for (const auto &entry : cfg.robotCfg.zero_joint_angles)
         {
-            zero_joint_names.insert(entry.first);
+            zero_joint_names.push_back(entry.first);
         }
+        validateExactJointCoverage(
+            explicit_global_joint_order,
+            zero_joint_names,
+            "robot.zero_joint_angles",
+            spec.config_section);
 
-        std::vector<std::string> missing_zero_joints;
-        for (const auto &joint_name : explicit_global_joint_order)
+        std::vector<std::string> joint_limit_names;
+        joint_limit_names.reserve(cfg.robotCfg.joint_limit_range.size());
+        for (const auto &entry : cfg.robotCfg.joint_limit_range)
         {
-            if (zero_joint_names.find(joint_name) == zero_joint_names.end())
-            {
-                missing_zero_joints.push_back(joint_name);
-            }
+            joint_limit_names.push_back(entry.first);
         }
-        if (!missing_zero_joints.empty())
+        validateExactJointCoverage(
+            explicit_global_joint_order,
+            joint_limit_names,
+            "robot.joint_limit_range",
+            spec.config_section);
+
+        std::vector<std::string> motor_torque_limit_names;
+        motor_torque_limit_names.reserve(cfg.robotCfg.motor_torque_limit.size());
+        for (const auto &entry : cfg.robotCfg.motor_torque_limit)
         {
-            std::ostringstream oss;
-            for (size_t i = 0; i < missing_zero_joints.size(); ++i)
-            {
-                if (i > 0)
-                {
-                    oss << ", ";
-                }
-                oss << missing_zero_joints[i];
-            }
-            throw std::runtime_error(
-                "config section '" + spec.config_section +
-                "' robot.zero_joint_angles must cover robot_global_joint_order; missing: " +
-                oss.str());
+            motor_torque_limit_names.push_back(entry.first);
         }
+        validateExactJointCoverage(
+            explicit_global_joint_order,
+            motor_torque_limit_names,
+            "robot.motor_torque_limit",
+            spec.config_section);
+
+        std::vector<std::string> installed_run_mode_names;
+        installed_run_mode_names.reserve(cfg.installed_joint_run_modes.size());
+        for (const auto &entry : cfg.installed_joint_run_modes)
+        {
+            installed_run_mode_names.push_back(entry.first);
+        }
+        validateExactJointCoverage(
+            explicit_global_joint_order,
+            installed_run_mode_names,
+            "installed_joint_run_modes",
+            spec.config_section);
+
+        std::vector<std::string> kp_names;
+        kp_names.reserve(cfg.named_kps.size());
+        for (const auto &entry : cfg.named_kps)
+        {
+            kp_names.push_back(entry.first);
+        }
+        validateExactJointCoverage(
+            cfg.action_joint_order,
+            kp_names,
+            "kps",
+            spec.config_section);
+
+        std::vector<std::string> kd_names;
+        kd_names.reserve(cfg.named_kds.size());
+        for (const auto &entry : cfg.named_kds)
+        {
+            kd_names.push_back(entry.first);
+        }
+        validateExactJointCoverage(
+            cfg.action_joint_order,
+            kd_names,
+            "kds",
+            spec.config_section);
+
+        std::vector<std::string> tau_limit_names;
+        tau_limit_names.reserve(cfg.named_tau_limit.size());
+        for (const auto &entry : cfg.named_tau_limit)
+        {
+            tau_limit_names.push_back(entry.first);
+        }
+        validateExactJointCoverage(
+            cfg.action_joint_order,
+            tau_limit_names,
+            "tau_limit",
+            spec.config_section);
     }
 }
 

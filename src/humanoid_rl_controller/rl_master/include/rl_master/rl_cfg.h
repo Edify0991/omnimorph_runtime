@@ -396,7 +396,7 @@ inline JointGroupsConfig loadJointGroupsFromYAML(
     }
 
     JointGroupsConfig out;
-    out.leg = loadJointGroupNamesFromRoot(joint_groups, "leg", true);
+    out.leg = loadJointGroupNamesFromRoot(joint_groups, "leg", false);
     out.arm = loadJointGroupNamesFromRoot(joint_groups, "arm", false);
     out.waist = loadJointGroupNamesFromRoot(joint_groups, "waist", false);
     return out;
@@ -1057,24 +1057,14 @@ public:
                 std::unordered_set<std::string> action_joint_names(
                     action_joint_order.begin(),
                     action_joint_order.end());
-                std::unordered_set<std::string> obs_joint_names(
-                    obs_joint_order.begin(),
-                    obs_joint_order.end());
                 for (const auto &entry : value_map)
                 {
                     const std::string &joint_name = entry.first;
                     const bool in_action = action_joint_names.find(joint_name) != action_joint_names.end();
-                    const bool in_obs = obs_joint_names.find(joint_name) != obs_joint_names.end();
-                    if (!in_action && !in_obs)
-                    {
-                        throw std::runtime_error(
-                            field_name + " contains joint not present in action_joint_order or obs_joint_order: " +
-                            joint_name);
-                    }
                     if (!in_action)
                     {
                         throw std::runtime_error(
-                            field_name + " must match action_joint_order exactly; unexpected joint: " +
+                            field_name + " contains joint not present in action_joint_order: " +
                             joint_name);
                     }
                 }
@@ -1276,10 +1266,6 @@ public:
             if (reference_joint_order.empty())
             {
                 reference_joint_order = action_joint_order;
-            }
-            if (!reference_joint_order.empty() && reference_joint_order.size() != static_cast<size_t>(motor_N))
-            {
-                throw std::runtime_error("reference_joint_order length must equal motor_N");
             }
             {
                 std::unordered_set<std::string> seen_reference_joint_names;

@@ -1,7 +1,6 @@
 mujoco_sim_bridge:
   ros__parameters:
-    # Must be provided at launch time.
-    model_path: "/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_fullbody_standard.xml"
+    model_path: "/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_legs.xml"
 
     # JC01 legs-only MuJoCo contract.
     base_body_name: "Body"
@@ -38,9 +37,45 @@ mujoco_sim_bridge:
       - "motor_left_ankle_roll"
 
     # This XML exposes only the 12 leg joints.
-    hold_kp: [80.0]
-    hold_kd: [2.0]
-    hold_torque_limit: [120.0]
+    hold_kp:
+      right_hip_roll: 394.213
+      right_hip_yaw: 99.511
+      right_hip_pitch: 394.213
+      right_knee_pitch: 300.0
+      right_ankle_pitch: 138.023
+      right_ankle_roll: 138.023
+      left_hip_roll: 394.213
+      left_hip_yaw: 99.511
+      left_hip_pitch: 394.213
+      left_knee_pitch: 300.0
+      left_ankle_pitch: 138.023
+      left_ankle_roll: 138.023
+    hold_kd:
+      right_hip_roll: 23.005
+      right_hip_yaw: 5.007
+      right_hip_pitch: 23.005
+      right_knee_pitch: 17.507
+      right_ankle_pitch: 8.055
+      right_ankle_roll: 8.055
+      left_hip_roll: 23.005
+      left_hip_yaw: 5.007
+      left_hip_pitch: 23.005
+      left_knee_pitch: 17.507
+      left_ankle_pitch: 8.055
+      left_ankle_roll: 8.055
+    hold_torque_limit:
+      right_hip_roll: 60.0
+      right_hip_yaw: 60.0
+      right_hip_pitch: 100.0
+      right_knee_pitch: 100.0
+      right_ankle_pitch: 100.0
+      right_ankle_roll: 100.0
+      left_hip_roll: 60.0
+      left_hip_yaw: 60.0
+      left_hip_pitch: 100.0
+      left_knee_pitch: 100.0
+      left_ankle_pitch: 100.0
+      left_ankle_roll: 100.0
 
     control_hz: 500.0
     sim_dt: 0.001
@@ -73,6 +108,43 @@ mujoco_sim_bridge:
     show_right_ui: true
 
     use_command_torque_ff: false
-    kp: [80.0]
-    kd: [2.0]
-    torque_limit: [120.0]
+    sim_only_force_policy_csp: true
+    kp:
+      right_hip_roll: 394.213
+      right_hip_yaw: 99.511
+      right_hip_pitch: 394.213
+      right_knee_pitch: 300.0
+      right_ankle_pitch: 138.023
+      right_ankle_roll: 138.023
+      left_hip_roll: 394.213
+      left_hip_yaw: 99.511
+      left_hip_pitch: 394.213
+      left_knee_pitch: 300.0
+      left_ankle_pitch: 138.023
+      left_ankle_roll: 138.023
+    kd:
+      right_hip_roll: 23.005
+      right_hip_yaw: 5.007
+      right_hip_pitch: 23.005
+      right_knee_pitch: 17.507
+      right_ankle_pitch: 8.055
+      right_ankle_roll: 8.055
+      left_hip_roll: 23.005
+      left_hip_yaw: 5.007
+      left_hip_pitch: 23.005
+      left_knee_pitch: 17.507
+      left_ankle_pitch: 8.055
+      left_ankle_roll: 8.055
+    torque_limit:
+      right_hip_roll: 60.0
+      right_hip_yaw: 60.0
+      right_hip_pitch: 100.0
+      right_knee_pitch: 100.0
+      right_ankle_pitch: 100.0
+      right_ankle_roll: 100.0
+      left_hip_roll: 60.0
+      left_hip_yaw: 60.0
+      left_hip_pitch: 100.0
+      left_knee_pitch: 100.0
+      left_ankle_pitch: 100.0
+      left_ankle_roll: 100.0
