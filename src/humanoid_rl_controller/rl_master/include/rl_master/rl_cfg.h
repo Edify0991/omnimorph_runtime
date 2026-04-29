@@ -486,6 +486,7 @@ struct SourceContractImuInput
 struct SourceContractSimBase
 {
     std::string quat_source_order = "wxyz"; // MuJoCo free-joint qpos order
+    std::string velocity_source = "freejoint_qvel"; // freejoint_qvel / body_object_velocity_local / body_cvel
 };
 
 struct SourceContractReferenceFile
@@ -711,6 +712,7 @@ public:
     ObservationCanonicalContract observation_canonical_contract;
 
     std::string startup_completion_action = "hold";
+    int policy_startup_warmup_steps = 0;
     double zeroing_duration_s = 2.0;
     double zeroing_position_tolerance = 0.05;
     double zeroing_velocity_tolerance = 0.2;
@@ -1314,6 +1316,8 @@ public:
             const YAML::Node sim_base_contract_cfg = source_contract_cfg["sim_base"];
             source_contract.sim_base.quat_source_order = yamlReadOr<std::string>(
                 sim_base_contract_cfg, "quat_source_order", source_contract.sim_base.quat_source_order);
+            source_contract.sim_base.velocity_source = yamlReadOr<std::string>(
+                sim_base_contract_cfg, "velocity_source", source_contract.sim_base.velocity_source);
 
             const YAML::Node reference_file_contract_cfg = source_contract_cfg["reference_file"];
             source_contract.reference_file.reference_motion_key = yamlReadOr<std::string>(
@@ -1446,6 +1450,14 @@ public:
             {
                 throw std::runtime_error("source_contract.sim_base.quat_source_order must be 'wxyz' or 'xyzw'");
             }
+            if (source_contract.sim_base.velocity_source != "freejoint_qvel" &&
+                source_contract.sim_base.velocity_source != "body_object_velocity_local" &&
+                source_contract.sim_base.velocity_source != "body_cvel")
+            {
+                throw std::runtime_error(
+                    "source_contract.sim_base.velocity_source must be "
+                    "'freejoint_qvel', 'body_object_velocity_local', or 'body_cvel'");
+            }
             auto normalizeLower = [](std::string text) {
                 std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
                     return static_cast<char>(std::tolower(c));
@@ -1537,6 +1549,11 @@ public:
             {
                 throw std::runtime_error(
                     "startup_completion_action must be 'hold' or 'running'");
+            }
+            policy_startup_warmup_steps = yamlReadOr<int>(cfg, "policy_startup_warmup_steps", 0);
+            if (policy_startup_warmup_steps < 0)
+            {
+                throw std::runtime_error("policy_startup_warmup_steps must be >= 0");
             }
             zeroing_duration_s = yamlReadOr<double>(cfg, "zeroing_duration_s", 2.0);
             zeroing_position_tolerance = yamlReadOr<double>(cfg, "zeroing_position_tolerance", 0.05);
@@ -1714,6 +1731,7 @@ public:
                   << ", euler_unit=" << source_contract.imu_input.euler_unit
                   << ", quat_order=" << source_contract.imu_input.quat_order
                   << ", sim_base_quat_source_order=" << source_contract.sim_base.quat_source_order
+                  << ", sim_base_velocity_source=" << source_contract.sim_base.velocity_source
                   << ", canonical_quat_order=" << observation_canonical_contract.quat_order
                   << ", canonical_body_orientation_representation=" << observation_canonical_contract.body_orientation_representation
                   << std::endl;

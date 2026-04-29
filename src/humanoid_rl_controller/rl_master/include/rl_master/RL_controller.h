@@ -43,7 +43,7 @@ public:
         double phase_t);
     void estop();
     std::vector<float> get_robot_observation(double phase_t);
-    std::vector<float> run_policy(std::deque<std::vector<float>> *obs_deque = nullptr);
+    std::vector<float> run_policy(std::deque<std::vector<float>> *obs_deque = nullptr, bool advance_time_step = true);
     std::deque<std::vector<float>> update_obs_deque(const std::vector<float> &obs);
     std::vector<float> get_joint_target_torque(const std::vector<float> &target_q);
     std::vector<float> get_joint_target_q(const std::vector<float> &action);
@@ -130,12 +130,14 @@ private:
         const std::vector<float> &current_observation,
         const std::vector<float> &stacked_observation);
     void prefetchCurrentPolicyReferenceOutputs();
+    void warmStartPolicyState(double phase_t);
     void resetPolicyScheduler();
     PolicyRunOutput runPolicyGroup(
         PolicyRuntimeGroup *group,
         const std::vector<float> &stacked_obs,
         const std::vector<float> &current_observation,
-        const ObservationFeatureContext &feature_context);
+        const ObservationFeatureContext &feature_context,
+        bool advance_time_step = true);
     void initReferenceMotionProvider(
         const Sim2realCfg &cfg,
         const ReferenceFeatureRequirements &required_features,

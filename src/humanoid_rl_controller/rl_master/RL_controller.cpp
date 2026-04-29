@@ -1500,7 +1500,8 @@ RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(
     PolicyRuntimeGroup *group,
     const std::vector<float> &stacked_obs,
     const std::vector<float> &current_observation,
-    const ObservationFeatureContext &feature_context)
+    const ObservationFeatureContext &feature_context,
+    bool advance_time_step)
 {
     if (!group || group->runners.empty())
     {
@@ -1521,7 +1522,11 @@ RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(
         }
 
         PolicyInferenceResult result =
-            node.runner->forward(stacked_obs, current_observation, feature_context.named_features);
+            node.runner->forward(
+                stacked_obs,
+                current_observation,
+                feature_context.named_features,
+                advance_time_step);
         const float weight = primary_done ? node.weight : 1.0f;
         const size_t dim = std::min(output.action.size(), result.action.size());
         for (size_t i = 0; i < dim; ++i)
@@ -1648,6 +1653,27 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs()
     {
         prefetched_policy_extra_outputs_[prefix + kv.first] = kv.second;
     }
+}
+
+void RL_controller::warmStartPolicyState(double phase_t)
+{
+    const auto &cfg = activePolicyCfg();
+    const int warmup_steps = std::max(0, cfg.policy_startup_warmup_steps);
+    if (warmup_steps <= 0)
+    {
+        return;
+    }
+
+    for (int i = 0; i < warmup_steps; ++i)
+    {
+        prefetchCurrentPolicyReferenceOutputs();
+        std::vector<float> current_obs = get_robot_observation(phase_t);
+        update_obs_deque(current_obs);
+        (void)run_policy(nullptr, false);
+    }
+
+    std::cout << "[RL_controller] startup warmup complete: steps=" << warmup_steps
+              << ", mode=" << activeModeProfile().tag << std::endl;
 }
 
 void RL_controller::initReferenceMotionProvider(
@@ -2070,6 +2096,10 @@ rl_master::RobotCommandData RL_controller::step(
 
         if (should_run_policy)
         {
+            if (entered_running)
+            {
+                warmStartPolicyState(local_phase_t);
+            }
             prefetchCurrentPolicyReferenceOutputs();
             std::vector<float> current_obs = get_robot_observation(local_phase_t);
             update_obs_deque(current_obs);
@@ -2221,7 +2251,7 @@ std::vector<float> RL_controller::get_robot_observation(double phase_t)
     return obs;
 }
 
-std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs_deque_ptr)
+std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs_deque_ptr, bool advance_time_step)
 {
     if (!obs_deque_ptr)
     {
@@ -2252,7 +2282,8 @@ std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs
         &activePolicyGroup(),
         stacked_obs_buffer_,
         obs,
-        latest_observation_feature_context_);
+        latest_observation_feature_context_,
+        advance_time_step);
     std::vector<float> target_action = std::move(policy_output.action);
     latest_policy_extra_outputs_ = std::move(policy_output.extra_outputs);
     runAmpDiscriminator(

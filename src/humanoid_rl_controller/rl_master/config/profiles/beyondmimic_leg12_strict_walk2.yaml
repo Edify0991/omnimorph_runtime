@@ -152,6 +152,7 @@ beyondmimic_leg12_strict_walk2:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
+      # velocity_source: body_object_velocity_local
     policy_extra_outputs:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
@@ -174,7 +175,7 @@ beyondmimic_leg12_strict_walk2:
     action_output_name: actions
     enable_time_step_input: true
     time_step_input_name: time_step
-    time_step_start: 0
+    time_step_start: 50
     strict_model_io: true
     enable_metadata_check: true
     metadata_check_strict: true
@@ -198,6 +199,7 @@ beyondmimic_leg12_strict_walk2:
   enable_state_telemetry: true
   state_telemetry_hz: 50.0
   startup_completion_action: hold
+  policy_startup_warmup_steps: 1
   zeroing_duration_s: 5.0
   zeroing_position_tolerance: 100.0
   zeroing_velocity_tolerance: 100.0
@@ -218,18 +220,18 @@ beyondmimic_leg12_strict_walk2:
       left_ankle_pitch: -0.24
       left_ankle_roll: 0.0
     zero_joint_angles:
-      right_hip_roll: -0.003738438478
-      right_hip_yaw: 0.2410065979
-      right_hip_pitch: -0.08923470974
-      right_knee_pitch: 0.2411970645
-      right_ankle_pitch: -0.1428981721
-      right_ankle_roll: -0.02671905234
-      left_hip_roll: 0.02924927324
-      left_hip_yaw: 0.05027802289
-      left_hip_pitch: -0.1443499029
-      left_knee_pitch: 0.2769957185
-      left_ankle_pitch: -0.1056356356
-      left_ankle_roll: -0.03363090754
+      right_hip_roll: -0.002272082027
+      right_hip_yaw: 0.2372164279
+      right_hip_pitch: -0.1582825035
+      right_knee_pitch: 0.3525242209
+      right_ankle_pitch: -0.1966467202
+      right_ankle_roll: -0.0241828505
+      left_hip_roll: 0.0245223269
+      left_hip_yaw: 0.05362581834
+      left_hip_pitch: -0.1941322386
+      left_knee_pitch: 0.3517585993
+      left_ankle_pitch: -0.140415892
+      left_ankle_roll: -0.03464089707
     joint_limit_range:
       right_hip_roll: [-0.2, 0.2]
       right_hip_yaw: [-1.05, 1.05]

@@ -33,7 +33,8 @@ public:
     PolicyInferenceResult forward(
         const std::vector<float> &stacked_observation,
         const std::vector<float> &current_observation,
-        const std::unordered_map<std::string, std::vector<float>> &features);
+        const std::unordered_map<std::string, std::vector<float>> &features,
+        bool advance_time_step = true);
     std::unordered_map<std::string, std::vector<float>> prefetchExtraOutputs(
         const std::vector<std::string> &extra_output_names,
         const std::vector<float> &stacked_observation,

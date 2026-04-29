@@ -110,7 +110,7 @@ mujoco_sim_bridge:
     show_right_ui: true
 
     use_command_torque_ff: false
-    sim_only_force_policy_csp: true
+    sim_only_force_policy_csp: false
     kp:
       right_hip_roll: 394.213
       right_hip_yaw: 99.511

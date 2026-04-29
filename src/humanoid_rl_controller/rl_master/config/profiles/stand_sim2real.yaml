@@ -1,34 +1,47 @@
-stand_sim2real:
-  policy_name: 2026-04-09_15-00-05v2
+engineai_stand:
+  policy_name: 2026-04-10_15-45-32v1
   policy_family: velloco
   obs_stack_N: 15
-  cycle_time: 0.95
+  cycle_time: 1.0
   kps:
-    right_hip_roll: 250
-    right_hip_yaw: 200
-    right_hip_pitch: 150
-    right_knee_pitch: 150
-    right_ankle_pitch: 60
-    right_ankle_roll: 60
-    left_hip_roll: 250
-    left_hip_yaw: 200
-    left_hip_pitch: 150
-    left_knee_pitch: 150
-    left_ankle_pitch: 60
-    left_ankle_roll: 60
+    left_hip_roll: 394.213
+    left_hip_yaw: 99.511
+    left_hip_pitch: 394.213
+    left_knee_pitch: 300.0
+    left_ankle_pitch: 138.023
+    left_ankle_roll: 138.023
+    right_hip_roll: 394.213
+    right_hip_yaw: 99.511
+    right_hip_pitch: 394.213
+    right_knee_pitch: 300.0
+    right_ankle_pitch: 138.023
+    right_ankle_roll: 138.023
   kds:
-    right_hip_roll: 20
-    right_hip_yaw: 20
-    right_hip_pitch: 10
-    right_knee_pitch: 15
-    right_ankle_pitch: 4
-    right_ankle_roll: 4
-    left_hip_roll: 20
-    left_hip_yaw: 20
-    left_hip_pitch: 10
-    left_knee_pitch: 15
-    left_ankle_pitch: 4
-    left_ankle_roll: 4
+    left_hip_roll: 23.005
+    left_hip_yaw: 5.007
+    left_hip_pitch: 23.005
+    left_knee_pitch: 17.507
+    left_ankle_pitch: 8.055
+    left_ankle_roll: 8.055
+    right_hip_roll: 23.005
+    right_hip_yaw: 5.007
+    right_hip_pitch: 23.005
+    right_knee_pitch: 17.507
+    right_ankle_pitch: 8.055
+    right_ankle_roll: 8.055
+  tau_limit:
+    left_hip_roll: 130.0
+    left_hip_yaw: 130.0
+    left_hip_pitch: 130.0
+    left_knee_pitch: 130.0
+    left_ankle_pitch: 130.0
+    left_ankle_roll: 130.0
+    right_hip_roll: 130.0
+    right_hip_yaw: 130.0
+    right_hip_pitch: 130.0
+    right_knee_pitch: 130.0
+    right_ankle_pitch: 130.0
+    right_ankle_roll: 130.0
   clip_observations: 100.0
   clip_actions: 100.0
   action_scale: 0.5
@@ -36,21 +49,21 @@ stand_sim2real:
   obs_dim: 47
   action_dim: 12
   motor_N: 12
-  RL_control_f: 100
+  RL_control_f: 50
   solver_control_hz: 500
   installed_joint_run_modes:
-    right_hip_roll: cst
-    right_hip_yaw: cst
-    right_hip_pitch: cst
-    right_knee_pitch: cst
-    right_ankle_pitch: cst
-    right_ankle_roll: cst
     left_hip_roll: cst
     left_hip_yaw: cst
     left_hip_pitch: cst
     left_knee_pitch: cst
     left_ankle_pitch: cst
     left_ankle_roll: cst
+    right_hip_roll: cst
+    right_hip_yaw: cst
+    right_hip_pitch: cst
+    right_knee_pitch: cst
+    right_ankle_pitch: cst
+    right_ankle_roll: cst
   realtime:
     enabled: true
     lock_memory: true
@@ -59,52 +72,33 @@ stand_sim2real:
     use_fifo: true
     fifo_priority: 90
   action_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
     - left_hip_roll
     - left_hip_yaw
     - left_hip_pitch
     - left_knee_pitch
     - left_ankle_pitch
     - left_ankle_roll
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
   obs_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
     - left_hip_roll
     - left_hip_yaw
     - left_hip_pitch
     - left_knee_pitch
     - left_ankle_pitch
     - left_ankle_roll
-  observation_manifest_file: observation_manifest_amp.yaml
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+  observation_manifest_file: observation_manifest_velloco.yaml
   enable_reference_motion: false
-  reference_motion_dim: 24
-  reference_motion_sampling: phase
-  reference_motion_source: auto
-  reference_motion_file: reference_motion/stand_ref.txt
-  reference_anchor_body: base
-  reference_body_names: []
-  reference_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
-    - left_hip_roll
-    - left_hip_yaw
-    - left_hip_pitch
-    - left_knee_pitch
-    - left_ankle_pitch
-    - left_ankle_roll
   source_contract:
     imu_input:
       payload: euler_compat
@@ -115,15 +109,6 @@ stand_sim2real:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-    policy_extra_outputs:
-      reference_motion_key: reference_motion
-      reference_joint_pos_key: joint_pos
-      reference_joint_vel_key: joint_vel
-      reference_body_pos_w_key: body_pos_w
-      reference_body_quat_w_key: body_quat_w
-      body_quat_order: wxyz
-      body_quat_representation: quat
-      body_quat_frame: world
   observation_contract:
     canonical:
       joint_order: robot_global_joint_order
@@ -131,22 +116,15 @@ stand_sim2real:
       quat_representation: quat
       body_quat_frame: world
       body_orientation_representation: rot6
-  external_observations:
-    - name: vision_latent
-      dim: 64
-      required: false
-    - name: lidar_latent
-      dim: 32
-      required: false
   onnx_intra_threads: 1
   onnx_inter_threads: 1
   policy_io:
-    obs_input_name: obs
-    action_output_name: actions
+    obs_input_name: input
+    action_output_name: output
     enable_time_step_input: false
     time_step_input_name: time_step
     time_step_start: 0
-    strict_model_io: false
+    strict_model_io: true
     enable_metadata_check: false
     metadata_check_strict: true
     required_metadata_keys: []
@@ -154,72 +132,44 @@ stand_sim2real:
     reset_policy_on_mode_switch: true
     extra_output_names: []
     onnx_inputs: []
-  amp_discriminator:
-    enabled: false
-    input_source: stacked_observation
-    policy_file: policies/stand_amp_discriminator.onnx
-    policy_io:
-      obs_input_name: obs
-      score_output_name: disc_score
-      enable_time_step_input: false
-      time_step_input_name: time_step
-      time_step_start: 0
-      strict_model_io: false
-      enable_metadata_check: false
-      metadata_check_strict: true
-      required_metadata_keys: []
-      expected_metadata: {}
-      extra_output_names: []
-      warn_below: -1.0e9
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12
   loop_overrun_warn_us: 2000
   enable_state_telemetry: true
   state_telemetry_hz: 50.0
   startup_completion_action: hold
-  zeroing_duration_s: 2.0
-  tau_limit:
-    right_hip_roll: 130.0
-    right_hip_yaw: 130.0
-    right_hip_pitch: 130.0
-    right_knee_pitch: 130.0
-    right_ankle_pitch: 130.0
-    right_ankle_roll: 130.0
-    left_hip_roll: 130.0
-    left_hip_yaw: 130.0
-    left_hip_pitch: 130.0
-    left_knee_pitch: 130.0
-    left_ankle_pitch: 130.0
-    left_ankle_roll: 130.0
+  zeroing_duration_s: 5.0
+  zeroing_position_tolerance: 100.0
+  zeroing_velocity_tolerance: 100.0
   control_mode: sim2real
   action_filter: 0.5
   robot:
     default_joint_angles:
-      left_hip_roll: 0.0
-      left_hip_yaw: 0.0
-      left_hip_pitch: -0.24
-      left_knee_pitch: 0.48
-      left_ankle_pitch: -0.24
-      left_ankle_roll: 0.0
       right_hip_roll: 0.0
       right_hip_yaw: 0.0
       right_hip_pitch: -0.24
       right_knee_pitch: 0.48
       right_ankle_pitch: -0.24
       right_ankle_roll: 0.0
+      left_hip_roll: 0.0
+      left_hip_yaw: 0.0
+      left_hip_pitch: -0.24
+      left_knee_pitch: 0.48
+      left_ankle_pitch: -0.24
+      left_ankle_roll: 0.0
     zero_joint_angles:
-      left_hip_roll: 0.0
-      left_hip_yaw: 0.0
-      left_hip_pitch: -0.24
-      left_knee_pitch: 0.48
-      left_ankle_pitch: -0.24
-      left_ankle_roll: 0.0
       right_hip_roll: 0.0
       right_hip_yaw: 0.0
       right_hip_pitch: -0.24
       right_knee_pitch: 0.48
       right_ankle_pitch: -0.24
       right_ankle_roll: 0.0
+      left_hip_roll: 0.0
+      left_hip_yaw: 0.0
+      left_hip_pitch: -0.24
+      left_knee_pitch: 0.48
+      left_ankle_pitch: -0.24
+      left_ankle_roll: 0.0
     joint_limit_range:
       right_hip_roll: [-0.2, 0.2]
       right_hip_yaw: [-1.05, 1.05]

@@ -198,7 +198,7 @@ MujocoSimBridge::MujocoSimBridge()
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, release_settle_ticks=%d, hold_settle_ticks=%d, prepose_snap=%s, sim_only_force_policy_csp=%s",
+        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, sim_base_velocity_source=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, release_settle_ticks=%d, hold_settle_ticks=%d, prepose_snap=%s, sim_only_force_policy_csp=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
@@ -211,6 +211,7 @@ MujocoSimBridge::MujocoSimBridge()
         enable_state_telemetry_ ? "on" : "off",
         state_telemetry_hz_,
         controller_runtime_.runtimeCfg().source_contract.sim_base.quat_source_order.c_str(),
+        controller_runtime_.runtimeCfg().source_contract.sim_base.velocity_source.c_str(),
         enable_fixed_base_zeroing_ ? "on" : "off",
         enable_fixed_base_hold_after_zeroing_ ? "on" : "off",
         enable_release_before_running_ ? "on" : "off",
@@ -2661,11 +2662,24 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
     std::transform(quat_source_order.begin(), quat_source_order.end(), quat_source_order.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
     });
+    std::string velocity_source = runtime_cfg.source_contract.sim_base.velocity_source;
+    std::transform(velocity_source.begin(), velocity_source.end(), velocity_source.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
     if (quat_source_order != "wxyz")
     {
         throw std::runtime_error(
             "MuJoCo sim base quaternion source order must be 'wxyz', got '" +
             runtime_cfg.source_contract.sim_base.quat_source_order + "'");
+    }
+    if (velocity_source != "freejoint_qvel" &&
+        velocity_source != "body_object_velocity_local" &&
+        velocity_source != "body_cvel")
+    {
+        throw std::runtime_error(
+            "MuJoCo sim base velocity source must be 'freejoint_qvel', "
+            "'body_object_velocity_local', or 'body_cvel', got '" +
+            runtime_cfg.source_contract.sim_base.velocity_source + "'");
     }
 
     rl_master::RobotStateData state;
@@ -2693,7 +2707,40 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
 
     std::array<float, 4> base_quat_xyzw{0.0f, 0.0f, 0.0f, 1.0f};
 
-    if (base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
+    if (velocity_source == "freejoint_qvel" &&
+        base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
+    {
+        state.base_lin_vel[0] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 0]);
+        state.base_lin_vel[1] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 1]);
+        state.base_lin_vel[2] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 2]);
+        state.base_ang_vel[0] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 3]);
+        state.base_ang_vel[1] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 4]);
+        state.base_ang_vel[2] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 5]);
+    }
+    else if (velocity_source == "body_object_velocity_local" &&
+             base_body_id_ >= 0 && base_body_id_ < model_->nbody)
+    {
+        mjtNum vel6_local[6] = {0, 0, 0, 0, 0, 0};
+        mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_local, 1);
+        state.base_ang_vel[0] = static_cast<float>(vel6_local[0]);
+        state.base_ang_vel[1] = static_cast<float>(vel6_local[1]);
+        state.base_ang_vel[2] = static_cast<float>(vel6_local[2]);
+        state.base_lin_vel[0] = static_cast<float>(vel6_local[3]);
+        state.base_lin_vel[1] = static_cast<float>(vel6_local[4]);
+        state.base_lin_vel[2] = static_cast<float>(vel6_local[5]);
+    }
+    else if (velocity_source == "body_cvel" &&
+             base_body_id_ >= 0 && base_body_id_ < model_->nbody && data_->cvel)
+    {
+        const mjtNum *cvel = data_->cvel + 6 * base_body_id_;
+        state.base_ang_vel[0] = static_cast<float>(cvel[0]);
+        state.base_ang_vel[1] = static_cast<float>(cvel[1]);
+        state.base_ang_vel[2] = static_cast<float>(cvel[2]);
+        state.base_lin_vel[0] = static_cast<float>(cvel[3]);
+        state.base_lin_vel[1] = static_cast<float>(cvel[4]);
+        state.base_lin_vel[2] = static_cast<float>(cvel[5]);
+    }
+    else if (base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
     {
         state.base_lin_vel[0] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 0]);
         state.base_lin_vel[1] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 1]);
@@ -2712,13 +2759,6 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
         state.base_lin_vel[0] = static_cast<float>(vel6_local[3]);
         state.base_lin_vel[1] = static_cast<float>(vel6_local[4]);
         state.base_lin_vel[2] = static_cast<float>(vel6_local[5]);
-        if (data_->xpos)
-        {
-            const mjtNum *p = data_->xpos + 3 * base_body_id_;
-            state.base_pos_w[0] = static_cast<float>(p[0]);
-            state.base_pos_w[1] = static_cast<float>(p[1]);
-            state.base_pos_w[2] = static_cast<float>(p[2]);
-        }
     }
     else if (base_body_id_ >= 0 && base_body_id_ < model_->nbody && data_->cvel)
     {

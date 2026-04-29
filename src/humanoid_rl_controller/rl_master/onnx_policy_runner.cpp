@@ -360,14 +360,15 @@ void OnnxPolicyRunner::reset()
 PolicyInferenceResult OnnxPolicyRunner::forward(
     const std::vector<float> &stacked_observation,
     const std::vector<float> &current_observation,
-    const std::unordered_map<std::string, std::vector<float>> &features)
+    const std::unordered_map<std::string, std::vector<float>> &features,
+    bool advance_time_step)
 {
     return runSelectedOutputs(
         selected_output_names_,
         stacked_observation,
         current_observation,
         features,
-        true);
+        advance_time_step);
 }
 
 std::unordered_map<std::string, std::vector<float>> OnnxPolicyRunner::prefetchExtraOutputs(
