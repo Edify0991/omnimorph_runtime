@@ -45,6 +45,7 @@ SUPPORTED_MANIFEST_TERMS = {
     "joint_pos",
     "joint_vel",
     "last_action",
+    "base_lin_vel",
     "base_ang_vel",
     "base_rpy",
     "base_euler",
@@ -70,6 +71,7 @@ DEFAULT_TERM_DIM = {
     "joint_pos": 12,
     "joint_vel": 12,
     "last_action": 12,
+    "base_lin_vel": 3,
     "reference_joint_pos": 12,
     "reference_joint_vel": 12,
     "base_ang_vel": 3,
@@ -101,6 +103,7 @@ REQUIRES_POSITIVE_COUNT = {
 
 SUPPORTED_COMPONENTS = {
     "command": {"vx", "vy", "dyaw"},
+    "base_lin_vel": {"x", "y", "z"},
     "base_ang_vel": {"wx", "wy", "wz", "x", "y", "z"},
     "base_euler": {"roll", "pitch", "yaw"},
     "base_quat": {"x", "y", "z", "w"},

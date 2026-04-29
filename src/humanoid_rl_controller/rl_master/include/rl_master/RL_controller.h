@@ -102,10 +102,11 @@ private:
         std::unique_ptr<OnnxPolicyRunner> amp_discriminator;
         ReferenceMotionProvider reference_motion;
         ReferenceFeatureRequirements required_reference_features;
-        bool reference_alignment_initialized = false;
-        std::vector<float> reference_anchor_init_pos_w;
-        std::vector<float> reference_anchor_init_quat_w;
-        std::vector<float> robot_base_init_quat_w;
+        bool reference_world_alignment_initialized = false;
+        std::vector<float> reference_align_anchor_pos_w;
+        std::vector<float> reference_align_anchor_quat_w;
+        std::vector<float> robot_align_anchor_pos_w;
+        std::vector<float> robot_align_anchor_quat_w;
     };
 
     const std::vector<int> &currentActionIndexMap() const;
@@ -128,6 +129,7 @@ private:
         OnnxPolicyRunner *runner,
         const std::vector<float> &current_observation,
         const std::vector<float> &stacked_observation);
+    void prefetchCurrentPolicyReferenceOutputs();
     void resetPolicyScheduler();
     PolicyRunOutput runPolicyGroup(
         PolicyRuntimeGroup *group,
@@ -176,6 +178,7 @@ private:
     std::vector<float> action;
     std::vector<float> joint_target_q;
     std::vector<float> joint_target_torque;
+    std::unordered_map<std::string, std::vector<float>> prefetched_policy_extra_outputs_;
     std::unordered_map<std::string, std::vector<float>> latest_policy_extra_outputs_;
     ObservationFeatureContext latest_observation_feature_context_;
 

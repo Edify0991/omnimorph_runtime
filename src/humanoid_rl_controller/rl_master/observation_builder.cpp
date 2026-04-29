@@ -629,6 +629,20 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           3,
           true,
           true}},
+        {"base_lin_vel",
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const auto components = term.components.empty() ? std::vector<std::string>{"x", "y", "z"} : term.components;
+              const int component_count = static_cast<int>(components.size());
+              for (int i = 0; i < term.count; ++i)
+              {
+                  const int component_idx = i < component_count ? componentIndex3(components[static_cast<size_t>(i)], {"x", "y", "z"}) : -1;
+                  const bool valid = component_idx >= 0 && static_cast<size_t>(component_idx) < robot.base_lin_vel.size();
+                  out->push_back(valid ? robot.base_lin_vel[static_cast<size_t>(component_idx)] * cfg.scales.lin_vel : 0.0f);
+              }
+          },
+          3,
+          true,
+          true}},
         {"base_rpy",
          {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               const std::vector<float> rpy = quaternion_to_euler_array(robot.base_quat);
@@ -683,7 +697,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
               const std::vector<float> *source = featureVectorOrNull(feature_context, source_name);
               const ObservationFeatureContract *source_contract = findFeatureContract(feature_context, source_name);
               std::vector<float> values;
-              if (!term.target_order.empty())
+              if (source_contract)
               {
                   values = applyFeatureTargetContract(term, source_name, source, source_contract);
               }
@@ -703,7 +717,7 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
               const std::vector<float> *source = featureVectorOrNull(feature_context, source_name);
               const ObservationFeatureContract *source_contract = findFeatureContract(feature_context, source_name);
               std::vector<float> values;
-              if (!term.target_order.empty())
+              if (source_contract)
               {
                   values = applyFeatureTargetContract(term, source_name, source, source_contract);
               }

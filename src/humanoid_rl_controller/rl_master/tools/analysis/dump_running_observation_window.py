@@ -32,7 +32,7 @@ def _default_term_dim(term: Dict[str, Any]) -> int:
         return 3
     if name in {"joint_pos", "joint_vel", "last_action"}:
         return 12
-    if name in {"base_ang_vel", "base_rpy", "base_euler"}:
+    if name in {"base_lin_vel", "base_ang_vel", "base_rpy", "base_euler"}:
         return 3
     if name == "base_quat":
         return 4

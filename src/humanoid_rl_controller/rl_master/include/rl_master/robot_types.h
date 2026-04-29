@@ -17,6 +17,8 @@ struct RobotStateData
     std::vector<float> joint_dq;
     std::vector<float> joint_tau;
 
+    std::array<float, 3> base_pos_w{};
+    std::array<float, 3> base_lin_vel{};
     std::array<float, 3> base_ang_vel{};
     // Quaternion layout: [x, y, z, w]
     std::array<float, 4> base_quat{0.0f, 0.0f, 0.0f, 1.0f};

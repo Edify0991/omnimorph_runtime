@@ -16,6 +16,8 @@ void RobotState::initialize_buffers(size_t joint_count, const std::vector<float>
     joint_target_dq.assign(joint_count, 0.0f);
     joint_target_tau.assign(joint_count, 0.0f);
 
+    base_pos_w.assign(3, 0.0f);
+    base_lin_vel.assign(3, 0.0f);
     base_ang_vel.assign(3, 0.0f);
     base_quat.assign(4, 0.0f);
     base_quat[3] = 1.0f;

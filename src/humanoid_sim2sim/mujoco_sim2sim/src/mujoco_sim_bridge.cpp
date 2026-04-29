@@ -2693,8 +2693,29 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
 
     std::array<float, 4> base_quat_xyzw{0.0f, 0.0f, 0.0f, 1.0f};
 
-    if (base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
+    if (base_body_id_ >= 0 && base_body_id_ < model_->nbody)
     {
+        mjtNum vel6_local[6] = {0, 0, 0, 0, 0, 0};
+        mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_local, 1);
+        state.base_ang_vel[0] = static_cast<float>(vel6_local[0]);
+        state.base_ang_vel[1] = static_cast<float>(vel6_local[1]);
+        state.base_ang_vel[2] = static_cast<float>(vel6_local[2]);
+        state.base_lin_vel[0] = static_cast<float>(vel6_local[3]);
+        state.base_lin_vel[1] = static_cast<float>(vel6_local[4]);
+        state.base_lin_vel[2] = static_cast<float>(vel6_local[5]);
+        if (data_->xpos)
+        {
+            const mjtNum *p = data_->xpos + 3 * base_body_id_;
+            state.base_pos_w[0] = static_cast<float>(p[0]);
+            state.base_pos_w[1] = static_cast<float>(p[1]);
+            state.base_pos_w[2] = static_cast<float>(p[2]);
+        }
+    }
+    else if (base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
+    {
+        state.base_lin_vel[0] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 0]);
+        state.base_lin_vel[1] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 1]);
+        state.base_lin_vel[2] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 2]);
         state.base_ang_vel[0] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 3]);
         state.base_ang_vel[1] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 4]);
         state.base_ang_vel[2] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 5]);
@@ -2705,10 +2726,16 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
         state.base_ang_vel[0] = static_cast<float>(cvel[0]);
         state.base_ang_vel[1] = static_cast<float>(cvel[1]);
         state.base_ang_vel[2] = static_cast<float>(cvel[2]);
+        state.base_lin_vel[0] = static_cast<float>(cvel[3]);
+        state.base_lin_vel[1] = static_cast<float>(cvel[4]);
+        state.base_lin_vel[2] = static_cast<float>(cvel[5]);
     }
 
     if (base_free_qpos_adr_ >= 0 && (base_free_qpos_adr_ + 6) < model_->nq)
     {
+        state.base_pos_w[0] = static_cast<float>(data_->qpos[base_free_qpos_adr_ + 0]);
+        state.base_pos_w[1] = static_cast<float>(data_->qpos[base_free_qpos_adr_ + 1]);
+        state.base_pos_w[2] = static_cast<float>(data_->qpos[base_free_qpos_adr_ + 2]);
         const float qw = static_cast<float>(data_->qpos[base_free_qpos_adr_ + 3]);
         const float qx = static_cast<float>(data_->qpos[base_free_qpos_adr_ + 4]);
         const float qy = static_cast<float>(data_->qpos[base_free_qpos_adr_ + 5]);

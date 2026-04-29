@@ -34,6 +34,12 @@ public:
         const std::vector<float> &stacked_observation,
         const std::vector<float> &current_observation,
         const std::unordered_map<std::string, std::vector<float>> &features);
+    std::unordered_map<std::string, std::vector<float>> prefetchExtraOutputs(
+        const std::vector<std::string> &extra_output_names,
+        const std::vector<float> &stacked_observation,
+        const std::vector<float> &current_observation,
+        const std::unordered_map<std::string, std::vector<float>> &features,
+        bool advance_time_step = false);
 
     const std::vector<std::string> &input_names() const { return input_names_; }
     const std::vector<std::string> &output_names() const { return output_names_; }
@@ -67,6 +73,12 @@ private:
         const std::vector<float> &stacked_observation,
         const std::vector<float> &current_observation,
         const std::unordered_map<std::string, std::vector<float>> &features) const;
+    PolicyInferenceResult runSelectedOutputs(
+        const std::vector<std::string> &requested_output_names,
+        const std::vector<float> &stacked_observation,
+        const std::vector<float> &current_observation,
+        const std::unordered_map<std::string, std::vector<float>> &features,
+        bool advance_time_step);
     void validateModelMetadata();
 
     Ort::Env &env_;

@@ -1,0 +1,41 @@
+observation_manifest:
+  schema_version: 3
+  profile: "beyondmimic_legs"
+  # 75D total:
+  #   ref_joint_pos(12) + ref_joint_vel(12) + motion_anchor_pos_b(3) +
+  #   motion_anchor_ori_b(6) + base_lin_vel(3) + base_ang_vel(3) +
+  #   joint_pos(12) + joint_vel(12) + last_action(12)
+  terms:
+    - name: reference_joint_pos
+      enabled: true
+      count: 12
+    - name: reference_joint_vel
+      enabled: true
+      count: 12
+    - name: motion_anchor_pos_b
+      enabled: true
+      count: 3
+      source: motion_anchor_pos_b
+    - name: motion_anchor_ori_b
+      enabled: true
+      count: 6
+      source: motion_anchor_ori_b
+      target_representation: rot6
+      target_frame: body_local
+    - name: base_lin_vel
+      enabled: true
+      count: 3
+      components: [x, y, z]
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+      components: [x, y, z]
+    - name: joint_pos
+      enabled: true
+      count: 12
+    - name: joint_vel
+      enabled: true
+      count: 12
+    - name: last_action
+      enabled: true
+      count: 12

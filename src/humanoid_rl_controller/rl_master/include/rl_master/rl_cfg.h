@@ -658,6 +658,8 @@ public:
     std::map<std::string, float> named_kps;
     std::map<std::string, float> named_kds;
     std::map<std::string, float> named_tau_limit;
+    std::vector<float> action_scales;
+    std::map<std::string, float> named_action_scales;
 
     float clip_observations = 100.0f;
     float clip_actions = 100.0f;
@@ -973,7 +975,8 @@ public:
 
             clip_observations = cfg["clip_observations"].as<float>();
             clip_actions = cfg["clip_actions"].as<float>();
-            action_scale = cfg["action_scale"].as<float>();
+            const bool has_scalar_action_scale = static_cast<bool>(cfg["action_scale"]);
+            action_scale = yamlReadOr<float>(cfg, "action_scale", 1.0f);
 
             device_id = cfg["device_id"].as<int>();
             obs_dim = cfg["obs_dim"].as<int>();
@@ -1086,17 +1089,31 @@ public:
                 throw std::runtime_error("tau_limit must be a non-empty joint-name map");
             }
             validateNamedActionJointValueMap(named_tau_limit, "tau_limit");
+            named_action_scales = yamlReadFloatMapOr(cfg, "action_scales");
+            if (named_action_scales.empty() && !has_scalar_action_scale)
+            {
+                throw std::runtime_error(
+                    "either action_scale or action_scales must be provided");
+            }
             kps.clear();
             kds.clear();
             tau_limit.clear();
+            action_scales.clear();
             kps.reserve(action_joint_order.size());
             kds.reserve(action_joint_order.size());
             tau_limit.reserve(action_joint_order.size());
+            action_scales.reserve(action_joint_order.size());
+            if (!named_action_scales.empty())
+            {
+                validateNamedActionJointValueMap(named_action_scales, "action_scales");
+            }
             for (const auto &joint_name : action_joint_order)
             {
                 kps.push_back(named_kps.at(joint_name));
                 kds.push_back(named_kds.at(joint_name));
                 tau_limit.push_back(named_tau_limit.at(joint_name));
+                action_scales.push_back(
+                    named_action_scales.empty() ? action_scale : named_action_scales.at(joint_name));
             }
 
             const std::string policy_file = yamlReadOr<std::string>(cfg, "policy_file", "");

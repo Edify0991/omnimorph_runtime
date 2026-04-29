@@ -38,7 +38,11 @@ deploy_mode_profiles:
 - mode_id: 1
   config_section: stand_sim2real
   tag: stand
+- mode_id: 2
+  config_section: beyondmimic_leg12_strict_walk2
+  tag: beyondmimic_walk
 config_files:
+  beyondmimic_leg12_strict_walk2: profiles/beyondmimic_leg12_strict_walk2.yaml
   engineai_walk: profiles/engineai_walk.yaml
   engineai_full_body_example: profiles/engineai_full_body_example.yaml
   stand_sim2real: profiles/stand_sim2real.yaml

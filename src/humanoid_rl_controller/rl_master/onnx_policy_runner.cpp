@@ -29,6 +29,36 @@ std::string trimCopy(const std::string &input)
     return input.substr(begin, end - begin);
 }
 
+std::vector<std::string> parseCsvList(const std::string &input)
+{
+    std::vector<std::string> items;
+    std::stringstream ss(input);
+    std::string item;
+    while (std::getline(ss, item, ','))
+    {
+        const std::string trimmed = trimCopy(item);
+        if (!trimmed.empty())
+        {
+            items.push_back(trimmed);
+        }
+    }
+    return items;
+}
+
+std::string joinStrings(const std::vector<std::string> &items)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < items.size(); ++i)
+    {
+        if (i > 0)
+        {
+            oss << ", ";
+        }
+        oss << items[i];
+    }
+    return oss.str();
+}
+
 bool parseInt64Value(const std::string &text, int64_t *out)
 {
     if (!out)
@@ -332,6 +362,41 @@ PolicyInferenceResult OnnxPolicyRunner::forward(
     const std::vector<float> &current_observation,
     const std::unordered_map<std::string, std::vector<float>> &features)
 {
+    return runSelectedOutputs(
+        selected_output_names_,
+        stacked_observation,
+        current_observation,
+        features,
+        true);
+}
+
+std::unordered_map<std::string, std::vector<float>> OnnxPolicyRunner::prefetchExtraOutputs(
+    const std::vector<std::string> &extra_output_names,
+    const std::vector<float> &stacked_observation,
+    const std::vector<float> &current_observation,
+    const std::unordered_map<std::string, std::vector<float>> &features,
+    bool advance_time_step)
+{
+    if (extra_output_names.empty())
+    {
+        return {};
+    }
+    return runSelectedOutputs(
+               extra_output_names,
+               stacked_observation,
+               current_observation,
+               features,
+               advance_time_step)
+        .extra_outputs;
+}
+
+PolicyInferenceResult OnnxPolicyRunner::runSelectedOutputs(
+    const std::vector<std::string> &requested_output_names,
+    const std::vector<float> &stacked_observation,
+    const std::vector<float> &current_observation,
+    const std::unordered_map<std::string, std::vector<float>> &features,
+    bool advance_time_step)
+{
     if (!session_)
     {
         throw std::runtime_error("[" + policy_tag_ + "] forward called before init()");
@@ -339,6 +404,10 @@ PolicyInferenceResult OnnxPolicyRunner::forward(
     if (stacked_observation.empty() && current_observation.empty())
     {
         throw std::runtime_error("[" + policy_tag_ + "] observation inputs are empty");
+    }
+    if (requested_output_names.empty())
+    {
+        return {};
     }
 
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -361,9 +430,34 @@ PolicyInferenceResult OnnxPolicyRunner::forward(
             buffer.shape.size()));
     }
 
+    std::vector<std::string> resolved_output_names;
+    resolved_output_names.reserve(requested_output_names.size());
+    for (const auto &requested_name : requested_output_names)
+    {
+        const int output_index = findOutputIndexByName(requested_name);
+        if (output_index < 0)
+        {
+            if (cfg_.strict_model_io)
+            {
+                throw std::runtime_error("[" + policy_tag_ + "] requested output '" + requested_name + "' not found");
+            }
+            continue;
+        }
+        const std::string &resolved_name = output_names_[static_cast<size_t>(output_index)];
+        if (std::find(resolved_output_names.begin(), resolved_output_names.end(), resolved_name) ==
+            resolved_output_names.end())
+        {
+            resolved_output_names.push_back(resolved_name);
+        }
+    }
+    if (resolved_output_names.empty())
+    {
+        return {};
+    }
+
     std::vector<const char *> output_name_ptrs;
-    output_name_ptrs.reserve(selected_output_names_.size());
-    for (const auto &name : selected_output_names_)
+    output_name_ptrs.reserve(resolved_output_names.size());
+    for (const auto &name : resolved_output_names)
     {
         output_name_ptrs.push_back(name.c_str());
     }
@@ -377,46 +471,58 @@ PolicyInferenceResult OnnxPolicyRunner::forward(
         output_name_ptrs.size());
 
     PolicyInferenceResult result;
-    const auto raw_action = flattenFloatTensor(output_tensors[static_cast<size_t>(action_output_selected_index_)]);
-    if (cfg_.action_dim > 0)
+    int action_output_selected_index = -1;
+    const std::string action_output_name = output_names_[static_cast<size_t>(action_output_index_)];
+    for (size_t i = 0; i < resolved_output_names.size(); ++i)
     {
-        const size_t expected_dim = static_cast<size_t>(cfg_.action_dim);
-        if (raw_action.size() < expected_dim)
+        if (resolved_output_names[i] == action_output_name)
         {
-            throw std::runtime_error(
-                "[" + policy_tag_ + "] action output dim " + std::to_string(raw_action.size()) +
-                " is smaller than configured action_dim " + std::to_string(expected_dim));
+            action_output_selected_index = static_cast<int>(i);
+            break;
         }
-        if (!warned_action_size_mismatch_ && raw_action.size() != expected_dim)
-        {
-            std::cerr << "[" << policy_tag_ << "] action output dim mismatch. model="
-                      << raw_action.size() << ", cfg=" << expected_dim
-                      << ", using first " << expected_dim << " values." << std::endl;
-            warned_action_size_mismatch_ = true;
-        }
-        result.action.assign(raw_action.begin(), raw_action.begin() + static_cast<std::ptrdiff_t>(expected_dim));
-    }
-    else
-    {
-        result.action = raw_action;
     }
 
     for (size_t output_idx = 0; output_idx < output_tensors.size(); ++output_idx)
     {
-        if (static_cast<int>(output_idx) == action_output_selected_index_)
+        if (static_cast<int>(output_idx) == action_output_selected_index)
         {
+            const auto raw_action = flattenFloatTensor(output_tensors[output_idx]);
+            if (cfg_.action_dim > 0)
+            {
+                const size_t expected_dim = static_cast<size_t>(cfg_.action_dim);
+                if (raw_action.size() < expected_dim)
+                {
+                    throw std::runtime_error(
+                        "[" + policy_tag_ + "] action output dim " + std::to_string(raw_action.size()) +
+                        " is smaller than configured action_dim " + std::to_string(expected_dim));
+                }
+                if (!warned_action_size_mismatch_ && raw_action.size() != expected_dim)
+                {
+                    std::cerr << "[" << policy_tag_ << "] action output dim mismatch. model="
+                              << raw_action.size() << ", cfg=" << expected_dim
+                              << ", using first " << expected_dim << " values." << std::endl;
+                    warned_action_size_mismatch_ = true;
+                }
+                result.action.assign(
+                    raw_action.begin(),
+                    raw_action.begin() + static_cast<std::ptrdiff_t>(expected_dim));
+            }
+            else
+            {
+                result.action = raw_action;
+            }
             continue;
         }
-        result.extra_outputs[selected_output_names_[output_idx]] = flattenFloatTensor(output_tensors[output_idx]);
+        result.extra_outputs[resolved_output_names[output_idx]] = flattenFloatTensor(output_tensors[output_idx]);
     }
 
-    const bool advances_timestep = std::any_of(
+    const bool has_timestep_input = std::any_of(
         input_bindings_.begin(),
         input_bindings_.end(),
         [](const InputBinding &binding) {
             return trimCopy(binding.source) == "time_step";
         });
-    if (advances_timestep)
+    if (advance_time_step && has_timestep_input)
     {
         ++time_step_;
     }
@@ -631,6 +737,24 @@ void OnnxPolicyRunner::validateModelMetadata()
         }
     };
 
+    auto validateCsvListIfPresent = [&](const std::string &key, const std::vector<std::string> &expected) {
+        if (expected.empty())
+        {
+            return;
+        }
+        const auto it = custom_metadata.find(key);
+        if (it == custom_metadata.end())
+        {
+            return;
+        }
+        const std::vector<std::string> actual = parseCsvList(it->second);
+        if (actual != expected)
+        {
+            emitIssue("custom metadata key '" + key + "' mismatch: expected [" +
+                      joinStrings(expected) + "], got [" + joinStrings(actual) + "]");
+        }
+    };
+
     if (cfg_.obs_dim > 0)
     {
         validateIntFieldIfPresent("obs_dim", static_cast<int64_t>(cfg_.obs_dim));
@@ -646,6 +770,11 @@ void OnnxPolicyRunner::validateModelMetadata()
     }
     validateStringFieldIfPresent("obs_input_name", cfg_.obs_input_name);
     validateStringFieldIfPresent("action_output_name", cfg_.action_output_name);
+    validateCsvListIfPresent("action_joint_names", cfg_.action_joint_order);
+    validateCsvListIfPresent("policy_joint_names", cfg_.obs_joint_order);
+    validateCsvListIfPresent("command_joint_names", cfg_.reference_joint_order);
+    validateCsvListIfPresent("body_names", cfg_.reference_body_names);
+    validateStringFieldIfPresent("anchor_body_name", cfg_.reference_anchor_body);
 
     std::cout << "[" << policy_tag_ << "] ONNX metadata check passed."
               << " custom_keys=" << custom_metadata.size()

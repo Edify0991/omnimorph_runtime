@@ -390,38 +390,17 @@ Vec3 subtract(const Vec3 &a, const Vec3 &b)
     return {a.x - b.x, a.y - b.y, a.z - b.z};
 }
 
+Vec3 add(const Vec3 &a, const Vec3 &b)
+{
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
 Vec3 rotate(const Mat3 &m, const Vec3 &v)
 {
     return {
         m.v[0] * v.x + m.v[1] * v.y + m.v[2] * v.z,
         m.v[3] * v.x + m.v[4] * v.y + m.v[5] * v.z,
         m.v[6] * v.x + m.v[7] * v.y + m.v[8] * v.z};
-}
-
-float yawFromQuatXyzw(const std::vector<float> &quat_xyzw)
-{
-    if (quat_xyzw.size() < 4)
-    {
-        return 0.0f;
-    }
-    const float x = quat_xyzw[0];
-    const float y = quat_xyzw[1];
-    const float z = quat_xyzw[2];
-    const float w = quat_xyzw[3];
-    const float t3 = 2.0f * (w * z + x * y);
-    const float t4 = 1.0f - 2.0f * (y * y + z * z);
-    return std::atan2(t3, t4);
-}
-
-Mat3 yawRotation(float yaw)
-{
-    const float c = std::cos(yaw);
-    const float s = std::sin(yaw);
-    Mat3 out;
-    out.v = {c, -s, 0.0f,
-             s, c, 0.0f,
-             0.0f, 0.0f, 1.0f};
-    return out;
 }
 
 Mat3 quatToRotXyzw(float x, float y, float z, float w)
@@ -607,6 +586,20 @@ void setFeatureIfNonEmptyWithContract(
     feature_context->named_feature_contracts[name] = contract;
 }
 
+const std::vector<float> *findPolicyOutputByName(
+    const std::unordered_map<std::string, std::vector<float>> &prefetched_extra_outputs,
+    const std::unordered_map<std::string, std::vector<float>> &latest_extra_outputs,
+    const std::string &preferred_prefix,
+    const std::string &output_name)
+{
+    if (const auto *prefetched =
+            findExtraOutputByName(prefetched_extra_outputs, preferred_prefix, output_name))
+    {
+        return prefetched;
+    }
+    return findExtraOutputByName(latest_extra_outputs, preferred_prefix, output_name);
+}
+
 std::vector<float> convertQuatVectorToCanonical(
     const std::vector<float> &values,
     const std::string &source_order,
@@ -646,10 +639,12 @@ bool buildReferenceMotionLocalFeatures(
     const std::vector<float> &reference_body_pos_w,
     const std::vector<float> &reference_body_quat_w_xyzw,
     size_t anchor_index,
-    const std::vector<float> &reference_anchor_init_pos_w,
-    const std::vector<float> &reference_anchor_init_quat_w,
-    const std::vector<float> &robot_base_init_quat_w,
-    const std::vector<float> &robot_base_curr_quat_w,
+    const std::vector<float> &reference_align_anchor_pos_w,
+    const std::vector<float> &reference_align_anchor_quat_w,
+    const std::vector<float> &robot_align_anchor_pos_w,
+    const std::vector<float> &robot_align_anchor_quat_w,
+    const std::vector<float> &robot_anchor_pos_w,
+    const std::vector<float> &robot_anchor_quat_w,
     std::vector<float> *motion_anchor_pos_b,
     std::vector<float> *motion_anchor_ori_b,
     std::vector<float> *motion_body_pos_b,
@@ -665,25 +660,15 @@ bool buildReferenceMotionLocalFeatures(
     {
         return false;
     }
-    if (reference_anchor_init_pos_w.size() < 3 ||
-        reference_anchor_init_quat_w.size() < 4 ||
-        robot_base_init_quat_w.size() < 4 ||
-        robot_base_curr_quat_w.size() < 4)
+    if (reference_align_anchor_pos_w.size() < 3 ||
+        reference_align_anchor_quat_w.size() < 4 ||
+        robot_align_anchor_pos_w.size() < 3 ||
+        robot_align_anchor_quat_w.size() < 4 ||
+        robot_anchor_pos_w.size() < 3 ||
+        robot_anchor_quat_w.size() < 4)
     {
         return false;
     }
-
-    Vec3 anchor_ref_init{};
-    anchor_ref_init.x = reference_anchor_init_pos_w[0];
-    anchor_ref_init.y = reference_anchor_init_pos_w[1];
-    anchor_ref_init.z = reference_anchor_init_pos_w[2];
-
-    const Mat3 ref_init_yaw = yawRotation(yawFromQuatXyzw(reference_anchor_init_quat_w));
-    const Mat3 robot_init_yaw = yawRotation(yawFromQuatXyzw(robot_base_init_quat_w));
-    const Mat3 robot_curr_yaw = yawRotation(yawFromQuatXyzw(robot_base_curr_quat_w));
-    const Mat3 world_to_init = multiply(robot_init_yaw, transpose(ref_init_yaw));
-    const Mat3 world_to_base_local = transpose(robot_curr_yaw);
-    const Mat3 local_rot = multiply(world_to_base_local, world_to_init);
 
     Vec3 anchor_ref_curr{};
     std::vector<float> anchor_ref_quat;
@@ -692,9 +677,32 @@ bool buildReferenceMotionLocalFeatures(
     {
         return false;
     }
-    const Vec3 anchor_delta = subtract(anchor_ref_curr, anchor_ref_init);
-    const Vec3 anchor_local = rotate(local_rot, anchor_delta);
-    const Mat3 anchor_rot_local = multiply(local_rot, quatToRotXyzw(anchor_ref_quat));
+
+    Vec3 robot_anchor_pos{};
+    robot_anchor_pos.x = robot_anchor_pos_w[0];
+    robot_anchor_pos.y = robot_anchor_pos_w[1];
+    robot_anchor_pos.z = robot_anchor_pos_w[2];
+
+    Vec3 reference_align_anchor_pos{};
+    reference_align_anchor_pos.x = reference_align_anchor_pos_w[0];
+    reference_align_anchor_pos.y = reference_align_anchor_pos_w[1];
+    reference_align_anchor_pos.z = reference_align_anchor_pos_w[2];
+
+    Vec3 robot_align_anchor_pos{};
+    robot_align_anchor_pos.x = robot_align_anchor_pos_w[0];
+    robot_align_anchor_pos.y = robot_align_anchor_pos_w[1];
+    robot_align_anchor_pos.z = robot_align_anchor_pos_w[2];
+
+    const Mat3 reference_align_rot = quatToRotXyzw(reference_align_anchor_quat_w);
+    const Mat3 robot_align_rot = quatToRotXyzw(robot_align_anchor_quat_w);
+    const Mat3 reference_to_runtime_world = multiply(robot_align_rot, transpose(reference_align_rot));
+    const Mat3 robot_anchor_rot_inv = transpose(quatToRotXyzw(robot_anchor_quat_w));
+    const Vec3 anchor_world_aligned = add(
+        robot_align_anchor_pos,
+        rotate(reference_to_runtime_world, subtract(anchor_ref_curr, reference_align_anchor_pos)));
+    const Mat3 anchor_world_rot_aligned = multiply(reference_to_runtime_world, quatToRotXyzw(anchor_ref_quat));
+    const Vec3 anchor_local = rotate(robot_anchor_rot_inv, subtract(anchor_world_aligned, robot_anchor_pos));
+    const Mat3 anchor_rot_local = multiply(robot_anchor_rot_inv, anchor_world_rot_aligned);
 
     if (motion_anchor_pos_b)
     {
@@ -725,9 +733,12 @@ bool buildReferenceMotionLocalFeatures(
             continue;
         }
 
-        const Vec3 body_delta = subtract(body_pos, anchor_ref_init);
-        const Vec3 body_local = rotate(local_rot, body_delta);
-        const Mat3 body_rot_local = multiply(local_rot, quatToRotXyzw(body_quat));
+        const Vec3 body_world_aligned = add(
+            robot_align_anchor_pos,
+            rotate(reference_to_runtime_world, subtract(body_pos, reference_align_anchor_pos)));
+        const Mat3 body_world_rot_aligned = multiply(reference_to_runtime_world, quatToRotXyzw(body_quat));
+        const Vec3 body_local = rotate(robot_anchor_rot_inv, subtract(body_world_aligned, robot_anchor_pos));
+        const Mat3 body_rot_local = multiply(robot_anchor_rot_inv, body_world_rot_aligned);
 
         if (motion_body_pos_b)
         {
@@ -925,14 +936,16 @@ void RL_controller::handlePolicySwitch()
     action.assign(static_cast<size_t>(cfg.action_dim), 0.0f);
     joint_target_q.assign(joint_order_.size(), 0.0f);
     joint_target_torque.assign(joint_order_.size(), 0.0f);
+    prefetched_policy_extra_outputs_.clear();
     latest_policy_extra_outputs_.clear();
     resetPolicyScheduler();
     phase_reset_pending_ = true;
     auto &profile = activeModeProfile();
-    profile.reference_alignment_initialized = false;
-    profile.reference_anchor_init_pos_w.clear();
-    profile.reference_anchor_init_quat_w.clear();
-    profile.robot_base_init_quat_w.clear();
+    profile.reference_world_alignment_initialized = false;
+    profile.reference_align_anchor_pos_w.clear();
+    profile.reference_align_anchor_quat_w.clear();
+    profile.robot_align_anchor_pos_w.clear();
+    profile.robot_align_anchor_quat_w.clear();
 
     if (cfg.reset_policy_on_mode_switch)
     {
@@ -1311,6 +1324,8 @@ void RL_controller::updateStateFromIO(const rl_master::RobotStateData &state)
 
     for (size_t i = 0; i < 3; ++i)
     {
+        robot->base_pos_w[i] = state.base_pos_w[i];
+        robot->base_lin_vel[i] = state.base_lin_vel[i];
         robot->base_ang_vel[i] = state.base_ang_vel[i];
         robot->base_rpy[i] = state.base_rpy[i];
     }
@@ -1533,6 +1548,108 @@ RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(
     return output;
 }
 
+void RL_controller::prefetchCurrentPolicyReferenceOutputs()
+{
+    prefetched_policy_extra_outputs_.clear();
+
+    auto &profile = activeModeProfile();
+    const auto &cfg = profile.cfg;
+    if (!cfg.enable_reference_motion)
+    {
+        return;
+    }
+    if (!profile.required_reference_features.sourceAny())
+    {
+        return;
+    }
+    if (toLowerCopy(cfg.reference_motion_source) == "file")
+    {
+        return;
+    }
+    if (profile.policy_group.runners.empty() || !profile.policy_group.runners.front().runner)
+    {
+        return;
+    }
+
+    std::vector<std::string> requested_output_names;
+    auto append_requested = [&](bool enabled, const std::string &name) {
+        if (!enabled || name.empty())
+        {
+            return;
+        }
+        if (std::find(requested_output_names.begin(), requested_output_names.end(), name) ==
+            requested_output_names.end())
+        {
+            requested_output_names.push_back(name);
+        }
+    };
+
+    append_requested(
+        profile.required_reference_features.reference_motion,
+        cfg.source_contract.policy_extra_outputs.reference_motion_key);
+    append_requested(
+        profile.required_reference_features.reference_joint_pos,
+        cfg.source_contract.policy_extra_outputs.reference_joint_pos_key);
+    append_requested(
+        profile.required_reference_features.reference_joint_vel,
+        cfg.source_contract.policy_extra_outputs.reference_joint_vel_key);
+    append_requested(
+        profile.required_reference_features.reference_body_pos_w ||
+            profile.required_reference_features.named_body_layout,
+        cfg.source_contract.policy_extra_outputs.reference_body_pos_w_key);
+    append_requested(
+        profile.required_reference_features.reference_body_quat_w ||
+            profile.required_reference_features.named_body_layout,
+        cfg.source_contract.policy_extra_outputs.reference_body_quat_w_key);
+    if (requested_output_names.empty())
+    {
+        return;
+    }
+
+    const auto &active_cfg = activePolicyCfg();
+    const size_t expected_obs_size = static_cast<size_t>(active_cfg.obs_dim) * obs_deque.size();
+    if (stacked_obs_buffer_.size() != expected_obs_size)
+    {
+        stacked_obs_buffer_.assign(expected_obs_size, 0.0f);
+    }
+    size_t offset = 0;
+    for (const auto &frame_obs : obs_deque)
+    {
+        if (frame_obs.size() != static_cast<size_t>(active_cfg.obs_dim))
+        {
+            throw std::runtime_error(
+                "Stacked observation frame dim mismatch during reference prefetch. got=" +
+                std::to_string(frame_obs.size()) +
+                ", expected=" + std::to_string(active_cfg.obs_dim));
+        }
+        std::copy(
+            frame_obs.begin(),
+            frame_obs.end(),
+            stacked_obs_buffer_.begin() + static_cast<std::ptrdiff_t>(offset));
+        offset += frame_obs.size();
+    }
+
+    std::vector<float> current_observation = obs;
+    if (current_observation.size() != static_cast<size_t>(active_cfg.obs_dim))
+    {
+        current_observation.assign(static_cast<size_t>(active_cfg.obs_dim), 0.0f);
+    }
+
+    const auto prefetched =
+        profile.policy_group.runners.front().runner->prefetchExtraOutputs(
+            requested_output_names,
+            stacked_obs_buffer_,
+            current_observation,
+            latest_observation_feature_context_.named_features,
+            false);
+
+    const std::string prefix = profile.policy_group.runners.front().name + "/";
+    for (const auto &kv : prefetched)
+    {
+        prefetched_policy_extra_outputs_[prefix + kv.first] = kv.second;
+    }
+}
+
 void RL_controller::initReferenceMotionProvider(
     const Sim2realCfg &cfg,
     const ReferenceFeatureRequirements &required_features,
@@ -1673,7 +1790,8 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     if (use_policy_source)
     {
         const std::string preferred_prefix = profile.tag + "/main/";
-        if (const auto *reference_motion = findExtraOutputByName(
+        if (const auto *reference_motion = findPolicyOutputByName(
+                prefetched_policy_extra_outputs_,
                 latest_policy_extra_outputs_,
                 preferred_prefix,
                 cfg.source_contract.policy_extra_outputs.reference_motion_key))
@@ -1684,7 +1802,8 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                 reference_motion_dim > 0 ? fitDim(*reference_motion, static_cast<size_t>(reference_motion_dim))
                                          : *reference_motion);
         }
-        if (const auto *joint_pos = findExtraOutputByName(
+        if (const auto *joint_pos = findPolicyOutputByName(
+                prefetched_policy_extra_outputs_,
                 latest_policy_extra_outputs_,
                 preferred_prefix,
                 cfg.source_contract.policy_extra_outputs.reference_joint_pos_key))
@@ -1698,7 +1817,8 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                     joint_order_),
                 reference_joint_contract);
         }
-        if (const auto *joint_vel = findExtraOutputByName(
+        if (const auto *joint_vel = findPolicyOutputByName(
+                prefetched_policy_extra_outputs_,
                 latest_policy_extra_outputs_,
                 preferred_prefix,
                 cfg.source_contract.policy_extra_outputs.reference_joint_vel_key))
@@ -1712,7 +1832,8 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                     joint_order_),
                 reference_joint_contract);
         }
-        if (const auto *body_pos_w = findExtraOutputByName(
+        if (const auto *body_pos_w = findPolicyOutputByName(
+                prefetched_policy_extra_outputs_,
                 latest_policy_extra_outputs_,
                 preferred_prefix,
                 cfg.source_contract.policy_extra_outputs.reference_body_pos_w_key))
@@ -1723,7 +1844,8 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                 *body_pos_w,
                 ObservationFeatureContract{body_names, "vec3_array", "world"});
         }
-        if (const auto *body_quat_w = findExtraOutputByName(
+        if (const auto *body_quat_w = findPolicyOutputByName(
+                prefetched_policy_extra_outputs_,
                 latest_policy_extra_outputs_,
                 preferred_prefix,
                 cfg.source_contract.policy_extra_outputs.reference_body_quat_w_key))
@@ -1748,56 +1870,66 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     {
         const size_t body_count = std::min(reference_body_pos_w->size() / 3, reference_body_quat_w->size() / 4);
         size_t anchor_index = 0;
-        Vec3 anchor_pos{};
-        std::vector<float> anchor_quat;
         if (resolveAnchorIndex(body_names, anchor_body, &anchor_index) &&
             anchor_index < body_count &&
-            extractVec3(*reference_body_pos_w, anchor_index, &anchor_pos) &&
-            extractQuatXyzw(*reference_body_quat_w, anchor_index, &anchor_quat))
+            robot->base_pos_w.size() >= 3 &&
+            robot->base_quat.size() >= 4)
         {
-            if (!profile.reference_alignment_initialized)
+            Vec3 reference_anchor_pos{};
+            std::vector<float> reference_anchor_quat;
+            if (extractVec3(*reference_body_pos_w, anchor_index, &reference_anchor_pos) &&
+                extractQuatXyzw(*reference_body_quat_w, anchor_index, &reference_anchor_quat))
             {
-                profile.reference_anchor_init_pos_w = {anchor_pos.x, anchor_pos.y, anchor_pos.z};
-                profile.reference_anchor_init_quat_w = anchor_quat;
-                profile.robot_base_init_quat_w = robot->base_quat;
-                profile.reference_alignment_initialized = true;
-            }
+                if (!profile.reference_world_alignment_initialized)
+                {
+                    profile.reference_align_anchor_pos_w = {
+                        reference_anchor_pos.x,
+                        reference_anchor_pos.y,
+                        reference_anchor_pos.z};
+                    profile.reference_align_anchor_quat_w = reference_anchor_quat;
+                    profile.robot_align_anchor_pos_w = robot->base_pos_w;
+                    profile.robot_align_anchor_quat_w = robot->base_quat;
+                    profile.reference_world_alignment_initialized = true;
+                }
 
-            std::vector<float> motion_anchor_pos_b;
-            std::vector<float> motion_anchor_ori_b;
-            std::vector<float> motion_body_pos_b;
-            std::vector<float> motion_body_ori_b;
-            if (buildReferenceMotionLocalFeatures(
-                    *reference_body_pos_w,
-                    *reference_body_quat_w,
-                    anchor_index,
-                    profile.reference_anchor_init_pos_w,
-                    profile.reference_anchor_init_quat_w,
-                    profile.robot_base_init_quat_w,
-                    robot->base_quat,
-                    &motion_anchor_pos_b,
-                    &motion_anchor_ori_b,
-                    &motion_body_pos_b,
-                    &motion_body_ori_b))
-            {
-                setFeatureIfNonEmpty(&feature_context, "motion_anchor_pos_b", motion_anchor_pos_b);
-                setFeatureIfNonEmpty(&feature_context, "motion_ref_pos_b", motion_anchor_pos_b);
-                setFeatureIfNonEmptyWithContract(
-                    &feature_context,
-                    "motion_anchor_ori_b",
-                    motion_anchor_ori_b,
-                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
-                setFeatureIfNonEmptyWithContract(
-                    &feature_context,
-                    "motion_ref_ori_b",
-                    motion_anchor_ori_b,
-                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
-                setFeatureIfNonEmpty(&feature_context, "motion_body_pos_b", motion_body_pos_b);
-                setFeatureIfNonEmptyWithContract(
-                    &feature_context,
-                    "motion_body_ori_b",
-                    motion_body_ori_b,
-                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
+                std::vector<float> motion_anchor_pos_b;
+                std::vector<float> motion_anchor_ori_b;
+                std::vector<float> motion_body_pos_b;
+                std::vector<float> motion_body_ori_b;
+                if (buildReferenceMotionLocalFeatures(
+                        *reference_body_pos_w,
+                        *reference_body_quat_w,
+                        anchor_index,
+                        profile.reference_align_anchor_pos_w,
+                        profile.reference_align_anchor_quat_w,
+                        profile.robot_align_anchor_pos_w,
+                        profile.robot_align_anchor_quat_w,
+                        robot->base_pos_w,
+                        robot->base_quat,
+                        &motion_anchor_pos_b,
+                        &motion_anchor_ori_b,
+                        &motion_body_pos_b,
+                        &motion_body_ori_b))
+                {
+                    setFeatureIfNonEmpty(&feature_context, "motion_anchor_pos_b", motion_anchor_pos_b);
+                    setFeatureIfNonEmpty(&feature_context, "motion_ref_pos_b", motion_anchor_pos_b);
+                    setFeatureIfNonEmptyWithContract(
+                        &feature_context,
+                        "motion_anchor_ori_b",
+                        motion_anchor_ori_b,
+                        ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
+                    setFeatureIfNonEmptyWithContract(
+                        &feature_context,
+                        "motion_ref_ori_b",
+                        motion_anchor_ori_b,
+                        ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
+                    setFeatureIfNonEmpty(&feature_context, "motion_body_pos_b", motion_body_pos_b);
+                    setFeatureIfNonEmptyWithContract(
+                        &feature_context,
+                        "motion_body_ori_b",
+                        motion_body_ori_b,
+                        ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
+                }
             }
         }
     }
@@ -1938,6 +2070,7 @@ rl_master::RobotCommandData RL_controller::step(
 
         if (should_run_policy)
         {
+            prefetchCurrentPolicyReferenceOutputs();
             std::vector<float> current_obs = get_robot_observation(local_phase_t);
             update_obs_deque(current_obs);
 
@@ -1991,6 +2124,7 @@ rl_master::RobotCommandData RL_controller::step(
         robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
         // Non-policy command stream (for lifecycle actions like zeroing).
         robot->open_rl = rl_master::kOpenRlCommandStream;
+        prefetched_policy_extra_outputs_.clear();
         latest_policy_extra_outputs_.clear();
     }
     else
@@ -1998,6 +2132,7 @@ rl_master::RobotCommandData RL_controller::step(
         robot->joint_target_q = robot->joint_q;
         robot->joint_target_tau.assign(robot->joint_q.size(), 0.0f);
         robot->open_rl = rl_master::kOpenRlDisabled;
+        prefetched_policy_extra_outputs_.clear();
         latest_policy_extra_outputs_.clear();
     }
 
@@ -2235,9 +2370,11 @@ std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &p
         {
             continue;
         }
+        const float joint_action_scale =
+            policy_idx < active_cfg.action_scales.size() ? active_cfg.action_scales[policy_idx] : active_cfg.action_scale;
         target_q[static_cast<size_t>(robot_idx)] =
             robot->default_angle[static_cast<size_t>(robot_idx)] +
-            policy_action[policy_idx] * active_cfg.action_scale;
+            policy_action[policy_idx] * joint_action_scale;
     }
 
     joint_target_q = target_q;

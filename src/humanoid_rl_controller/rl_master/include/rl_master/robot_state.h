@@ -25,6 +25,8 @@ public:
     std::vector<float> joint_target_dq;
     std::vector<float> joint_target_tau;
 
+    std::vector<float> base_pos_w;
+    std::vector<float> base_lin_vel;
     std::vector<float> base_ang_vel;
     std::vector<float> base_rpy;
     std::vector<float> base_quat;
