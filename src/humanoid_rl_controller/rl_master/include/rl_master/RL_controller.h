@@ -27,6 +27,11 @@
 #include "robot_types.h"
 #include "robot_state.h"
 
+namespace rl_master
+{
+class PinocchioMotionFeatures;
+}
+
 class RL_controller
 {
 public:
@@ -102,11 +107,7 @@ private:
         std::unique_ptr<OnnxPolicyRunner> amp_discriminator;
         ReferenceMotionProvider reference_motion;
         ReferenceFeatureRequirements required_reference_features;
-        bool reference_world_alignment_initialized = false;
-        std::vector<float> reference_align_anchor_pos_w;
-        std::vector<float> reference_align_anchor_quat_w;
-        std::vector<float> robot_align_anchor_pos_w;
-        std::vector<float> robot_align_anchor_quat_w;
+        std::unique_ptr<rl_master::PinocchioMotionFeatures> pinocchio_motion_features;
     };
 
     const std::vector<int> &currentActionIndexMap() const;

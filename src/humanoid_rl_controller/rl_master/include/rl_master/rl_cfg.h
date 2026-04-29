@@ -707,6 +707,8 @@ public:
     std::string reference_anchor_body = "base";
     std::vector<std::string> reference_body_names;
     std::vector<std::string> reference_joint_order;
+    std::string pinocchio_urdf_file;
+    std::string pinocchio_urdf_path;
     std::vector<ExternalObservationSpec> external_observations;
     SourceContract source_contract;
     ObservationCanonicalContract observation_canonical_contract;
@@ -1272,6 +1274,9 @@ public:
             reference_anchor_body = yamlReadOr<std::string>(cfg, "reference_anchor_body", "base");
             reference_body_names = yamlReadOr<std::vector<std::string>>(cfg, "reference_body_names", {});
             reference_joint_order = yamlReadOr<std::vector<std::string>>(cfg, "reference_joint_order", {});
+            pinocchio_urdf_file = yamlReadOr<std::string>(cfg, "pinocchio_urdf_file", "");
+            const std::string pinocchio_urdf_path_raw =
+                yamlReadOr<std::string>(cfg, "pinocchio_urdf_path", "");
             const std::string reference_motion_path_raw = yamlReadOr<std::string>(cfg, "reference_motion_path", "");
             if (!reference_motion_path_raw.empty())
             {
@@ -1280,6 +1285,14 @@ public:
             else
             {
                 reference_motion_path = resolvePath(reference_motion_file);
+            }
+            if (!pinocchio_urdf_path_raw.empty())
+            {
+                pinocchio_urdf_path = resolvePath(pinocchio_urdf_path_raw);
+            }
+            else if (!pinocchio_urdf_file.empty())
+            {
+                pinocchio_urdf_path = resolvePath(pinocchio_urdf_file);
             }
 
             if (reference_joint_order.empty())
@@ -1726,6 +1739,7 @@ public:
                   << ", enabled=" << (enable_reference_motion ? "true" : "false")
                   << std::endl;
         std::cout << "Reference Motion Path: " << reference_motion_path << std::endl;
+        std::cout << "Pinocchio URDF Path: " << pinocchio_urdf_path << std::endl;
         std::cout << "Reference Joint Order: " << reference_joint_order.size() << std::endl;
         std::cout << "Source Contract IMU: payload=" << source_contract.imu_input.payload
                   << ", euler_unit=" << source_contract.imu_input.euler_unit

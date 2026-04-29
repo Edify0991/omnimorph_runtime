@@ -64,6 +64,11 @@ find_package(geometry_msgs REQUIRED)
 find_package(SharedMemory REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(SymEngine CONFIG REQUIRED)
+find_package(pinocchio CONFIG REQUIRED
+  HINTS
+    /opt/ros/humble
+    /opt/ros/humble/lib/x86_64-linux-gnu/cmake/pinocchio
+)
 find_package(Threads REQUIRED)
 find_library(ZSTD_LIBRARY NAMES zstd REQUIRED)
 find_library(LZ4_LIBRARY NAMES lz4 REQUIRED)
@@ -155,6 +160,7 @@ add_library(rl_master_runtime SHARED
   RL_controller.cpp
   onnx_policy_runner.cpp
   observation_builder.cpp
+  pinocchio_motion_features.cpp
   reference_motion_provider.cpp
   runtime/integrated_controller_runtime.cpp
   runtime/realtime_utils.cpp
@@ -180,6 +186,7 @@ ament_target_dependencies(rl_master_runtime PUBLIC
 )
 target_link_libraries(rl_master_runtime PRIVATE
   onnxruntime::onnxruntime
+  pinocchio::pinocchio
   Threads::Threads
   yaml-cpp
   ${ZSTD_LIBRARY}

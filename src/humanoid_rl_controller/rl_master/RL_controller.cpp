@@ -6,32 +6,21 @@ https://blog.csdn.net/m0_57254760/article/details/138304321
 #include "rl_master/RL_controller.h"
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstddef>
 #include <cmath>
+#include <filesystem>
 #include <map>
 #include <string>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
 
+#include "rl_master/pinocchio_motion_features.h"
 #include "rl_master/rl_protocol.h"
 
 namespace
 {
-struct Vec3
-{
-    float x = 0.0f;
-    float y = 0.0f;
-    float z = 0.0f;
-};
-
-struct Mat3
-{
-    std::array<float, 9> v{};
-};
-
 std::string toLowerCopy(std::string text)
 {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -349,118 +338,6 @@ void validateRequiredNamedBodyLayout(
     }
 }
 
-Mat3 makeIdentity()
-{
-    Mat3 out;
-    out.v = {1.0f, 0.0f, 0.0f,
-             0.0f, 1.0f, 0.0f,
-             0.0f, 0.0f, 1.0f};
-    return out;
-}
-
-Mat3 transpose(const Mat3 &m)
-{
-    Mat3 out;
-    out.v = {m.v[0], m.v[3], m.v[6],
-             m.v[1], m.v[4], m.v[7],
-             m.v[2], m.v[5], m.v[8]};
-    return out;
-}
-
-Mat3 multiply(const Mat3 &a, const Mat3 &b)
-{
-    Mat3 out = makeIdentity();
-    for (int r = 0; r < 3; ++r)
-    {
-        for (int c = 0; c < 3; ++c)
-        {
-            float value = 0.0f;
-            for (int k = 0; k < 3; ++k)
-            {
-                value += a.v[static_cast<size_t>(r * 3 + k)] * b.v[static_cast<size_t>(k * 3 + c)];
-            }
-            out.v[static_cast<size_t>(r * 3 + c)] = value;
-        }
-    }
-    return out;
-}
-
-Vec3 subtract(const Vec3 &a, const Vec3 &b)
-{
-    return {a.x - b.x, a.y - b.y, a.z - b.z};
-}
-
-Vec3 add(const Vec3 &a, const Vec3 &b)
-{
-    return {a.x + b.x, a.y + b.y, a.z + b.z};
-}
-
-Vec3 rotate(const Mat3 &m, const Vec3 &v)
-{
-    return {
-        m.v[0] * v.x + m.v[1] * v.y + m.v[2] * v.z,
-        m.v[3] * v.x + m.v[4] * v.y + m.v[5] * v.z,
-        m.v[6] * v.x + m.v[7] * v.y + m.v[8] * v.z};
-}
-
-Mat3 quatToRotXyzw(float x, float y, float z, float w)
-{
-    const float norm = std::sqrt(x * x + y * y + z * z + w * w);
-    if (!std::isfinite(norm) || norm < 1e-8f)
-    {
-        return makeIdentity();
-    }
-    x /= norm;
-    y /= norm;
-    z /= norm;
-    w /= norm;
-
-    Mat3 out;
-    out.v = {
-        1.0f - 2.0f * (y * y + z * z), 2.0f * (x * y - z * w), 2.0f * (x * z + y * w),
-        2.0f * (x * y + z * w), 1.0f - 2.0f * (x * x + z * z), 2.0f * (y * z - x * w),
-        2.0f * (x * z - y * w), 2.0f * (y * z + x * w), 1.0f - 2.0f * (x * x + y * y)};
-    return out;
-}
-
-Mat3 quatToRotXyzw(const std::vector<float> &quat_xyzw)
-{
-    if (quat_xyzw.size() < 4)
-    {
-        return makeIdentity();
-    }
-    return quatToRotXyzw(quat_xyzw[0], quat_xyzw[1], quat_xyzw[2], quat_xyzw[3]);
-}
-
-bool extractVec3(const std::vector<float> &data, size_t index, Vec3 *out)
-{
-    const size_t offset = index * 3;
-    if (!out || offset + 2 >= data.size())
-    {
-        return false;
-    }
-    out->x = data[offset + 0];
-    out->y = data[offset + 1];
-    out->z = data[offset + 2];
-    return std::isfinite(out->x) && std::isfinite(out->y) && std::isfinite(out->z);
-}
-
-bool extractQuatXyzw(const std::vector<float> &data, size_t index, std::vector<float> *out)
-{
-    const size_t offset = index * 4;
-    if (!out || offset + 3 >= data.size())
-    {
-        return false;
-    }
-    out->assign({data[offset + 0], data[offset + 1], data[offset + 2], data[offset + 3]});
-    return std::isfinite((*out)[0]) && std::isfinite((*out)[1]) && std::isfinite((*out)[2]) && std::isfinite((*out)[3]);
-}
-
-std::vector<float> rotToRot6(const Mat3 &rot)
-{
-    return {rot.v[0], rot.v[1], rot.v[3], rot.v[4], rot.v[6], rot.v[7]};
-}
-
 std::vector<float> convertQuatVectorWxyzToXyzw(const std::vector<float> &wxyz)
 {
     if (wxyz.size() % 4 != 0)
@@ -615,211 +492,6 @@ std::vector<float> convertQuatVectorToCanonical(
     return convertQuatVectorToXyzw(values, source_order);
 }
 
-bool resolveAnchorIndex(
-    const std::vector<std::string> &body_names,
-    const std::string &anchor_body,
-    size_t *anchor_index)
-{
-    if (!anchor_index || body_names.empty() || anchor_body.empty())
-    {
-        return false;
-    }
-    for (size_t i = 0; i < body_names.size(); ++i)
-    {
-        if (body_names[i] == anchor_body)
-        {
-            *anchor_index = i;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool buildReferenceMotionLocalFeatures(
-    const std::vector<float> &reference_body_pos_w,
-    const std::vector<float> &reference_body_quat_w_xyzw,
-    size_t anchor_index,
-    const std::vector<float> &reference_align_anchor_pos_w,
-    const std::vector<float> &reference_align_anchor_quat_w,
-    const std::vector<float> &robot_align_anchor_pos_w,
-    const std::vector<float> &robot_align_anchor_quat_w,
-    const std::vector<float> &robot_anchor_pos_w,
-    const std::vector<float> &robot_anchor_quat_w,
-    std::vector<float> *motion_anchor_pos_b,
-    std::vector<float> *motion_anchor_ori_b,
-    std::vector<float> *motion_body_pos_b,
-    std::vector<float> *motion_body_ori_b)
-{
-    if (reference_body_pos_w.size() % 3 != 0 ||
-        reference_body_quat_w_xyzw.size() % 4 != 0)
-    {
-        return false;
-    }
-    const size_t body_count = std::min(reference_body_pos_w.size() / 3, reference_body_quat_w_xyzw.size() / 4);
-    if (body_count == 0 || anchor_index >= body_count)
-    {
-        return false;
-    }
-    if (reference_align_anchor_pos_w.size() < 3 ||
-        reference_align_anchor_quat_w.size() < 4 ||
-        robot_align_anchor_pos_w.size() < 3 ||
-        robot_align_anchor_quat_w.size() < 4 ||
-        robot_anchor_pos_w.size() < 3 ||
-        robot_anchor_quat_w.size() < 4)
-    {
-        return false;
-    }
-
-    Vec3 anchor_ref_curr{};
-    std::vector<float> anchor_ref_quat;
-    if (!extractVec3(reference_body_pos_w, anchor_index, &anchor_ref_curr) ||
-        !extractQuatXyzw(reference_body_quat_w_xyzw, anchor_index, &anchor_ref_quat))
-    {
-        return false;
-    }
-
-    Vec3 robot_anchor_pos{};
-    robot_anchor_pos.x = robot_anchor_pos_w[0];
-    robot_anchor_pos.y = robot_anchor_pos_w[1];
-    robot_anchor_pos.z = robot_anchor_pos_w[2];
-
-    Vec3 reference_align_anchor_pos{};
-    reference_align_anchor_pos.x = reference_align_anchor_pos_w[0];
-    reference_align_anchor_pos.y = reference_align_anchor_pos_w[1];
-    reference_align_anchor_pos.z = reference_align_anchor_pos_w[2];
-
-    Vec3 robot_align_anchor_pos{};
-    robot_align_anchor_pos.x = robot_align_anchor_pos_w[0];
-    robot_align_anchor_pos.y = robot_align_anchor_pos_w[1];
-    robot_align_anchor_pos.z = robot_align_anchor_pos_w[2];
-
-    const Mat3 reference_align_rot = quatToRotXyzw(reference_align_anchor_quat_w);
-    const Mat3 robot_align_rot = quatToRotXyzw(robot_align_anchor_quat_w);
-    const Mat3 reference_to_runtime_world = multiply(robot_align_rot, transpose(reference_align_rot));
-    const Mat3 robot_anchor_rot_inv = transpose(quatToRotXyzw(robot_anchor_quat_w));
-    const Vec3 anchor_world_aligned = add(
-        robot_align_anchor_pos,
-        rotate(reference_to_runtime_world, subtract(anchor_ref_curr, reference_align_anchor_pos)));
-    const Mat3 anchor_world_rot_aligned = multiply(reference_to_runtime_world, quatToRotXyzw(anchor_ref_quat));
-    const Vec3 anchor_local = rotate(robot_anchor_rot_inv, subtract(anchor_world_aligned, robot_anchor_pos));
-    const Mat3 anchor_rot_local = multiply(robot_anchor_rot_inv, anchor_world_rot_aligned);
-
-    if (motion_anchor_pos_b)
-    {
-        motion_anchor_pos_b->assign({anchor_local.x, anchor_local.y, anchor_local.z});
-    }
-    if (motion_anchor_ori_b)
-    {
-        *motion_anchor_ori_b = rotToRot6(anchor_rot_local);
-    }
-    if (motion_body_pos_b)
-    {
-        motion_body_pos_b->clear();
-        motion_body_pos_b->reserve(body_count * 3);
-    }
-    if (motion_body_ori_b)
-    {
-        motion_body_ori_b->clear();
-        motion_body_ori_b->reserve(body_count * 6);
-    }
-
-    for (size_t i = 0; i < body_count; ++i)
-    {
-        Vec3 body_pos{};
-        std::vector<float> body_quat;
-        if (!extractVec3(reference_body_pos_w, i, &body_pos) ||
-            !extractQuatXyzw(reference_body_quat_w_xyzw, i, &body_quat))
-        {
-            continue;
-        }
-
-        const Vec3 body_world_aligned = add(
-            robot_align_anchor_pos,
-            rotate(reference_to_runtime_world, subtract(body_pos, reference_align_anchor_pos)));
-        const Mat3 body_world_rot_aligned = multiply(reference_to_runtime_world, quatToRotXyzw(body_quat));
-        const Vec3 body_local = rotate(robot_anchor_rot_inv, subtract(body_world_aligned, robot_anchor_pos));
-        const Mat3 body_rot_local = multiply(robot_anchor_rot_inv, body_world_rot_aligned);
-
-        if (motion_body_pos_b)
-        {
-            motion_body_pos_b->push_back(body_local.x);
-            motion_body_pos_b->push_back(body_local.y);
-            motion_body_pos_b->push_back(body_local.z);
-        }
-        if (motion_body_ori_b)
-        {
-            const auto rot6 = rotToRot6(body_rot_local);
-            motion_body_ori_b->insert(motion_body_ori_b->end(), rot6.begin(), rot6.end());
-        }
-    }
-    return true;
-}
-
-bool buildRobotBodyLocalFeatures(
-    const std::vector<float> &robot_body_pos_w,
-    const std::vector<float> &robot_body_quat_w_xyzw,
-    size_t anchor_index,
-    std::vector<float> *robot_body_pos_b,
-    std::vector<float> *robot_body_ori_b)
-{
-    if (robot_body_pos_w.size() % 3 != 0 ||
-        robot_body_quat_w_xyzw.size() % 4 != 0)
-    {
-        return false;
-    }
-    const size_t body_count = std::min(robot_body_pos_w.size() / 3, robot_body_quat_w_xyzw.size() / 4);
-    if (body_count == 0 || anchor_index >= body_count)
-    {
-        return false;
-    }
-
-    Vec3 anchor_pos{};
-    std::vector<float> anchor_quat;
-    if (!extractVec3(robot_body_pos_w, anchor_index, &anchor_pos) ||
-        !extractQuatXyzw(robot_body_quat_w_xyzw, anchor_index, &anchor_quat))
-    {
-        return false;
-    }
-    const Mat3 anchor_inv = transpose(quatToRotXyzw(anchor_quat));
-
-    if (robot_body_pos_b)
-    {
-        robot_body_pos_b->clear();
-        robot_body_pos_b->reserve(body_count * 3);
-    }
-    if (robot_body_ori_b)
-    {
-        robot_body_ori_b->clear();
-        robot_body_ori_b->reserve(body_count * 6);
-    }
-
-    for (size_t i = 0; i < body_count; ++i)
-    {
-        Vec3 body_pos{};
-        std::vector<float> body_quat;
-        if (!extractVec3(robot_body_pos_w, i, &body_pos) ||
-            !extractQuatXyzw(robot_body_quat_w_xyzw, i, &body_quat))
-        {
-            continue;
-        }
-
-        const Vec3 body_local_pos = rotate(anchor_inv, subtract(body_pos, anchor_pos));
-        const Mat3 body_local_rot = multiply(anchor_inv, quatToRotXyzw(body_quat));
-
-        if (robot_body_pos_b)
-        {
-            robot_body_pos_b->push_back(body_local_pos.x);
-            robot_body_pos_b->push_back(body_local_pos.y);
-            robot_body_pos_b->push_back(body_local_pos.z);
-        }
-        if (robot_body_ori_b)
-        {
-            const auto rot6 = rotToRot6(body_local_rot);
-            robot_body_ori_b->insert(robot_body_ori_b->end(), rot6.begin(), rot6.end());
-        }
-    }
-    return true;
-}
 } // namespace
 
 RL_controller::RL_controller()
@@ -941,11 +613,10 @@ void RL_controller::handlePolicySwitch()
     resetPolicyScheduler();
     phase_reset_pending_ = true;
     auto &profile = activeModeProfile();
-    profile.reference_world_alignment_initialized = false;
-    profile.reference_align_anchor_pos_w.clear();
-    profile.reference_align_anchor_quat_w.clear();
-    profile.robot_align_anchor_pos_w.clear();
-    profile.robot_align_anchor_quat_w.clear();
+    if (profile.pinocchio_motion_features)
+    {
+        profile.pinocchio_motion_features->resetAlignment();
+    }
 
     if (cfg.reset_policy_on_mode_switch)
     {
@@ -1288,6 +959,32 @@ void RL_controller::initModeProfiles()
             profile.required_reference_features,
             &profile.reference_motion,
             profile.tag);
+        if (profile.required_reference_features.named_body_layout)
+        {
+            if (profile.cfg.pinocchio_urdf_path.empty())
+            {
+                throw std::runtime_error(
+                    "[RL_controller][" + profile.tag +
+                    "] named-body observation features require pinocchio_urdf_path or pinocchio_urdf_file.");
+            }
+            if (!std::filesystem::exists(profile.cfg.pinocchio_urdf_path))
+            {
+                throw std::runtime_error(
+                    "[RL_controller][" + profile.tag +
+                    "] pinocchio URDF does not exist: " + profile.cfg.pinocchio_urdf_path);
+            }
+
+            profile.pinocchio_motion_features = std::make_unique<rl_master::PinocchioMotionFeatures>(
+                profile.cfg.pinocchio_urdf_path,
+                profile.joint_names);
+            if (!profile.pinocchio_motion_features->available())
+            {
+                throw std::runtime_error(
+                    "[RL_controller][" + profile.tag +
+                    "] failed to initialize Pinocchio motion features: " +
+                    profile.pinocchio_motion_features->lastError());
+            }
+        }
 
         mode_to_profile_index_[profile.mode_id] = mode_profiles_.size();
         mode_profiles_.push_back(std::move(profile));
@@ -1895,88 +1592,60 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
         reference_body_pos_w->size() % 3 == 0 && reference_body_quat_w->size() % 4 == 0)
     {
         const size_t body_count = std::min(reference_body_pos_w->size() / 3, reference_body_quat_w->size() / 4);
-        size_t anchor_index = 0;
-        if (resolveAnchorIndex(body_names, anchor_body, &anchor_index) &&
-            anchor_index < body_count &&
+        if (body_count == body_names.size() &&
             robot->base_pos_w.size() >= 3 &&
-            robot->base_quat.size() >= 4)
+            robot->base_quat.size() >= 4 &&
+            profile.pinocchio_motion_features)
         {
-            Vec3 reference_anchor_pos{};
-            std::vector<float> reference_anchor_quat;
-            if (extractVec3(*reference_body_pos_w, anchor_index, &reference_anchor_pos) &&
-                extractQuatXyzw(*reference_body_quat_w, anchor_index, &reference_anchor_quat))
+            std::vector<float> motion_anchor_pos_b;
+            std::vector<float> motion_anchor_ori_b;
+            std::vector<float> motion_body_pos_b;
+            std::vector<float> motion_body_ori_b;
+            if (profile.pinocchio_motion_features->buildMotionLocalFeatures(
+                    *robot,
+                    body_names,
+                    anchor_body,
+                    *reference_body_pos_w,
+                    *reference_body_quat_w,
+                    &motion_anchor_pos_b,
+                    &motion_anchor_ori_b,
+                    &motion_body_pos_b,
+                    &motion_body_ori_b))
             {
-                if (!profile.reference_world_alignment_initialized)
-                {
-                    profile.reference_align_anchor_pos_w = {
-                        reference_anchor_pos.x,
-                        reference_anchor_pos.y,
-                        reference_anchor_pos.z};
-                    profile.reference_align_anchor_quat_w = reference_anchor_quat;
-                    profile.robot_align_anchor_pos_w = robot->base_pos_w;
-                    profile.robot_align_anchor_quat_w = robot->base_quat;
-                    profile.reference_world_alignment_initialized = true;
-                }
-
-                std::vector<float> motion_anchor_pos_b;
-                std::vector<float> motion_anchor_ori_b;
-                std::vector<float> motion_body_pos_b;
-                std::vector<float> motion_body_ori_b;
-                if (buildReferenceMotionLocalFeatures(
-                        *reference_body_pos_w,
-                        *reference_body_quat_w,
-                        anchor_index,
-                        profile.reference_align_anchor_pos_w,
-                        profile.reference_align_anchor_quat_w,
-                        profile.robot_align_anchor_pos_w,
-                        profile.robot_align_anchor_quat_w,
-                        robot->base_pos_w,
-                        robot->base_quat,
-                        &motion_anchor_pos_b,
-                        &motion_anchor_ori_b,
-                        &motion_body_pos_b,
-                        &motion_body_ori_b))
-                {
-                    setFeatureIfNonEmpty(&feature_context, "motion_anchor_pos_b", motion_anchor_pos_b);
-                    setFeatureIfNonEmpty(&feature_context, "motion_ref_pos_b", motion_anchor_pos_b);
-                    setFeatureIfNonEmptyWithContract(
-                        &feature_context,
-                        "motion_anchor_ori_b",
-                        motion_anchor_ori_b,
-                        ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
-                    setFeatureIfNonEmptyWithContract(
-                        &feature_context,
-                        "motion_ref_ori_b",
-                        motion_anchor_ori_b,
-                        ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
-                    setFeatureIfNonEmpty(&feature_context, "motion_body_pos_b", motion_body_pos_b);
-                    setFeatureIfNonEmptyWithContract(
-                        &feature_context,
-                        "motion_body_ori_b",
-                        motion_body_ori_b,
-                        ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
-                }
+                setFeatureIfNonEmpty(&feature_context, "motion_anchor_pos_b", motion_anchor_pos_b);
+                setFeatureIfNonEmpty(&feature_context, "motion_ref_pos_b", motion_anchor_pos_b);
+                setFeatureIfNonEmptyWithContract(
+                    &feature_context,
+                    "motion_anchor_ori_b",
+                    motion_anchor_ori_b,
+                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
+                setFeatureIfNonEmptyWithContract(
+                    &feature_context,
+                    "motion_ref_ori_b",
+                    motion_anchor_ori_b,
+                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
+                setFeatureIfNonEmpty(&feature_context, "motion_body_pos_b", motion_body_pos_b);
+                setFeatureIfNonEmptyWithContract(
+                    &feature_context,
+                    "motion_body_ori_b",
+                    motion_body_ori_b,
+                    ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
             }
         }
     }
 
-    const auto *robot_body_pos_w = findNamedFeature(feature_context.named_features, "robot_body_pos_w");
-    const auto *robot_body_quat_w = findNamedFeature(feature_context.named_features, "robot_body_quat_w");
     if (need_named_body_layout &&
-        robot_body_pos_w && robot_body_quat_w &&
-        robot_body_pos_w->size() % 3 == 0 && robot_body_quat_w->size() % 4 == 0)
+        profile.pinocchio_motion_features)
     {
-        const size_t body_count = std::min(robot_body_pos_w->size() / 3, robot_body_quat_w->size() / 4);
+        const size_t body_count = body_names.size();
         if (body_count > 0)
         {
-            size_t anchor_index = 0;
             std::vector<float> robot_body_pos_b;
             std::vector<float> robot_body_ori_b;
-            if (resolveAnchorIndex(body_names, anchor_body, &anchor_index) &&
-                buildRobotBodyLocalFeatures(
-                    *robot_body_pos_w,
-                    *robot_body_quat_w,
-                    anchor_index,
+            if (profile.pinocchio_motion_features->buildRobotBodyLocalFeatures(
+                    *robot,
+                    body_names,
+                    anchor_body,
                     &robot_body_pos_b,
                     &robot_body_ori_b))
             {
