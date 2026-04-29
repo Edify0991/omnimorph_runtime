@@ -88,7 +88,9 @@ mujoco_sim_bridge:
     enable_fixed_base_zeroing: true
     enable_fixed_base_hold_after_zeroing: true
     enable_release_before_running: true
-    post_release_settle_ticks: 20
+    # 500 Hz control -> 150 ticks ~= 0.30 s.
+    # Let the robot actually finish the landing transient before RUNNING.
+    post_release_settle_ticks: 150
     enable_prepose_snap: false
     actuator_control_mode: "torque"
 

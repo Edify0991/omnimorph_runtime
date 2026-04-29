@@ -772,7 +772,7 @@ void OnnxPolicyRunner::validateModelMetadata()
     validateStringFieldIfPresent("action_output_name", cfg_.action_output_name);
     validateCsvListIfPresent("action_joint_names", cfg_.action_joint_order);
     validateCsvListIfPresent("policy_joint_names", cfg_.obs_joint_order);
-    validateCsvListIfPresent("command_joint_names", cfg_.reference_joint_order);
+    validateCsvListIfPresent("joint_names", cfg_.reference_joint_order);
     validateCsvListIfPresent("body_names", cfg_.reference_body_names);
     validateStringFieldIfPresent("anchor_body_name", cfg_.reference_anchor_body);
 

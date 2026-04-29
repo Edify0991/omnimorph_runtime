@@ -130,18 +130,18 @@ beyondmimic_leg12_strict_walk2:
     - left_ankle_pitch
     - left_ankle_roll
   reference_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
     - left_hip_roll
+    - right_hip_roll
     - left_hip_yaw
+    - right_hip_yaw
     - left_hip_pitch
+    - right_hip_pitch
     - left_knee_pitch
+    - right_knee_pitch
     - left_ankle_pitch
+    - right_ankle_pitch
     - left_ankle_roll
+    - right_ankle_roll
   source_contract:
     imu_input:
       payload: euler_compat
@@ -180,7 +180,7 @@ beyondmimic_leg12_strict_walk2:
     metadata_check_strict: true
     required_metadata_keys:
       - action_joint_names
-      - command_joint_names
+      - joint_names
       - policy_joint_names
       - body_names
       - anchor_body_name
