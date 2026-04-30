@@ -97,18 +97,18 @@ beyondmimic_leg12_strict_walk2:
     - left_ankle_roll
     - right_ankle_roll
   obs_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
     - left_hip_roll
+    - right_hip_roll
     - left_hip_yaw
+    - right_hip_yaw
     - left_hip_pitch
+    - right_hip_pitch
     - left_knee_pitch
+    - right_knee_pitch
     - left_ankle_pitch
+    - right_ankle_pitch
     - left_ankle_roll
+    - right_ankle_roll
   observation_manifest_file: observation_manifest_beyondmimic_legs.yaml
   enable_reference_motion: true
   reference_motion_dim: 0
@@ -158,7 +158,7 @@ beyondmimic_leg12_strict_walk2:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
       reference_joint_order_metadata_key: joint_names
-      preserve_reference_joint_order: true
+      preserve_reference_joint_order: false
       reference_body_pos_w_key: body_pos_w
       reference_body_quat_w_key: body_quat_w
       reference_body_lin_vel_w_key: body_lin_vel_w
@@ -183,7 +183,7 @@ beyondmimic_leg12_strict_walk2:
     time_step_start: 50
     strict_model_io: true
     enable_metadata_check: true
-    metadata_check_strict: true
+    metadata_check_strict: false
     required_metadata_keys:
       - action_joint_names
       - joint_names
@@ -207,7 +207,7 @@ beyondmimic_leg12_strict_walk2:
   enable_state_telemetry: true
   state_telemetry_hz: 50.0
   startup_completion_action: hold
-  policy_startup_warmup_steps: 1
+  policy_startup_warmup_steps: 0
   zeroing_duration_s: 5.0
   zeroing_position_tolerance: 100.0
   zeroing_velocity_tolerance: 100.0

@@ -1388,15 +1388,12 @@ void RL_controller::warmStartPolicyState(double phase_t)
             empty_feature_context,
             true);
 
-        std::vector<float> warmup_action = std::move(warmup_output.action);
-        for (auto &value : warmup_action)
-        {
-            value = std::clamp(value, -cfg.clip_actions, cfg.clip_actions);
-        }
-        action = std::move(warmup_action);
-        latest_policy_extra_outputs_ = std::move(warmup_output.extra_outputs);
+        (void)warmup_output;
         prefetched_policy_extra_outputs_.clear();
     }
+    action.assign(static_cast<size_t>(cfg.action_dim), 0.0f);
+    latest_policy_extra_outputs_.clear();
+    prefetched_policy_extra_outputs_.clear();
 
     std::cout << "[RL_controller] startup warmup complete: steps=" << warmup_steps
               << ", mode=" << activeModeProfile().tag << std::endl;

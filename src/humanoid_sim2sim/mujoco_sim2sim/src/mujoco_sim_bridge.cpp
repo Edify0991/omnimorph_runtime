@@ -2017,23 +2017,60 @@ bool MujocoSimBridge::maybeApplyRunningStartReferenceSync(
     const auto *reference_body_ang_vel_w = find_feature("reference_body_ang_vel_w");
     const Sim2realCfg &active_cfg = controller_runtime_.runtimeCfg();
 
+    const std::string reference_source = toLowerCopy(trimCopy(active_cfg.reference_motion_source));
+    const bool policy_reference_preserves_order =
+        reference_source != "file" &&
+        active_cfg.source_contract.policy_extra_outputs.preserve_reference_joint_order &&
+        active_cfg.reference_joint_order.size() == reference_joint_pos->size();
+    const std::vector<std::string> &reference_joint_source_order =
+        policy_reference_preserves_order ? active_cfg.reference_joint_order : joint_names_;
+    const auto referenceJointValue = [&](const std::vector<float> *values,
+                                         const std::string &joint_name,
+                                         size_t fallback_index,
+                                         float fallback_value) -> float {
+        if (!values || values->empty())
+        {
+            return fallback_value;
+        }
+        if (reference_joint_source_order.size() == values->size())
+        {
+            const auto it = std::find(
+                reference_joint_source_order.begin(),
+                reference_joint_source_order.end(),
+                joint_name);
+            if (it != reference_joint_source_order.end())
+            {
+                const size_t source_index =
+                    static_cast<size_t>(std::distance(reference_joint_source_order.begin(), it));
+                if (source_index < values->size())
+                {
+                    return (*values)[source_index];
+                }
+            }
+        }
+        if (fallback_index < values->size())
+        {
+            return (*values)[fallback_index];
+        }
+        return fallback_value;
+    };
+
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const int qpos_adr = qpos_addrs_[i];
         const int qvel_adr = qvel_addrs_[i];
-        if (qpos_adr >= 0 && qpos_adr < model_->nq &&
-            i < reference_joint_pos->size())
+        const std::string &joint_name = joint_names_[i];
+        if (qpos_adr >= 0 && qpos_adr < model_->nq)
         {
-            data_->qpos[qpos_adr] = static_cast<double>((*reference_joint_pos)[i]);
-            last_target_q_[i] = (*reference_joint_pos)[i];
+            const float q =
+                referenceJointValue(reference_joint_pos, joint_name, i, static_cast<float>(data_->qpos[qpos_adr]));
+            data_->qpos[qpos_adr] = static_cast<double>(q);
+            last_target_q_[i] = q;
         }
         if (qvel_adr >= 0 && qvel_adr < model_->nv)
         {
-            const double dq =
-                (reference_joint_vel && i < reference_joint_vel->size())
-                    ? static_cast<double>((*reference_joint_vel)[i])
-                    : 0.0;
-            data_->qvel[qvel_adr] = dq;
+            const float dq = referenceJointValue(reference_joint_vel, joint_name, i, 0.0f);
+            data_->qvel[qvel_adr] = static_cast<double>(dq);
         }
     }
 
@@ -3196,7 +3233,7 @@ void MujocoSimBridge::updateControlInput(
             double tau = 0.0;
             if (control_active && joint_mode == SimJointRuntimeMode::kCst)
             {
-                tau = tau_cmd;
+                tau = kp * (q_des - q) + kd * (0.0 - dq);
             }
             else
             {
