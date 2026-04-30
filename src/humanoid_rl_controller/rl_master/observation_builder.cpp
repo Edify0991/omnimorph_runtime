@@ -79,15 +79,6 @@ bool getEnabled(const YAML::Node &node)
     return node["enabled"].as<bool>();
 }
 
-std::string getFillPolicy(const YAML::Node &node)
-{
-    if (!node["fill_policy"])
-    {
-        return "error";
-    }
-    return node["fill_policy"].as<std::string>();
-}
-
 void pushPadded(std::vector<float> *out, float value, int i, int max_count)
 {
     if (!out)
@@ -138,17 +129,12 @@ std::vector<std::string> effectiveTargetOrder(const ObservationTermConfig &term)
     return term.components;
 }
 
-bool isFillPolicyZero(const ObservationTermConfig &term)
-{
-    return normalizeToken(term.fill_policy) == "zero";
-}
-
 void requireFeatureAvailable(
     const ObservationTermConfig &term,
     const std::string &source_name,
     const std::vector<float> *source)
 {
-    if (source || isFillPolicyZero(term))
+    if (source)
     {
         return;
     }
@@ -186,11 +172,6 @@ std::vector<float> reorderNamedVector(
         const auto it = source_index.find(target_name);
         if (it == source_index.end())
         {
-            if (isFillPolicyZero(term))
-            {
-                out.push_back(0.0f);
-                continue;
-            }
             throw std::runtime_error(
                 "Observation term '" + term.name +
                 "' requested target_order entry '" + target_name +
@@ -198,11 +179,6 @@ std::vector<float> reorderNamedVector(
         }
         if (it->second >= values.size())
         {
-            if (isFillPolicyZero(term))
-            {
-                out.push_back(0.0f);
-                continue;
-            }
             throw std::runtime_error(
                 "Observation term '" + term.name +
                 "' requested canonical index out of range for feature '" + source_name + "'");
@@ -269,7 +245,7 @@ std::vector<float> applyFeatureTargetContract(
     {
         return *source;
     }
-    if (static_cast<size_t>(term.count) > source->size() && !isFillPolicyZero(term))
+    if (static_cast<size_t>(term.count) > source->size())
     {
         throw std::runtime_error(
             "Observation term '" + term.name +
@@ -361,6 +337,37 @@ std::vector<std::string> fallbackComponentsForTerm(const std::string &term_name)
     return {"roll", "pitch", "yaw"};
 }
 
+std::vector<float> projectedGravityFromQuatXyzw(const std::vector<float> &quat_xyzw)
+{
+    if (quat_xyzw.size() < 4)
+    {
+        return {0.0f, 0.0f, -1.0f};
+    }
+    double x = static_cast<double>(quat_xyzw[0]);
+    double y = static_cast<double>(quat_xyzw[1]);
+    double z = static_cast<double>(quat_xyzw[2]);
+    double w = static_cast<double>(quat_xyzw[3]);
+    const double norm = std::sqrt(x * x + y * y + z * z + w * w);
+    if (!std::isfinite(norm) || norm < 1.0e-8)
+    {
+        return {0.0f, 0.0f, -1.0f};
+    }
+    x /= norm;
+    y /= norm;
+    z /= norm;
+    w /= norm;
+
+    // Training uses quat_apply_inverse(base_quat, [0, 0, -1]).
+    const double r20 = 2.0 * (x * z - y * w);
+    const double r21 = 2.0 * (y * z + x * w);
+    const double r22 = 1.0 - 2.0 * (x * x + y * y);
+    return {
+        static_cast<float>(-r20),
+        static_cast<float>(-r21),
+        static_cast<float>(-r22),
+    };
+}
+
 const std::vector<float> *featureVectorOrNull(
     const ObservationFeatureContext &feature_context,
     const std::string &source_name)
@@ -385,7 +392,7 @@ std::vector<float> reorderedReferenceVector(
         const bool valid = source &&
                            source_idx >= 0 &&
                            static_cast<size_t>(source_idx) < source->size();
-        if (!valid && !isFillPolicyZero(term))
+        if (!valid)
         {
             throw std::runtime_error(
                 "Observation term '" + term.name +
@@ -418,7 +425,6 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
         term.target_order = getTargetOrderOrEmpty(term_node);
         term.target_representation = getStringOrEmpty(term_node, "target_representation");
         term.target_frame = getStringOrEmpty(term_node, "target_frame");
-        term.fill_policy = getFillPolicy(term_node);
         if (!term.components.empty() && !term.target_order.empty() &&
             term.components != term.target_order)
         {
@@ -458,7 +464,8 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
                 term_node,
                 term.target_order.empty() ? 12 : static_cast<int>(term.target_order.size()));
         }
-        else if (term.name == "base_ang_vel" || term.name == "base_rpy" || term.name == "base_euler")
+        else if (term.name == "base_ang_vel" || term.name == "base_rpy" ||
+                 term.name == "base_euler" || term.name == "projected_gravity")
         {
             const int default_count = term.components.empty() ? 3 : static_cast<int>(term.components.size());
             term.count = getCountOrDefault(term_node, default_count);
@@ -629,6 +636,18 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           3,
           true,
           true}},
+        {"projected_gravity",
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const std::vector<float> gravity_b = projectedGravityFromQuatXyzw(robot.base_quat);
+              const int max_count = std::min(term.count, static_cast<int>(gravity_b.size()));
+              for (int i = 0; i < term.count; ++i)
+              {
+                  pushPadded(out, i < max_count ? gravity_b[static_cast<size_t>(i)] : 0.0f, i, max_count);
+              }
+          },
+          3,
+          true,
+          false}},
         {"base_lin_vel",
          {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               const auto components = term.components.empty() ? std::vector<std::string>{"x", "y", "z"} : term.components;
@@ -823,7 +842,8 @@ size_t ObservationBuilder::resolveTermDim(const ObservationTermConfig &term, con
     {
         return static_cast<size_t>(provider.default_dim);
     }
-    if ((term.name == "command" || term.name == "base_ang_vel" || term.name == "base_euler" || term.name == "base_quat") &&
+    if ((term.name == "command" || term.name == "base_ang_vel" ||
+         term.name == "base_euler" || term.name == "base_quat") &&
         !term.components.empty())
     {
         return static_cast<size_t>(term.components.size());
@@ -857,13 +877,6 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
         if (!provider.supports_components && !term.components.empty())
         {
             throw std::runtime_error("Term does not support components: " + term.name);
-        }
-        if (normalizeToken(term.fill_policy) != "error" &&
-            normalizeToken(term.fill_policy) != "zero")
-        {
-            throw std::runtime_error(
-                "Observation term '" + term.name +
-                "' fill_policy must be 'error' or 'zero'");
         }
         if (!provider.supports_count && term.count > 0)
         {
@@ -908,6 +921,10 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
                     throw std::runtime_error("Unknown base_ang_vel component: " + component);
                 }
             }
+        }
+        if (term.name == "projected_gravity" && term.count > 3)
+        {
+            throw std::runtime_error("projected_gravity term count cannot exceed 3");
         }
         if (term.name == "base_euler")
         {

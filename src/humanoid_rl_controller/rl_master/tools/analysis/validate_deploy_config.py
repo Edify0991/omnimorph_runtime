@@ -37,6 +37,22 @@ CANONICAL_JOINT_ORDER: List[str] = [
     "left_knee_pitch",
     "left_ankle_pitch",
     "left_ankle_roll",
+    "waist_roll",
+    "waist_yaw",
+    "left_shoulder_pitch",
+    "left_shoulder_roll",
+    "left_shoulder_yaw",
+    "left_elbow_pitch",
+    "left_elbow_yaw",
+    "left_wrist_pitch",
+    "left_wrist_roll",
+    "right_shoulder_pitch",
+    "right_shoulder_roll",
+    "right_shoulder_yaw",
+    "right_elbow_pitch",
+    "right_elbow_yaw",
+    "right_wrist_pitch",
+    "right_wrist_roll",
 ]
 
 SUPPORTED_MANIFEST_TERMS = {
@@ -47,6 +63,7 @@ SUPPORTED_MANIFEST_TERMS = {
     "last_action",
     "base_lin_vel",
     "base_ang_vel",
+    "projected_gravity",
     "base_rpy",
     "base_euler",
     "base_quat",
@@ -75,6 +92,7 @@ DEFAULT_TERM_DIM = {
     "reference_joint_pos": 12,
     "reference_joint_vel": 12,
     "base_ang_vel": 3,
+    "projected_gravity": 3,
     "base_rpy": 3,
     "base_euler": 3,
     "base_quat": 4,
@@ -117,7 +135,6 @@ SUPPORTED_ONNX_INPUT_SOURCES = {
     "constant",
 }
 
-SUPPORTED_FILL_POLICIES = {"error", "zero"}
 SUPPORTED_IMU_PAYLOADS = {"euler_compat", "quaternion"}
 SUPPORTED_EULER_UNITS = {"rad", "deg"}
 SUPPORTED_QUAT_ORDERS = {"xyzw", "wxyz"}
@@ -679,7 +696,7 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
             default_count = 12
         elif name in {"reference_joint_pos", "reference_joint_vel"}:
             default_count = 12
-        elif name in {"base_ang_vel", "base_rpy", "base_euler"}:
+        elif name in {"base_ang_vel", "base_rpy", "base_euler", "projected_gravity"}:
             default_count = 3
         elif name == "base_quat":
             default_count = 4
@@ -712,6 +729,9 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
                     f"{name} count cannot exceed {default_count} when components is empty",
                 )
                 continue
+        if name == "projected_gravity" and count > 3:
+            issues.error(term_context, "projected_gravity count cannot exceed 3")
+            continue
         if name in REQUIRES_POSITIVE_COUNT and count <= 0:
             issues.error(term_context, f"{name} requires count > 0")
             continue
@@ -1512,7 +1532,6 @@ def check_onnx_contract(
             spec_context = f"{context} onnx_inputs[{idx}]"
             name = str(spec.get("name", "")).strip()
             source = normalize_token(spec.get("source", "stacked_observation"))
-            fill_policy = normalize_token(spec.get("fill_policy", "error"))
             feature_name = str(spec.get("feature_name", "")).strip()
             constant_values: List[float] = []
             for const_idx, value in enumerate(to_list(spec.get("constant"))):
@@ -1535,12 +1554,6 @@ def check_onnx_contract(
                 issues.error(
                     spec_context,
                     f"source must be one of {sorted(SUPPORTED_ONNX_INPUT_SOURCES)}",
-                )
-
-            if fill_policy not in SUPPORTED_FILL_POLICIES:
-                issues.error(
-                    spec_context,
-                    f"fill_policy must be one of {sorted(SUPPORTED_FILL_POLICIES)}",
                 )
 
             if source == "feature" and not feature_name:
@@ -1601,14 +1614,14 @@ def check_onnx_contract(
                     )
 
             if source == "constant":
-                if not constant_values and fill_policy != "zero":
-                    issues.error(spec_context, "constant source requires constant values or fill_policy='zero'")
+                if not constant_values:
+                    issues.error(spec_context, "constant source requires constant values")
                 if constant_values and len(constant_values) > target_count:
                     issues.error(
                         spec_context,
                         f"constant values length {len(constant_values)} exceeds target tensor size {target_count}",
                     )
-                if constant_values and len(constant_values) < target_count and fill_policy != "zero":
+                if constant_values and len(constant_values) < target_count:
                     issues.error(
                         spec_context,
                         f"constant values length {len(constant_values)} is smaller than target tensor size {target_count}",

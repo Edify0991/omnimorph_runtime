@@ -242,7 +242,6 @@ void OnnxPolicyRunner::init()
             binding.source = spec.source;
             binding.feature_name = spec.feature_name;
             binding.shape = spec.shape;
-            binding.fill_policy = spec.fill_policy;
             binding.constant = spec.constant;
             appendBinding(std::move(binding));
         }
@@ -286,7 +285,6 @@ void OnnxPolicyRunner::init()
         obs_binding.input_index = obs_input_index;
         obs_binding.name = input_names_[static_cast<size_t>(obs_input_index)];
         obs_binding.source = "stacked_observation";
-        obs_binding.fill_policy = "error";
         appendBinding(std::move(obs_binding));
 
         int timestep_input_index = findInputIndexByName(cfg_.time_step_input_name);
@@ -305,7 +303,6 @@ void OnnxPolicyRunner::init()
             time_binding.name = input_names_[static_cast<size_t>(timestep_input_index)];
             time_binding.source = "time_step";
             time_binding.shape = {1, 1};
-            time_binding.fill_policy = "error";
             appendBinding(std::move(time_binding));
         }
 
@@ -327,7 +324,8 @@ void OnnxPolicyRunner::init()
             zero_binding.input_index = input_index;
             zero_binding.name = input_names_[static_cast<size_t>(input_index)];
             zero_binding.source = "constant";
-            zero_binding.fill_policy = "zero";
+            zero_binding.shape = defaultShapeForInput(input_index);
+            zero_binding.constant.assign(elementCountFromShape(zero_binding.shape), 0.0f);
             appendBinding(std::move(zero_binding));
             zero_filled_inputs.push_back(input_names_[static_cast<size_t>(input_index)]);
         }
@@ -576,7 +574,7 @@ std::vector<float> OnnxPolicyRunner::resolveInputData(
             "' provides " + std::to_string(source_data.size()) +
             " values, exceeds target tensor size " + std::to_string(target_count));
     }
-    if (source_data.size() < target_count && trimCopy(binding.fill_policy) != "zero")
+    if (source_data.size() < target_count)
     {
         throw std::runtime_error(
             "[" + policy_tag_ + "] input '" + binding.name + "' source '" + binding.source +

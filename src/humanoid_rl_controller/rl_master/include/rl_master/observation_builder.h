@@ -20,7 +20,6 @@ struct ObservationTermConfig
     std::vector<std::string> target_order;
     std::string target_representation;
     std::string target_frame;
-    std::string fill_policy = "error";
 };
 
 struct ObservationFeatureContract

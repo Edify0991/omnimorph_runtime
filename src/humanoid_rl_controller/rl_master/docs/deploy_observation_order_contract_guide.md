@@ -191,8 +191,7 @@ observation manifest 负责定义“最终送进策略的观测排列方式”�
 - 默认未显式配置 `onnx_inputs` 时
   - 未绑定的模型输入会被作为 constant zero 输入补零
 - 显式配置 `onnx_inputs` 且某个输入来源是 `feature` 时
-  - 如果 `fill_policy != zero` 且 feature 缺失，runtime 会报错
-  - 如果 `fill_policy == zero`，则按目标 shape 补零
+  - 如果 feature 缺失，runtime 会报错
 
 因此，结论应表述为：
 

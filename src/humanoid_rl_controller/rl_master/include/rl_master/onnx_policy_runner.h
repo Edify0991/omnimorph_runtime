@@ -60,7 +60,6 @@ private:
         std::string source = "stacked_observation";
         std::string feature_name;
         std::vector<int64_t> shape;
-        std::string fill_policy = "error";
         std::vector<float> constant;
     };
 

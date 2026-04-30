@@ -1171,8 +1171,10 @@ void RL_controller::runAmpDiscriminator(
         return;
     }
 
-    const std::unordered_map<std::string, std::vector<float>> empty_features;
-    PolicyInferenceResult disc_result = runner->forward(*input, current_observation, empty_features);
+    PolicyInferenceResult disc_result = runner->forward(
+        *input,
+        current_observation,
+        latest_observation_feature_context_.named_features);
     const std::string prefix = tag + "/amp_discriminator/";
     latest_policy_extra_outputs_[prefix + "score"] = disc_result.action;
     for (auto &kv : disc_result.extra_outputs)
@@ -1840,7 +1842,18 @@ rl_master::RobotCommandData RL_controller::step(
                 prefetchCurrentPolicyReferenceOutputs();
             }
             std::vector<float> current_obs = get_robot_observation(local_phase_t);
-            update_obs_deque(current_obs);
+            if (entered_running && activePolicyCfg().prefill_observation_history_on_running_start)
+            {
+                obs_deque.clear();
+                for (int i = 0; i < std::max(1, activePolicyCfg().obs_stack_N); ++i)
+                {
+                    obs_deque.push_back(current_obs);
+                }
+            }
+            else
+            {
+                update_obs_deque(current_obs);
+            }
 
             const std::vector<float> policy_action = run_policy();
             robot->joint_target_q = get_joint_target_q(policy_action);

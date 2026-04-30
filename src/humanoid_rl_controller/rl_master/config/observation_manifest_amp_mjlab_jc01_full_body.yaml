@@ -1,0 +1,26 @@
+observation_manifest:
+  schema_version: 3
+  profile: "amp_mjlab_jc01_full_body_28dof"
+  # AMP_mjlab actor observation, one policy frame:
+  #   base_ang_vel(3) + projected_gravity(3) + command(3)
+  #   + joint_pos(28) + joint_vel(28) + last_action(28) = 93
+  # The policy profile stacks 4 frames, so the actor ONNX input is 372.
+  terms:
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+    - name: projected_gravity
+      enabled: true
+      count: 3
+    - name: command
+      enabled: true
+      components: [vx, vy, dyaw]
+    - name: joint_pos
+      enabled: true
+      count: 28
+    - name: joint_vel
+      enabled: true
+      count: 28
+    - name: last_action
+      enabled: true
+      count: 28

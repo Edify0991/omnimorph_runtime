@@ -469,7 +469,6 @@ struct OnnxInputSpec
     std::string source = "stacked_observation"; // stacked_observation / observation / time_step / feature / constant
     std::string feature_name;
     std::vector<int64_t> shape;
-    std::string fill_policy = "error"; // error / zero
     std::vector<float> constant;
 };
 
@@ -719,6 +718,7 @@ public:
 
     std::string startup_completion_action = "hold";
     int policy_startup_warmup_steps = 0;
+    bool prefill_observation_history_on_running_start = false;
     double zeroing_duration_s = 2.0;
     double zeroing_position_tolerance = 0.05;
     double zeroing_velocity_tolerance = 0.2;
@@ -890,7 +890,6 @@ public:
                     spec.name = yamlReadOr<std::string>(item, "name", "");
                     spec.source = yamlReadOr<std::string>(item, "source", "stacked_observation");
                     spec.feature_name = yamlReadOr<std::string>(item, "feature_name", "");
-                    spec.fill_policy = yamlReadOr<std::string>(item, "fill_policy", "error");
                     if (item["shape"])
                     {
                         spec.shape = item["shape"].as<std::vector<int64_t>>();
@@ -953,17 +952,13 @@ public:
                     {
                         throw std::runtime_error(item_name + " unsupported source: " + spec.source);
                     }
-                    if (spec.fill_policy != "error" && spec.fill_policy != "zero")
-                    {
-                        throw std::runtime_error(item_name + " unsupported fill_policy: " + spec.fill_policy);
-                    }
                     if (spec.source == "feature" && spec.feature_name.empty())
                     {
                         throw std::runtime_error(item_name + " requires feature_name when source=feature");
                     }
-                    if (spec.source == "constant" && spec.constant.empty() && spec.fill_policy != "zero")
+                    if (spec.source == "constant" && spec.constant.empty())
                     {
-                        throw std::runtime_error(item_name + " constant source requires values or fill_policy=zero");
+                        throw std::runtime_error(item_name + " constant source requires values");
                     }
                     for (size_t dim_idx = 0; dim_idx < spec.shape.size(); ++dim_idx)
                     {
@@ -1588,6 +1583,8 @@ public:
             {
                 throw std::runtime_error("policy_startup_warmup_steps must be >= 0");
             }
+            prefill_observation_history_on_running_start =
+                yamlReadOr<bool>(cfg, "prefill_observation_history_on_running_start", false);
             zeroing_duration_s = yamlReadOr<double>(cfg, "zeroing_duration_s", 2.0);
             zeroing_position_tolerance = yamlReadOr<double>(cfg, "zeroing_position_tolerance", 0.05);
             if (zeroing_position_tolerance < 0.0)
