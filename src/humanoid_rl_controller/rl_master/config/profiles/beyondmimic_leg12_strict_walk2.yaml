@@ -153,12 +153,15 @@ beyondmimic_leg12_strict_walk2:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-      # velocity_source: body_object_velocity_local
+      velocity_source: body_object_velocity_local
     policy_extra_outputs:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
+      reference_joint_order_metadata_key: joint_names
       reference_body_pos_w_key: body_pos_w
       reference_body_quat_w_key: body_quat_w
+      reference_body_lin_vel_w_key: body_lin_vel_w
+      reference_body_ang_vel_w_key: body_ang_vel_w
       body_quat_order: wxyz
       body_quat_representation: quat
       body_quat_frame: world
@@ -183,6 +186,7 @@ beyondmimic_leg12_strict_walk2:
     required_metadata_keys:
       - action_joint_names
       - joint_names
+      - command_joint_names
       - policy_joint_names
       - body_names
       - anchor_body_name
@@ -193,6 +197,8 @@ beyondmimic_leg12_strict_walk2:
       - joint_vel
       - body_pos_w
       - body_quat_w
+      - body_lin_vel_w
+      - body_ang_vel_w
     onnx_inputs: []
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12

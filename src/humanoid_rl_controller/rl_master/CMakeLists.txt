@@ -144,6 +144,7 @@ endif()
 if(DEFINED ENV{CONDA_ENGINEAI_PREFIX})
   list(APPEND _rl_master_runtime_rpath_dirs "$ENV{CONDA_ENGINEAI_PREFIX}/lib")
 endif()
+list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/humble/lib/x86_64-linux-gnu")
 list(REMOVE_DUPLICATES _rl_master_runtime_rpath_dirs)
 set(RL_MASTER_RPATH "")
 if(_rl_master_runtime_rpath_dirs)
@@ -184,9 +185,11 @@ ament_target_dependencies(rl_master_runtime PUBLIC
   sensor_msgs
   geometry_msgs
 )
+target_link_libraries(rl_master_runtime PUBLIC
+  pinocchio::pinocchio
+)
 target_link_libraries(rl_master_runtime PRIVATE
   onnxruntime::onnxruntime
-  pinocchio::pinocchio
   Threads::Threads
   yaml-cpp
   ${ZSTD_LIBRARY}
@@ -298,7 +301,7 @@ install(EXPORT export_rl_master
 )
 
 ament_export_include_directories(include)
-ament_export_dependencies(rclcpp std_msgs sensor_msgs geometry_msgs SharedMemory)
+ament_export_dependencies(rclcpp std_msgs sensor_msgs geometry_msgs SharedMemory pinocchio)
 ament_export_targets(export_rl_master HAS_LIBRARY_TARGET)
 
 ament_package()

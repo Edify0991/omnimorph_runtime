@@ -52,30 +52,30 @@ mujoco_sim_bridge:
       left_ankle_roll: 138.023
     hold_kd:
       right_hip_roll: 23.005
-      right_hip_yaw: 5.007
+      right_hip_yaw: 5.807
       right_hip_pitch: 23.005
       right_knee_pitch: 17.507
       right_ankle_pitch: 8.055
       right_ankle_roll: 8.055
       left_hip_roll: 23.005
-      left_hip_yaw: 5.007
+      left_hip_yaw: 5.807
       left_hip_pitch: 23.005
       left_knee_pitch: 17.507
       left_ankle_pitch: 8.055
       left_ankle_roll: 8.055
     hold_torque_limit:
-      right_hip_roll: 60.0
-      right_hip_yaw: 60.0
-      right_hip_pitch: 100.0
-      right_knee_pitch: 100.0
-      right_ankle_pitch: 100.0
-      right_ankle_roll: 100.0
-      left_hip_roll: 60.0
-      left_hip_yaw: 60.0
-      left_hip_pitch: 100.0
-      left_knee_pitch: 100.0
-      left_ankle_pitch: 100.0
-      left_ankle_roll: 100.0
+      right_hip_roll: 130.0
+      right_hip_yaw: 130.0
+      right_hip_pitch: 130.0
+      right_knee_pitch: 130.0
+      right_ankle_pitch: 130.0
+      right_ankle_roll: 130.0
+      left_hip_roll: 130.0
+      left_hip_yaw: 130.0
+      left_hip_pitch: 130.0
+      left_knee_pitch: 130.0
+      left_ankle_pitch: 130.0
+      left_ankle_roll: 130.0
 
     control_hz: 500.0
     sim_dt: 0.001
@@ -84,14 +84,19 @@ mujoco_sim_bridge:
     pause_when_no_command: false
     no_command_behavior: "hold_position"
     fix_base: false
-    fixed_base_height: -1.0
+    # The XML root pose is z=0.92, but the BeyondMimic zero/reference leg pose
+    # leaves the foot collision mesh about 4.16 cm above the floor at that height.
+    # Lock zeroing just below the geometric touch height so RUNNING starts with contact.
+    fixed_base_height: 0.8780
     enable_fixed_base_zeroing: true
     enable_fixed_base_hold_after_zeroing: true
     enable_release_before_running: true
-    # 500 Hz control -> 150 ticks ~= 0.30 s.
-    # Let the robot actually finish the landing transient before RUNNING.
-    post_release_settle_ticks: 150
+    # Tracking policies expect RUNNING to start from the locked reference pose.
+    # Waiting after base release lets the unsupported pose sag before policy starts.
+    post_release_settle_ticks: 0
     enable_prepose_snap: false
+    # Keep the base at the zeroing world origin; do not teleport to raw motion world coordinates.
+    sim_sync_running_start_to_reference: true
     actuator_control_mode: "torque"
 
     enable_viewer: false
@@ -126,27 +131,27 @@ mujoco_sim_bridge:
       left_ankle_roll: 138.023
     kd:
       right_hip_roll: 23.005
-      right_hip_yaw: 5.007
+      right_hip_yaw: 5.807
       right_hip_pitch: 23.005
       right_knee_pitch: 17.507
       right_ankle_pitch: 8.055
       right_ankle_roll: 8.055
       left_hip_roll: 23.005
-      left_hip_yaw: 5.007
+      left_hip_yaw: 5.807
       left_hip_pitch: 23.005
       left_knee_pitch: 17.507
       left_ankle_pitch: 8.055
       left_ankle_roll: 8.055
     torque_limit:
-      right_hip_roll: 60.0
-      right_hip_yaw: 60.0
-      right_hip_pitch: 100.0
-      right_knee_pitch: 100.0
-      right_ankle_pitch: 100.0
-      right_ankle_roll: 100.0
-      left_hip_roll: 60.0
-      left_hip_yaw: 60.0
-      left_hip_pitch: 100.0
-      left_knee_pitch: 100.0
-      left_ankle_pitch: 100.0
-      left_ankle_roll: 100.0
+      right_hip_roll: 130.0
+      right_hip_yaw: 130.0
+      right_hip_pitch: 130.0
+      right_knee_pitch: 130.0
+      right_ankle_pitch: 130.0
+      right_ankle_roll: 130.0
+      left_hip_roll: 130.0
+      left_hip_yaw: 130.0
+      left_hip_pitch: 130.0
+      left_knee_pitch: 130.0
+      left_ankle_pitch: 130.0
+      left_ankle_roll: 130.0

@@ -773,7 +773,18 @@ void OnnxPolicyRunner::validateModelMetadata()
     validateStringFieldIfPresent("action_output_name", cfg_.action_output_name);
     validateCsvListIfPresent("action_joint_names", cfg_.action_joint_order);
     validateCsvListIfPresent("policy_joint_names", cfg_.obs_joint_order);
-    validateCsvListIfPresent("joint_names", cfg_.reference_joint_order);
+    validateCsvListIfPresent("joint_names", cfg_.action_joint_order);
+    if (cfg_.enable_reference_motion &&
+        trimCopy(cfg_.reference_motion_source) != "file")
+    {
+        std::string reference_order_metadata_key =
+            trimCopy(cfg_.source_contract.policy_extra_outputs.reference_joint_order_metadata_key);
+        if (reference_order_metadata_key.empty())
+        {
+            reference_order_metadata_key = "command_joint_names";
+        }
+        validateCsvListIfPresent(reference_order_metadata_key, cfg_.reference_joint_order);
+    }
     validateCsvListIfPresent("body_names", cfg_.reference_body_names);
     validateStringFieldIfPresent("anchor_body_name", cfg_.reference_anchor_body);
 

@@ -93,6 +93,8 @@ private:
     void activateDynamicBaseLock(BaseLockReason reason, bool apply_prepose);
     void deactivateDynamicBaseLock(const char *reason);
     void applyPreposeSnap();
+    bool maybeApplyRunningStartReferenceSync(
+        const rl_master::logging::ControllerLogSnapshot &controller_snapshot);
     void startInputExecutor();
     void stopInputExecutor();
     void startStateTelemetry();
@@ -171,6 +173,7 @@ private:
     bool enable_release_before_running_ = false;
     int post_release_settle_ticks_ = 0;
     bool enable_prepose_snap_ = false;
+    bool sim_sync_running_start_to_reference_ = false;
     std::vector<double> prepose_joint_q_;
     bool sim_only_force_policy_csp_ = false;
     std::string actuator_control_mode_ = "auto";
@@ -244,6 +247,7 @@ private:
     int last_controller_mode_id_ = std::numeric_limits<int>::min();
     rl_master::DeployLifecycleState last_controller_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
     bool controller_state_initialized_ = false;
+    bool running_start_reference_sync_pending_ = false;
 
     int base_body_id_ = -1;
     int base_free_joint_id_ = -1;

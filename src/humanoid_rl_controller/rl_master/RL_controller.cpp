@@ -469,12 +469,12 @@ const std::vector<float> *findPolicyOutputByName(
     const std::string &preferred_prefix,
     const std::string &output_name)
 {
-    if (const auto *prefetched =
-            findExtraOutputByName(prefetched_extra_outputs, preferred_prefix, output_name))
+    if (const auto *latest =
+            findExtraOutputByName(latest_extra_outputs, preferred_prefix, output_name))
     {
-        return prefetched;
+        return latest;
     }
-    return findExtraOutputByName(latest_extra_outputs, preferred_prefix, output_name);
+    return findExtraOutputByName(prefetched_extra_outputs, preferred_prefix, output_name);
 }
 
 std::vector<float> convertQuatVectorToCanonical(
@@ -1285,6 +1285,18 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs()
             requested_output_names.push_back(name);
         }
     };
+    auto append_configured_extra = [&](const std::string &name) {
+        if (name.empty())
+        {
+            return;
+        }
+        if (std::find(cfg.extra_output_names.begin(), cfg.extra_output_names.end(), name) ==
+            cfg.extra_output_names.end())
+        {
+            return;
+        }
+        append_requested(true, name);
+    };
 
     append_requested(
         profile.required_reference_features.reference_motion,
@@ -1303,6 +1315,8 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs()
         profile.required_reference_features.reference_body_quat_w ||
             profile.required_reference_features.named_body_layout,
         cfg.source_contract.policy_extra_outputs.reference_body_quat_w_key);
+    append_configured_extra(cfg.source_contract.policy_extra_outputs.reference_body_lin_vel_w_key);
+    append_configured_extra(cfg.source_contract.policy_extra_outputs.reference_body_ang_vel_w_key);
     if (requested_output_names.empty())
     {
         return;
@@ -1354,6 +1368,7 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs()
 
 void RL_controller::warmStartPolicyState(double phase_t)
 {
+    (void)phase_t;
     const auto &cfg = activePolicyCfg();
     const int warmup_steps = std::max(0, cfg.policy_startup_warmup_steps);
     if (warmup_steps <= 0)
@@ -1363,10 +1378,24 @@ void RL_controller::warmStartPolicyState(double phase_t)
 
     for (int i = 0; i < warmup_steps; ++i)
     {
-        prefetchCurrentPolicyReferenceOutputs();
-        std::vector<float> current_obs = get_robot_observation(phase_t);
-        update_obs_deque(current_obs);
-        (void)run_policy(nullptr, false);
+        const std::vector<float> zero_obs(static_cast<size_t>(cfg.obs_dim), 0.0f);
+        std::vector<float> zero_stacked(static_cast<size_t>(cfg.obs_dim * std::max(1, cfg.obs_stack_N)), 0.0f);
+        ObservationFeatureContext empty_feature_context;
+        PolicyRunOutput warmup_output = runPolicyGroup(
+            &activePolicyGroup(),
+            zero_stacked,
+            zero_obs,
+            empty_feature_context,
+            true);
+
+        std::vector<float> warmup_action = std::move(warmup_output.action);
+        for (auto &value : warmup_action)
+        {
+            value = std::clamp(value, -cfg.clip_actions, cfg.clip_actions);
+        }
+        action = std::move(warmup_action);
+        latest_policy_extra_outputs_ = std::move(warmup_output.extra_outputs);
+        prefetched_policy_extra_outputs_.clear();
     }
 
     std::cout << "[RL_controller] startup warmup complete: steps=" << warmup_steps
@@ -1583,6 +1612,30 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                 quat_xyzw,
                 reference_body_quat_contract);
         }
+        if (const auto *body_lin_vel_w = findPolicyOutputByName(
+                prefetched_policy_extra_outputs_,
+                latest_policy_extra_outputs_,
+                preferred_prefix,
+                cfg.source_contract.policy_extra_outputs.reference_body_lin_vel_w_key))
+        {
+            setFeatureIfNonEmptyWithContract(
+                &feature_context,
+                "reference_body_lin_vel_w",
+                *body_lin_vel_w,
+                ObservationFeatureContract{body_names, "vec3_array", "world"});
+        }
+        if (const auto *body_ang_vel_w = findPolicyOutputByName(
+                prefetched_policy_extra_outputs_,
+                latest_policy_extra_outputs_,
+                preferred_prefix,
+                cfg.source_contract.policy_extra_outputs.reference_body_ang_vel_w_key))
+        {
+            setFeatureIfNonEmptyWithContract(
+                &feature_context,
+                "reference_body_ang_vel_w",
+                *body_ang_vel_w,
+                ObservationFeatureContract{body_names, "vec3_array", "world"});
+        }
     }
 
     const auto *reference_body_pos_w = findNamedFeature(feature_context.named_features, "reference_body_pos_w");
@@ -1769,7 +1822,10 @@ rl_master::RobotCommandData RL_controller::step(
             {
                 warmStartPolicyState(local_phase_t);
             }
-            prefetchCurrentPolicyReferenceOutputs();
+            if (latest_policy_extra_outputs_.empty())
+            {
+                prefetchCurrentPolicyReferenceOutputs();
+            }
             std::vector<float> current_obs = get_robot_observation(local_phase_t);
             update_obs_deque(current_obs);
 
@@ -1808,6 +1864,10 @@ rl_master::RobotCommandData RL_controller::step(
                     robot->joint_target_q = robot->default_angle;
                     robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
                 }
+            }
+            else
+            {
+                robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
             }
         }
         robot->open_rl = rl_master::kOpenRlPolicyEnabled;

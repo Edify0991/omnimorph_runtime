@@ -506,8 +506,11 @@ struct SourceContractPolicyExtraOutputs
     std::string reference_motion_key = "reference_motion";
     std::string reference_joint_pos_key = "joint_pos";
     std::string reference_joint_vel_key = "joint_vel";
+    std::string reference_joint_order_metadata_key = "command_joint_names";
     std::string reference_body_pos_w_key = "body_pos_w";
     std::string reference_body_quat_w_key = "body_quat_w";
+    std::string reference_body_lin_vel_w_key = "body_lin_vel_w";
+    std::string reference_body_ang_vel_w_key = "body_ang_vel_w";
     std::string body_quat_order = "wxyz";
     std::string body_quat_representation = "quat";
     std::string body_quat_frame = "world";
@@ -1379,6 +1382,10 @@ public:
                 policy_extra_outputs_contract_cfg,
                 "reference_joint_vel_key",
                 source_contract.policy_extra_outputs.reference_joint_vel_key);
+            source_contract.policy_extra_outputs.reference_joint_order_metadata_key = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "reference_joint_order_metadata_key",
+                source_contract.policy_extra_outputs.reference_joint_order_metadata_key);
             source_contract.policy_extra_outputs.reference_body_pos_w_key = yamlReadOr<std::string>(
                 policy_extra_outputs_contract_cfg,
                 "reference_body_pos_w_key",
@@ -1387,6 +1394,14 @@ public:
                 policy_extra_outputs_contract_cfg,
                 "reference_body_quat_w_key",
                 source_contract.policy_extra_outputs.reference_body_quat_w_key);
+            source_contract.policy_extra_outputs.reference_body_lin_vel_w_key = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "reference_body_lin_vel_w_key",
+                source_contract.policy_extra_outputs.reference_body_lin_vel_w_key);
+            source_contract.policy_extra_outputs.reference_body_ang_vel_w_key = yamlReadOr<std::string>(
+                policy_extra_outputs_contract_cfg,
+                "reference_body_ang_vel_w_key",
+                source_contract.policy_extra_outputs.reference_body_ang_vel_w_key);
             source_contract.policy_extra_outputs.body_quat_order = yamlReadOr<std::string>(
                 policy_extra_outputs_contract_cfg,
                 "body_quat_order",

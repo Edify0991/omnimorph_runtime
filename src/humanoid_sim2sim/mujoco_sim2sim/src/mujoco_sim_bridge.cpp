@@ -123,6 +123,51 @@ const char *baseLockReasonName(mujoco_sim2sim::MujocoSimBridge::BaseLockReason r
     }
 }
 
+std::array<double, 4> normalizeQuatWxyz(std::array<double, 4> q)
+{
+    const double norm = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    if (!std::isfinite(norm) || norm < 1.0e-9)
+    {
+        return {1.0, 0.0, 0.0, 0.0};
+    }
+    for (double &v : q)
+    {
+        v /= norm;
+    }
+    return q;
+}
+
+std::array<double, 4> multiplyQuatWxyz(
+    const std::array<double, 4> &a,
+    const std::array<double, 4> &b)
+{
+    return normalizeQuatWxyz({
+        a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+        a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+        a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+        a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0],
+    });
+}
+
+std::array<double, 4> inverseQuatWxyz(const std::array<double, 4> &q)
+{
+    const double norm_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (!std::isfinite(norm_sq) || norm_sq < 1.0e-12)
+    {
+        return {1.0, 0.0, 0.0, 0.0};
+    }
+    return {q[0] / norm_sq, -q[1] / norm_sq, -q[2] / norm_sq, -q[3] / norm_sq};
+}
+
+std::array<double, 4> yawQuatWxyz(const std::array<double, 4> &q)
+{
+    const auto nq = normalizeQuatWxyz(q);
+    const double yaw = std::atan2(
+        2.0 * (nq[0] * nq[3] + nq[1] * nq[2]),
+        1.0 - 2.0 * (nq[2] * nq[2] + nq[3] * nq[3]));
+    return {std::cos(0.5 * yaw), 0.0, 0.0, std::sin(0.5 * yaw)};
+}
+
 } // namespace
 
 namespace mujoco_sim2sim
@@ -276,6 +321,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<int>("post_release_settle_ticks", 0);
     this->declare_parameter<int>("post_zeroing_hold_settle_ticks", 0);
     this->declare_parameter<bool>("enable_prepose_snap", false);
+    this->declare_parameter<bool>("sim_sync_running_start_to_reference", false);
     this->declare_parameter<std::vector<double>>("prepose_joint_q", std::vector<double>{});
     this->declare_parameter<bool>("sim_only_force_policy_csp", false);
     this->declare_parameter<std::string>("actuator_control_mode", "auto");
@@ -323,6 +369,7 @@ void MujocoSimBridge::loadParameters()
         0,
         static_cast<int>(this->get_parameter("post_zeroing_hold_settle_ticks").as_int()));
     enable_prepose_snap_ = this->get_parameter("enable_prepose_snap").as_bool();
+    sim_sync_running_start_to_reference_ = this->get_parameter("sim_sync_running_start_to_reference").as_bool();
     prepose_joint_q_ = this->get_parameter("prepose_joint_q").as_double_array();
     sim_only_force_policy_csp_ = this->get_parameter("sim_only_force_policy_csp").as_bool();
     actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
@@ -1931,6 +1978,143 @@ void MujocoSimBridge::applyPreposeSnap()
     RCLCPP_INFO(this->get_logger(), "Applied sim prepose snap before fixed-base zeroing.");
 }
 
+bool MujocoSimBridge::maybeApplyRunningStartReferenceSync(
+    const rl_master::logging::ControllerLogSnapshot &controller_snapshot)
+{
+    if (!sim_sync_running_start_to_reference_ || !running_start_reference_sync_pending_)
+    {
+        return false;
+    }
+    if (!controller_snapshot.valid)
+    {
+        return false;
+    }
+    if (static_cast<rl_master::DeployLifecycleState>(controller_snapshot.deploy_state) !=
+        rl_master::DeployLifecycleState::kRunning)
+    {
+        return false;
+    }
+
+    const auto find_feature =
+        [&](const std::string &name) -> const std::vector<float> * {
+        const auto it = controller_snapshot.named_features.find(name);
+        if (it == controller_snapshot.named_features.end())
+        {
+            return nullptr;
+        }
+        return &it->second;
+    };
+
+    const auto *reference_joint_pos = find_feature("reference_joint_pos");
+    if (!reference_joint_pos || reference_joint_pos->empty())
+    {
+        return false;
+    }
+
+    const auto *reference_joint_vel = find_feature("reference_joint_vel");
+    const auto *reference_body_quat_w = find_feature("reference_body_quat_w");
+    const auto *reference_body_lin_vel_w = find_feature("reference_body_lin_vel_w");
+    const auto *reference_body_ang_vel_w = find_feature("reference_body_ang_vel_w");
+    const Sim2realCfg &active_cfg = controller_runtime_.runtimeCfg();
+
+    for (size_t i = 0; i < joint_names_.size(); ++i)
+    {
+        const int qpos_adr = qpos_addrs_[i];
+        const int qvel_adr = qvel_addrs_[i];
+        if (qpos_adr >= 0 && qpos_adr < model_->nq &&
+            i < reference_joint_pos->size())
+        {
+            data_->qpos[qpos_adr] = static_cast<double>((*reference_joint_pos)[i]);
+            last_target_q_[i] = (*reference_joint_pos)[i];
+        }
+        if (qvel_adr >= 0 && qvel_adr < model_->nv)
+        {
+            const double dq =
+                (reference_joint_vel && i < reference_joint_vel->size())
+                    ? static_cast<double>((*reference_joint_vel)[i])
+                    : 0.0;
+            data_->qvel[qvel_adr] = dq;
+        }
+    }
+
+    if (base_free_qpos_adr_ >= 0 &&
+        (base_free_qpos_adr_ + 6) < model_->nq &&
+        base_free_qvel_adr_ >= 0 &&
+        (base_free_qvel_adr_ + 5) < model_->nv)
+    {
+        const std::vector<std::string> &body_names = active_cfg.reference_body_names;
+        const auto anchor_it = std::find(body_names.begin(), body_names.end(), active_cfg.reference_anchor_body);
+        if (anchor_it != body_names.end())
+        {
+            const size_t anchor_index = static_cast<size_t>(std::distance(body_names.begin(), anchor_it));
+            if (reference_body_quat_w)
+            {
+                const size_t quat_offset = anchor_index * 4;
+                if (quat_offset + 3 < reference_body_quat_w->size())
+                {
+                    const std::array<double, 4> current_quat_wxyz = normalizeQuatWxyz({
+                        data_->qpos[base_free_qpos_adr_ + 3],
+                        data_->qpos[base_free_qpos_adr_ + 4],
+                        data_->qpos[base_free_qpos_adr_ + 5],
+                        data_->qpos[base_free_qpos_adr_ + 6],
+                    });
+                    const std::array<double, 4> reference_quat_wxyz = normalizeQuatWxyz({
+                        static_cast<double>((*reference_body_quat_w)[quat_offset + 3]),
+                        static_cast<double>((*reference_body_quat_w)[quat_offset + 0]),
+                        static_cast<double>((*reference_body_quat_w)[quat_offset + 1]),
+                        static_cast<double>((*reference_body_quat_w)[quat_offset + 2]),
+                    });
+                    const std::array<double, 4> reference_roll_pitch =
+                        multiplyQuatWxyz(inverseQuatWxyz(yawQuatWxyz(reference_quat_wxyz)), reference_quat_wxyz);
+                    const std::array<double, 4> synced_quat =
+                        multiplyQuatWxyz(yawQuatWxyz(current_quat_wxyz), reference_roll_pitch);
+                    data_->qpos[base_free_qpos_adr_ + 3] = synced_quat[0];
+                    data_->qpos[base_free_qpos_adr_ + 4] = synced_quat[1];
+                    data_->qpos[base_free_qpos_adr_ + 5] = synced_quat[2];
+                    data_->qpos[base_free_qpos_adr_ + 6] = synced_quat[3];
+                }
+            }
+            for (int i = 0; i < 6; ++i)
+            {
+                data_->qvel[base_free_qvel_adr_ + i] = 0.0;
+            }
+            if (reference_body_lin_vel_w)
+            {
+                const size_t vel_offset = anchor_index * 3;
+                if (vel_offset + 2 < reference_body_lin_vel_w->size())
+                {
+                    data_->qvel[base_free_qvel_adr_ + 0] =
+                        static_cast<double>((*reference_body_lin_vel_w)[vel_offset + 0]);
+                    data_->qvel[base_free_qvel_adr_ + 1] =
+                        static_cast<double>((*reference_body_lin_vel_w)[vel_offset + 1]);
+                    data_->qvel[base_free_qvel_adr_ + 2] =
+                        static_cast<double>((*reference_body_lin_vel_w)[vel_offset + 2]);
+                }
+            }
+            if (reference_body_ang_vel_w)
+            {
+                const size_t vel_offset = anchor_index * 3;
+                if (vel_offset + 2 < reference_body_ang_vel_w->size())
+                {
+                    data_->qvel[base_free_qvel_adr_ + 3] =
+                        static_cast<double>((*reference_body_ang_vel_w)[vel_offset + 0]);
+                    data_->qvel[base_free_qvel_adr_ + 4] =
+                        static_cast<double>((*reference_body_ang_vel_w)[vel_offset + 1]);
+                    data_->qvel[base_free_qvel_adr_ + 5] =
+                        static_cast<double>((*reference_body_ang_vel_w)[vel_offset + 2]);
+                }
+            }
+        }
+    }
+
+    mj_forward(model_, data_);
+    running_start_reference_sync_pending_ = false;
+    RCLCPP_INFO(
+        this->get_logger(),
+        "Applied sim-only startup reference sync at RUNNING entry without changing base world pose.");
+    return true;
+}
+
 void MujocoSimBridge::activateDynamicBaseLock(BaseLockReason reason, bool apply_prepose)
 {
     const bool was_active = dynamic_base_lock_active_;
@@ -2562,6 +2746,16 @@ void MujocoSimBridge::controlLoopTick()
             activateDynamicBaseLock(BaseLockReason::kIncompatibleSwitchZeroing, false);
             zeroing_injection_pending_ = true;
         }
+
+        if (last_controller_deploy_state_ != rl_master::DeployLifecycleState::kRunning &&
+            controller_state == rl_master::DeployLifecycleState::kRunning)
+        {
+            running_start_reference_sync_pending_ = sim_sync_running_start_to_reference_;
+        }
+    }
+    if (controller_state != rl_master::DeployLifecycleState::kRunning)
+    {
+        running_start_reference_sync_pending_ = false;
     }
     if (controller_state != rl_master::DeployLifecycleState::kHold &&
         hold_settle_ticks_remaining_ > 0)
@@ -2599,6 +2793,7 @@ void MujocoSimBridge::controlLoopTick()
         hold_target_latched_ = false;
     }
 
+    (void)maybeApplyRunningStartReferenceSync(controller_snapshot);
     enforceBaseLock();
     updateControlInput(command, control_active, now);
 
