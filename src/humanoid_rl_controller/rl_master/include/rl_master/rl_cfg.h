@@ -507,6 +507,7 @@ struct SourceContractPolicyExtraOutputs
     std::string reference_joint_pos_key = "joint_pos";
     std::string reference_joint_vel_key = "joint_vel";
     std::string reference_joint_order_metadata_key = "command_joint_names";
+    bool preserve_reference_joint_order = false;
     std::string reference_body_pos_w_key = "body_pos_w";
     std::string reference_body_quat_w_key = "body_quat_w";
     std::string reference_body_lin_vel_w_key = "body_lin_vel_w";
@@ -1386,6 +1387,10 @@ public:
                 policy_extra_outputs_contract_cfg,
                 "reference_joint_order_metadata_key",
                 source_contract.policy_extra_outputs.reference_joint_order_metadata_key);
+            source_contract.policy_extra_outputs.preserve_reference_joint_order = yamlReadOr<bool>(
+                policy_extra_outputs_contract_cfg,
+                "preserve_reference_joint_order",
+                source_contract.policy_extra_outputs.preserve_reference_joint_order);
             source_contract.policy_extra_outputs.reference_body_pos_w_key = yamlReadOr<std::string>(
                 policy_extra_outputs_contract_cfg,
                 "reference_body_pos_w_key",

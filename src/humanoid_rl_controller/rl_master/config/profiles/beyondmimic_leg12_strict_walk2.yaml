@@ -158,6 +158,7 @@ beyondmimic_leg12_strict_walk2:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
       reference_joint_order_metadata_key: joint_names
+      preserve_reference_joint_order: true
       reference_body_pos_w_key: body_pos_w
       reference_body_quat_w_key: body_quat_w
       reference_body_lin_vel_w_key: body_lin_vel_w

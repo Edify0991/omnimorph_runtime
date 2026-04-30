@@ -1560,14 +1560,22 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                 preferred_prefix,
                 cfg.source_contract.policy_extra_outputs.reference_joint_pos_key))
         {
+            const bool preserve_policy_reference_order =
+                cfg.source_contract.policy_extra_outputs.preserve_reference_joint_order;
+            const ObservationFeatureContract policy_reference_joint_contract{
+                preserve_policy_reference_order ? cfg.reference_joint_order : joint_order_,
+                "joint_vector",
+                "joint_space"};
             setFeatureIfNonEmptyWithContract(
                 &feature_context,
                 "reference_joint_pos",
-                remapJointVectorToCanonical(
-                    *joint_pos,
-                    cfg.reference_joint_order,
-                    joint_order_),
-                reference_joint_contract);
+                preserve_policy_reference_order
+                    ? *joint_pos
+                    : remapJointVectorToCanonical(
+                          *joint_pos,
+                          cfg.reference_joint_order,
+                          joint_order_),
+                policy_reference_joint_contract);
         }
         if (const auto *joint_vel = findPolicyOutputByName(
                 prefetched_policy_extra_outputs_,
@@ -1575,14 +1583,22 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                 preferred_prefix,
                 cfg.source_contract.policy_extra_outputs.reference_joint_vel_key))
         {
+            const bool preserve_policy_reference_order =
+                cfg.source_contract.policy_extra_outputs.preserve_reference_joint_order;
+            const ObservationFeatureContract policy_reference_joint_contract{
+                preserve_policy_reference_order ? cfg.reference_joint_order : joint_order_,
+                "joint_vector",
+                "joint_space"};
             setFeatureIfNonEmptyWithContract(
                 &feature_context,
                 "reference_joint_vel",
-                remapJointVectorToCanonical(
-                    *joint_vel,
-                    cfg.reference_joint_order,
-                    joint_order_),
-                reference_joint_contract);
+                preserve_policy_reference_order
+                    ? *joint_vel
+                    : remapJointVectorToCanonical(
+                          *joint_vel,
+                          cfg.reference_joint_order,
+                          joint_order_),
+                policy_reference_joint_contract);
         }
         if (const auto *body_pos_w = findPolicyOutputByName(
                 prefetched_policy_extra_outputs_,
