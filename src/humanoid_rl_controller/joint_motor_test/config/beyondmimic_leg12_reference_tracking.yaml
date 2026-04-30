@@ -1,0 +1,93 @@
+joint_motor_test:
+  # Use 1090 to switch to this mode and start playback.
+  test_mode_id: 90
+  control_hz: 500.0
+  deploy_config_path: ""
+
+  # Keep this aligned with mujoco_sim2sim joint_names and robot state order.
+  joint_names:
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+
+  trajectory_source: file
+  trajectory_file: /tmp/beyondmimic_leg12_reference_500hz.csv
+  loop_trajectory: true
+  restart_trajectory_on_enter_running: true
+
+  # CST stream: joint_motor_test computes PD torque at 500 Hz and sim bridge
+  # applies that torque directly.
+  control_mode: cst
+
+  startup_completion_action: hold
+  zeroing_duration_s: 2.0
+  zero_pose:
+    - -0.002272082027
+    - 0.2372164279
+    - -0.1582825035
+    - 0.3525242209
+    - -0.1966467202
+    - -0.0241828505
+    - 0.0245223269
+    - 0.05362581834
+    - -0.1941322386
+    - 0.3517585993
+    - -0.140415892
+    - -0.03464089707
+
+  fallback_kp:
+    - 394.213
+    - 99.511
+    - 394.213
+    - 300.0
+    - 138.023
+    - 138.023
+    - 394.213
+    - 99.511
+    - 394.213
+    - 300.0
+    - 138.023
+    - 138.023
+  fallback_kd:
+    - 23.005
+    - 5.807
+    - 23.005
+    - 17.507
+    - 8.055
+    - 8.055
+    - 23.005
+    - 5.807
+    - 23.005
+    - 17.507
+    - 8.055
+    - 8.055
+  tau_limit:
+    - 130.0
+    - 130.0
+    - 130.0
+    - 130.0
+    - 130.0
+    - 130.0
+    - 130.0
+    - 130.0
+    - 130.0
+    - 130.0
+    - 130.0
+    - 130.0
+
+  strict_safety_checks: true
+  max_abs_q: 2.0
+  max_abs_dq: 20.0
+  max_abs_tau: 130.0
+
+  save_data: true
+  data_path: ""

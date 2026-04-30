@@ -43,6 +43,8 @@ K_OPEN_RL_TEST_R1 = 50.0
 K_PROTOCOL_V2_MAGIC = 240426
 K_PROTOCOL_V2_VERSION = 2
 K_PROTOCOL_V2_PAYLOAD_POLICY_COMMAND = 1
+K_PROTOCOL_V2_PAYLOAD_ROBOT_STATE = 2
+K_ROBOT_STATE_V2_HEADER_COUNT = 4
 
 # Legacy split-runtime command topic. The fused runtime does not use this path.
 TOPIC_POLICY_COMMAND = "/humanoid/rl/command"
@@ -670,19 +672,23 @@ class MujocoInteractiveBackend(Node):
 
     def _publish_robot_state(self) -> None:
         msg = Float32MultiArray()
-        data = np.zeros(K_ROBOT_STATE_VALUE_COUNT, dtype=np.float32)
+        data = np.zeros(K_ROBOT_STATE_V2_HEADER_COUNT + K_ROBOT_STATE_VALUE_COUNT, dtype=np.float32)
+        data[0] = float(K_PROTOCOL_V2_MAGIC)
+        data[1] = float(K_PROTOCOL_V2_VERSION)
+        data[2] = float(K_PROTOCOL_V2_PAYLOAD_ROBOT_STATE)
+        data[3] = float(K_JOINT_COUNT)
 
+        cursor = K_ROBOT_STATE_V2_HEADER_COUNT
         for i in range(K_JOINT_COUNT):
             qadr = int(self.qpos_addrs[i])
             vadr = int(self.qvel_addrs[i])
-            off = i * 3
             if 0 <= qadr < int(self.model.nq):
-                data[off + 0] = float(self.data.qpos[qadr])
+                data[cursor + 0] = float(self.data.qpos[qadr])
             if 0 <= vadr < int(self.model.nv):
-                data[off + 1] = float(self.data.qvel[vadr])
-            data[off + 2] = float(self.applied_tau[i])
+                data[cursor + 1] = float(self.data.qvel[vadr])
+            data[cursor + 2] = float(self.applied_tau[i])
+            cursor += 3
 
-        cursor = K_JOINT_STATE_VALUE_COUNT
         base_w = np.zeros(3, dtype=np.float32)
         if self.base_free_qvel_adr >= 0 and (self.base_free_qvel_adr + 5) < int(self.model.nv):
             base_w[0] = float(self.data.qvel[self.base_free_qvel_adr + 3])

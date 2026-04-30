@@ -142,6 +142,46 @@ ros2 launch joint_motor_test joint_motor_test_sim2sim.launch.py \
   show_right_ui:=true
 ```
 
+### 6.3 BeyondMimic reference tracking check
+
+This path exports the ONNX `joint_pos/joint_vel` reference and tracks it with
+`joint_motor_test` in CST mode. Use `fixed_base:=true` so the robot hangs in
+the air and the test isolates reference order, phase, and amplitude from
+balance/contact issues.
+
+Export a 500 Hz playback CSV:
+
+```bash
+ros2 run joint_motor_test export_beyondmimic_reference.py \
+  --onnx /home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/policies/2026-03-29_beyondmimic_jc01_leg12_strict_walk2.onnx \
+  --output /tmp/beyondmimic_leg12_reference_500hz.csv \
+  --start-step 50 \
+  --output-hz 500
+```
+
+For a pure position-hold check, add `--zero-dq`.
+
+Launch the fixed-base sim2sim test:
+
+```bash
+ros2 launch joint_motor_test joint_motor_test_sim2sim.launch.py \
+  model_path:=/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_legs.xml \
+  bridge_config:=/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
+  test_config_path:=/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/joint_motor_test/config/beyondmimic_leg12_reference_tracking.yaml \
+  backend:=python_interactive \
+  fixed_base:=true \
+  fixed_base_height:=0.8780 \
+  control_hz:=500.0 \
+  actuator_control_mode:=torque \
+  enable_viewer:=true
+```
+
+Start playback:
+
+```bash
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1090}"
+```
+
 Viewer controls:
 
 - `backend:=python_interactive`: use official MuJoCo Python viewer UI (left/right panels, camera, perturbation tools).

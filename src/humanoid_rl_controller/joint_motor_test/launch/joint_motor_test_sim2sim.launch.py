@@ -12,6 +12,7 @@ def generate_launch_description():
     mujoco_pkg_share = get_package_share_directory("mujoco_sim2sim")
 
     default_test_cfg = os.path.join(test_pkg_share, "config", "joint_motor_test.yaml")
+    default_bridge_cfg = os.path.join(mujoco_pkg_share, "config", "mujoco_sim2sim.yaml")
     mujoco_launch = os.path.join(mujoco_pkg_share, "launch", "sim2sim_mujoco.launch.py")
 
     model_path_arg = DeclareLaunchArgument(
@@ -28,6 +29,16 @@ def generate_launch_description():
         "test_config_path",
         default_value=default_test_cfg,
         description="Path to joint_motor_test yaml config",
+    )
+    bridge_config_arg = DeclareLaunchArgument(
+        "bridge_config",
+        default_value=default_bridge_cfg,
+        description="Path to mujoco_sim2sim yaml config",
+    )
+    control_hz_arg = DeclareLaunchArgument(
+        "control_hz",
+        default_value="500.0",
+        description="Control frequency for the MuJoCo bridge",
     )
     fixed_base_arg = DeclareLaunchArgument(
         "fixed_base",
@@ -90,6 +101,8 @@ def generate_launch_description():
         launch_arguments={
             "model_path": LaunchConfiguration("model_path"),
             "backend": LaunchConfiguration("backend"),
+            "bridge_config": LaunchConfiguration("bridge_config"),
+            "control_hz": LaunchConfiguration("control_hz"),
             "fixed_base": LaunchConfiguration("fixed_base"),
             "fixed_base_height": LaunchConfiguration("fixed_base_height"),
             "actuator_control_mode": LaunchConfiguration("actuator_control_mode"),
@@ -115,6 +128,8 @@ def generate_launch_description():
         model_path_arg,
         backend_arg,
         test_config_arg,
+        bridge_config_arg,
+        control_hz_arg,
         fixed_base_arg,
         fixed_base_height_arg,
         actuator_mode_arg,

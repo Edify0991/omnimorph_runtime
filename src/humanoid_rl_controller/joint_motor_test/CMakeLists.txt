@@ -55,6 +55,11 @@ install(DIRECTORY config docs launch
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  scripts/export_beyondmimic_reference.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(FILES README.md
   DESTINATION share/${PROJECT_NAME}
 )
