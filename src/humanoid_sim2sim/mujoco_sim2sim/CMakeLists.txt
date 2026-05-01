@@ -87,9 +87,18 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
     endif()
   endif()
 
-  add_executable(mujoco_sim_bridge
+  set(MUJOCO_SIM_BRIDGE_SOURCES
     src/main.cpp
-    src/mujoco_sim_bridge.cpp
+    src/mujoco_sim_bridge_core.cpp
+    src/mujoco_sim_bridge_ros_io_logging.cpp
+    src/mujoco_sim_bridge_control_config.cpp
+    src/mujoco_sim_bridge_control_loop.cpp
+    src/mujoco_sim_bridge_publishing_utils.cpp
+    src/mujoco_sim_bridge_viewer.cpp
+  )
+
+  add_executable(mujoco_sim_bridge
+    ${MUJOCO_SIM_BRIDGE_SOURCES}
   )
 
   target_include_directories(mujoco_sim_bridge PUBLIC

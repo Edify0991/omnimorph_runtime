@@ -7,7 +7,7 @@
 int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<mujoco_sim2sim::MujocoSimBridge>();
+    auto node = mujoco_sim2sim::createMujocoSimBridgeNode();
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
