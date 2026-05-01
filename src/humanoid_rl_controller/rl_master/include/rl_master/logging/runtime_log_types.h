@@ -56,9 +56,6 @@ struct ControllerLogSnapshot
     std::vector<float> joint_target_tau;
     std::vector<float> observation;
     std::vector<float> policy_action;
-    std::vector<float> amp_discriminator_score;
-    bool has_amp_discriminator_score = false;
-    double amp_discriminator_score_mean = 0.0;
     std::unordered_map<std::string, std::vector<float>> named_features;
     std::vector<std::string> external_feature_names;
 };
@@ -112,9 +109,6 @@ struct RuntimeTickLogRecord
 
     std::unordered_map<std::string, std::vector<float>> named_features;
     std::vector<std::string> external_feature_names;
-    std::vector<float> amp_discriminator_score;
-    bool has_amp_discriminator_score = false;
-    double amp_discriminator_score_mean = 0.0;
 };
 
 } // namespace rl_master::logging

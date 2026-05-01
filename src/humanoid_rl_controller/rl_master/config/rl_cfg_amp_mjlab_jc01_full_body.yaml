@@ -109,8 +109,6 @@ logging:
     enabled: true
   reference_motion:
     enabled: false
-  amp:
-    enabled: true
   source_samples:
     enabled: true
     include_base_imu: true

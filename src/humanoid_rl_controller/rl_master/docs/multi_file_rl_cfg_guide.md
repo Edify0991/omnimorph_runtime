@@ -61,7 +61,6 @@
 - `policy_io`
 - `source_contract`
 - `sub_models`
-- `amp_discriminator`
 - `external_observations`
 - `reference_motion`
 - `startup_completion_action`

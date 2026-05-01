@@ -1164,9 +1164,6 @@ void RobotSolver::logLoopData(const rl_master::logging::ControllerLogSnapshot &c
     record.policy_action = controller_snapshot.policy_action;
     record.named_features = controller_snapshot.named_features;
     record.external_feature_names = controller_snapshot.external_feature_names;
-    record.amp_discriminator_score = controller_snapshot.amp_discriminator_score;
-    record.has_amp_discriminator_score = controller_snapshot.has_amp_discriminator_score;
-    record.amp_discriminator_score_mean = controller_snapshot.amp_discriminator_score_mean;
 
     record.joint_cmd_q = joint_cmd_q_;
     record.joint_cmd_dq = joint_cmd_dq_;

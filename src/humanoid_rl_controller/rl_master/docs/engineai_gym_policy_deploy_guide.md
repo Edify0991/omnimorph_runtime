@@ -55,7 +55,6 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 - `obs_joint_order`
 - observation manifest
 - 是否启用 `sub_models`
-- 是否启用 `amp_discriminator`
 - 是否声明 `external_observations`
 - 是否启用 `reference_motion`
 
@@ -74,7 +73,6 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 - `observation_manifest`
 - `observation_builder`
 - `policy_group`
-- `amp_discriminator`
 - `reference_motion`
 
 所以更准确地说：
@@ -117,7 +115,6 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 当前真正决定运行时结构的，仍然是该 `mode` 配置里是否启用了这些能力：
 
 - `sub_models`
-- `amp_discriminator`
 - `external_observations`
 - `reference_motion`
 - 对应的 observation manifest
@@ -239,7 +236,6 @@ Edit:
 - `robot.default_joint_angles`
 - `robot.zero_joint_angles`
 - 是否有 `sub_models`
-- 是否启用 `amp_discriminator`
 - 是否声明 `external_observations`
 - 是否启用 `reference_motion`
 

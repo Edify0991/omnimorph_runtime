@@ -180,7 +180,8 @@ beyondmimic_leg12_strict_walk2:
     action_output_name: actions
     enable_time_step_input: true
     time_step_input_name: time_step
-    time_step_start: 50
+    time_step_start: 12250
+    advance_time_step_on_reference_prefetch: true
     strict_model_io: true
     enable_metadata_check: true
     metadata_check_strict: false
@@ -228,18 +229,18 @@ beyondmimic_leg12_strict_walk2:
       left_ankle_pitch: -0.24
       left_ankle_roll: 0.0
     zero_joint_angles:
-      right_hip_roll: -0.002272082027
-      right_hip_yaw: 0.2372164279
-      right_hip_pitch: -0.1582825035
-      right_knee_pitch: 0.3525242209
-      right_ankle_pitch: -0.1966467202
-      right_ankle_roll: -0.0241828505
-      left_hip_roll: 0.0245223269
-      left_hip_yaw: 0.05362581834
-      left_hip_pitch: -0.1941322386
-      left_knee_pitch: 0.3517585993
-      left_ankle_pitch: -0.140415892
-      left_ankle_roll: -0.03464089707
+      right_hip_roll: 0.06155104563
+      right_hip_yaw: 0.06163998134
+      right_hip_pitch: -0.7300625741
+      right_knee_pitch: 0.9624607265
+      right_ankle_pitch: -0.3909943849
+      right_ankle_roll: 0.01593868062
+      left_hip_roll: 0.1247593905
+      left_hip_yaw: 0.4690311123
+      left_hip_pitch: -0.5295148194
+      left_knee_pitch: 0.9484381676
+      left_ankle_pitch: -0.1391760856
+      left_ankle_roll: -0.2259051586
     joint_limit_range:
       right_hip_roll: [-0.2, 0.2]
       right_hip_yaw: [-1.05, 1.05]

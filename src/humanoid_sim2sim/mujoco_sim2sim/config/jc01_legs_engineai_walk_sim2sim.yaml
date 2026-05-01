@@ -84,11 +84,11 @@ mujoco_sim_bridge:
     pause_when_no_command: false
     no_command_behavior: "hold_position"
     fix_base: false
-    # The XML root pose is z=0.92, but the BeyondMimic zero/reference leg pose
-    # leaves the foot collision mesh above the floor at that height. Lock zeroing
-    # with a small foot penetration so RUNNING starts with contact instead of a
-    # short free fall before the first policy corrections.
-    fixed_base_height: 0.8760
+    # Align the fixed-base RUNNING entry with the BeyondMimic play/H5 motion
+    # segment used by beyondmimic_leg12_strict_walk2 (time_step_start=12250).
+    # The zero pose is the H5 current robot state, not the reference command;
+    # this height puts the support foot near contact before release.
+    fixed_base_height: 0.8210
     enable_fixed_base_zeroing: true
     enable_fixed_base_hold_after_zeroing: true
     enable_release_before_running: true
@@ -96,8 +96,10 @@ mujoco_sim_bridge:
     # Waiting after base release lets the unsupported pose sag before policy starts.
     post_release_settle_ticks: 0
     enable_prepose_snap: false
-    # Keep the base at the zeroing world origin; do not teleport to raw motion world coordinates.
-    sim_sync_running_start_to_reference: true
+    # Keep the RUNNING first observation consistent with the zeroed current
+    # robot state from the H5/play distribution instead of snapping joints to
+    # the reference command after the first policy inference.
+    sim_sync_running_start_to_reference: false
     actuator_control_mode: "torque"
 
     enable_viewer: false

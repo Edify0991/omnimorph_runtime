@@ -263,28 +263,6 @@ std::string serializeTick(const RuntimeTickLogRecord &record, const RuntimeLoggi
         oss << ",\"external_feature_names\":";
         appendStringVector(oss, record.external_feature_names);
     }
-    if (record.has_amp_discriminator_score)
-    {
-        oss << ",\"amp_discriminator_score\":";
-        appendFloatVector(oss, record.amp_discriminator_score);
-        oss << ",\"amp_discriminator_score_mean\":" << formatDouble(record.amp_discriminator_score_mean);
-    }
-    oss << "}";
-    return oss.str();
-}
-
-std::string serializeAmp(const RuntimeTickLogRecord &record)
-{
-    std::ostringstream oss;
-    oss << "{";
-    oss << "\"frame_index\":" << record.frame_index << ",";
-    oss << "\"monotonic_time_sec\":" << formatDouble(record.monotonic_time_sec) << ",";
-    oss << "\"active_mode_id\":" << record.active_mode_id << ",";
-    oss << "\"policy_name\":";
-    appendQuoted(oss, record.policy_name);
-    oss << ",\"amp_discriminator_score\":";
-    appendFloatVector(oss, record.amp_discriminator_score);
-    oss << ",\"amp_discriminator_score_mean\":" << formatDouble(record.amp_discriminator_score_mean);
     oss << "}";
     return oss.str();
 }
@@ -537,10 +515,6 @@ void RuntimeRecorder::workerLoop()
         {
             const uint64_t time_ns = secToNs(tick->monotonic_time_sec);
             writer_.writeJsonMessage("runtime/tick", serializeTick(*tick, config_), time_ns, time_ns, makeChannelMetadata(config_));
-            if (config_.amp.enabled && tick->has_amp_discriminator_score)
-            {
-                writer_.writeJsonMessage("runtime/amp", serializeAmp(*tick), time_ns, time_ns, makeChannelMetadata(config_));
-            }
             if (config_.reference_motion.enabled)
             {
                 bool has_reference = false;
@@ -604,10 +578,6 @@ void RuntimeRecorder::workerLoop()
         {
             const uint64_t time_ns = secToNs(tick->monotonic_time_sec);
             writer_.writeJsonMessage("runtime/tick", serializeTick(*tick, config_), time_ns, time_ns, makeChannelMetadata(config_));
-            if (config_.amp.enabled && tick->has_amp_discriminator_score)
-            {
-                writer_.writeJsonMessage("runtime/amp", serializeAmp(*tick), time_ns, time_ns, makeChannelMetadata(config_));
-            }
             if (config_.reference_motion.enabled)
             {
                 bool has_reference = false;

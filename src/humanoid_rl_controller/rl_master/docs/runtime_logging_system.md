@@ -44,7 +44,6 @@ Current active channels are:
 - `runtime/source/policy_observation`
 - `runtime/source/policy_action`
 - `runtime/source/external/<name>` when external observation source-sample logging is enabled
-- `runtime/amp` when AMP score logging is enabled
 - `runtime/reference_motion` when reference-motion logging is enabled
 - `runtime/external_obs/<name>` when external observation logging is enabled
 
@@ -87,7 +86,6 @@ Typical `runtime/tick` payload includes:
 - `policy_ran_this_tick`
 - `policy_sample_time_sec`
 - `policy_sample_age_sec`
-- optional AMP score
 - optional named features / external observations
 
 Sparse transitions are emitted on `runtime/event`, for example:
@@ -168,16 +166,6 @@ python3 src/humanoid_rl_controller/rl_master/tools/analysis/export_runtime_log.p
   --topic runtime/tick \
   --format csv \
   --output /tmp/runtime_tick.csv
-```
-
-Export another channel to NPZ:
-
-```bash
-python3 src/humanoid_rl_controller/rl_master/tools/analysis/export_runtime_log.py \
-  --mcap /abs/path/to/session.mcap \
-  --topic runtime/amp \
-  --format npz \
-  --output /tmp/runtime_amp.npz
 ```
 
 Parquet export is supported when `pyarrow` is installed.

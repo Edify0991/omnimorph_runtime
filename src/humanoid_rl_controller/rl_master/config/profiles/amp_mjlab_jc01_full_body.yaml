@@ -267,22 +267,6 @@ amp_mjlab_jc01_full_body:
     reset_policy_on_mode_switch: true
     extra_output_names: []
 
-  amp_discriminator:
-    enabled: false
-    policy_file: policies/amp_mjlab_jc01_full_body_discriminator.onnx
-    input_source: observation
-    warn_below: -1000000000.0
-    policy_io:
-      obs_input_name: obs
-      score_output_name: disc_score
-      enable_time_step_input: false
-      strict_model_io: false
-      enable_metadata_check: false
-      metadata_check_strict: true
-      required_metadata_keys: []
-      expected_metadata: {}
-      extra_output_names: []
-
   enable_reference_motion: false
   reference_motion_dim: 0
   reference_motion_sampling: phase

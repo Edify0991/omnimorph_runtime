@@ -104,7 +104,6 @@ private:
         ObservationManifest observation_manifest;
         std::unique_ptr<ObservationBuilder> observation_builder;
         PolicyRuntimeGroup policy_group;
-        std::unique_ptr<OnnxPolicyRunner> amp_discriminator;
         ReferenceMotionProvider reference_motion;
         ReferenceFeatureRequirements required_reference_features;
         std::unique_ptr<rl_master::PinocchioMotionFeatures> pinocchio_motion_features;
@@ -123,13 +122,6 @@ private:
     void updateStateFromIO(const rl_master::RobotStateData &state);
     void updateCommandFromIO(const rl_master::TeleopCommand &command);
     void initPolicyGroup(const Sim2realCfg &cfg, const std::string &tag, PolicyRuntimeGroup *group);
-    void initAmpDiscriminatorRunner(const Sim2realCfg &cfg, const std::string &tag, std::unique_ptr<OnnxPolicyRunner> *runner);
-    void runAmpDiscriminator(
-        const Sim2realCfg &cfg,
-        const std::string &tag,
-        OnnxPolicyRunner *runner,
-        const std::vector<float> &current_observation,
-        const std::vector<float> &stacked_observation);
     void prefetchCurrentPolicyReferenceOutputs();
     void warmStartPolicyState(double phase_t);
     void resetPolicyScheduler();

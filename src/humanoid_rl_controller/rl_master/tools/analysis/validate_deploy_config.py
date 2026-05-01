@@ -2002,42 +2002,6 @@ def validate_profile(
             continue
         check_onnx_contract(sub_path, sub_cfg, issues, sub_context, skip_onnx)
 
-    amp_node = to_dict(section_cfg.get("amp_discriminator"))
-    if as_bool(amp_node.get("enabled", False), False):
-        amp_context = context + " amp_discriminator"
-        amp_io = to_dict(amp_node.get("policy_io", amp_node))
-        amp_cfg = {
-            "obs_input_name": str(amp_io.get("obs_input_name", "obs")),
-            "action_output_name": str(amp_io.get("score_output_name", "disc_score")),
-            "enable_time_step_input": as_bool(amp_io.get("enable_time_step_input", False), False),
-            "time_step_input_name": str(amp_io.get("time_step_input_name", "time_step")),
-            "strict_model_io": as_bool(amp_io.get("strict_model_io", False), False),
-            "extra_output_names": [str(x) for x in to_list(amp_io.get("extra_output_names"))],
-            "onnx_inputs": to_list(amp_io.get("onnx_inputs")),
-            "enable_metadata_check": as_bool(amp_io.get("enable_metadata_check", False), False),
-            "metadata_check_strict": as_bool(amp_io.get("metadata_check_strict", True), True),
-            "required_metadata_keys": [str(x) for x in to_list(amp_io.get("required_metadata_keys"))],
-            "expected_metadata": to_dict(amp_io.get("expected_metadata")),
-            "obs_dim": obs_dim,
-            "action_dim": 0,
-            "obs_stack_N": obs_stack_n,
-            "feature_dims": feature_dims,
-            "onnx_intra_threads": as_int(section_cfg.get("onnx_intra_threads", 1), 1),
-            "onnx_inter_threads": as_int(section_cfg.get("onnx_inter_threads", 1), 1),
-        }
-        amp_path_raw = str(amp_node.get("policy_path", ""))
-        amp_file_raw = str(amp_node.get("policy_file", ""))
-        if amp_path_raw:
-            amp_path = resolve_path(amp_path_raw, root_dir)
-        elif amp_file_raw:
-            amp_path = resolve_path(amp_file_raw, root_dir)
-        else:
-            issues.error(amp_context, "enabled but missing policy_path/policy_file")
-            amp_path = None
-        if amp_path is not None:
-            check_onnx_contract(amp_path, amp_cfg, issues, amp_context, skip_onnx)
-
-
 def build_arg_parser(default_cfg: Path) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Validate rl_cfg.yaml + observation manifest + ONNX model contracts."

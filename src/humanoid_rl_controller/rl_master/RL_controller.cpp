@@ -27,20 +27,6 @@ std::string toLowerCopy(std::string text)
     return text;
 }
 
-float meanOf(const std::vector<float> &values)
-{
-    if (values.empty())
-    {
-        return 0.0f;
-    }
-    float sum = 0.0f;
-    for (const float v : values)
-    {
-        sum += v;
-    }
-    return sum / static_cast<float>(values.size());
-}
-
 std::vector<float> fitDim(const std::vector<float> &values, size_t dim)
 {
     std::vector<float> out(dim, 0.0f);
@@ -628,10 +614,6 @@ void RL_controller::handlePolicySwitch()
                 node.runner->reset();
             }
         }
-        if (profile.amp_discriminator)
-        {
-            profile.amp_discriminator->reset();
-        }
     }
 
     deploy_state_machine_.configure(cfg);
@@ -948,7 +930,6 @@ void RL_controller::initModeProfiles()
                 ") does not match cfg obs_dim (" + std::to_string(profile.cfg.obs_dim) + ")");
         }
         initPolicyGroup(profile.cfg, profile.tag, &profile.policy_group);
-        initAmpDiscriminatorRunner(profile.cfg, profile.tag, &profile.amp_discriminator);
         initReferenceMotionProvider(
             profile.cfg,
             profile.required_reference_features,
@@ -1096,102 +1077,6 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
             node.name);
         node.runner->init();
         group->runners.push_back(std::move(node));
-    }
-}
-
-void RL_controller::initAmpDiscriminatorRunner(
-    const Sim2realCfg &cfg,
-    const std::string &tag,
-    std::unique_ptr<OnnxPolicyRunner> *runner)
-{
-    if (!runner)
-    {
-        return;
-    }
-    runner->reset();
-
-    if (!cfg.amp_discriminator.enabled)
-    {
-        return;
-    }
-    if (cfg.amp_discriminator.policy_path.empty())
-    {
-        std::cerr << "[RL_controller][" << tag << "] amp_discriminator enabled but policy path is empty." << std::endl;
-        return;
-    }
-
-    Sim2realCfg disc_cfg = cfg;
-    disc_cfg.policy_path = cfg.amp_discriminator.policy_path;
-    disc_cfg.obs_input_name = cfg.amp_discriminator.obs_input_name;
-    disc_cfg.action_output_name = cfg.amp_discriminator.score_output_name;
-    disc_cfg.time_step_input_name = cfg.amp_discriminator.time_step_input_name;
-    disc_cfg.time_step_start = cfg.amp_discriminator.time_step_start;
-    disc_cfg.enable_time_step_input = cfg.amp_discriminator.enable_time_step_input;
-    disc_cfg.strict_model_io = cfg.amp_discriminator.strict_model_io;
-    disc_cfg.extra_output_names = cfg.amp_discriminator.extra_output_names;
-    disc_cfg.onnx_inputs = cfg.amp_discriminator.onnx_inputs;
-    disc_cfg.enable_metadata_check = cfg.amp_discriminator.enable_metadata_check;
-    disc_cfg.metadata_check_strict = cfg.amp_discriminator.metadata_check_strict;
-    disc_cfg.required_metadata_keys = cfg.amp_discriminator.required_metadata_keys;
-    disc_cfg.expected_metadata = cfg.amp_discriminator.expected_metadata;
-    disc_cfg.action_dim = 0;
-
-    auto local_runner = std::make_unique<OnnxPolicyRunner>(
-        onnx_env_,
-        disc_cfg.policy_path,
-        disc_cfg,
-        tag + "/amp_discriminator");
-    local_runner->init();
-
-    *runner = std::move(local_runner);
-    std::cout << "[RL_controller][" << tag << "] amp_discriminator loaded: "
-              << disc_cfg.policy_path << std::endl;
-}
-
-void RL_controller::runAmpDiscriminator(
-    const Sim2realCfg &cfg,
-    const std::string &tag,
-    OnnxPolicyRunner *runner,
-    const std::vector<float> &current_observation,
-    const std::vector<float> &stacked_observation)
-{
-    if (!runner || !cfg.amp_discriminator.enabled)
-    {
-        return;
-    }
-
-    const std::string source = toLowerCopy(cfg.amp_discriminator.input_source);
-    const std::vector<float> *input = &stacked_observation;
-    if (source == "observation" || source == "policy_observation")
-    {
-        input = &current_observation;
-    }
-    if (!input || input->empty())
-    {
-        return;
-    }
-
-    PolicyInferenceResult disc_result = runner->forward(
-        *input,
-        current_observation,
-        latest_observation_feature_context_.named_features);
-    const std::string prefix = tag + "/amp_discriminator/";
-    latest_policy_extra_outputs_[prefix + "score"] = disc_result.action;
-    for (auto &kv : disc_result.extra_outputs)
-    {
-        latest_policy_extra_outputs_[prefix + kv.first] = std::move(kv.second);
-    }
-
-    if (cfg.amp_discriminator.warn_below > -1.0e8f &&
-        !disc_result.action.empty() &&
-        (policy_step_counter_ % 100 == 0))
-    {
-        const float score_mean = meanOf(disc_result.action);
-        if (score_mean < cfg.amp_discriminator.warn_below)
-        {
-            std::cerr << "[RL_controller][" << tag << "] amp_discriminator score low: "
-                      << score_mean << " < " << cfg.amp_discriminator.warn_below << std::endl;
-        }
     }
 }
 
@@ -1359,7 +1244,7 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs()
             stacked_obs_buffer_,
             current_observation,
             latest_observation_feature_context_.named_features,
-            false);
+            cfg.advance_time_step_on_reference_prefetch);
 
     const std::string prefix = profile.policy_group.runners.front().name + "/";
     for (const auto &kv : prefetched)
@@ -1966,20 +1851,6 @@ rl_master::RobotCommandData RL_controller::step(
     {
         latest_log_snapshot_.external_feature_names.push_back(spec.name);
     }
-    latest_log_snapshot_.amp_discriminator_score.clear();
-    latest_log_snapshot_.has_amp_discriminator_score = false;
-    latest_log_snapshot_.amp_discriminator_score_mean = 0.0;
-    const auto disc_score_key = activeModeProfile().tag + "/amp_discriminator/score";
-    const auto disc_it = latest_policy_extra_outputs_.find(disc_score_key);
-    if (disc_it != latest_policy_extra_outputs_.end())
-    {
-        latest_log_snapshot_.amp_discriminator_score = disc_it->second;
-        latest_log_snapshot_.has_amp_discriminator_score = true;
-        if (!disc_it->second.empty())
-        {
-            latest_log_snapshot_.amp_discriminator_score_mean = static_cast<double>(meanOf(disc_it->second));
-        }
-    }
     return out_cmd;
 }
 
@@ -2041,12 +1912,6 @@ std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs
         advance_time_step);
     std::vector<float> target_action = std::move(policy_output.action);
     latest_policy_extra_outputs_ = std::move(policy_output.extra_outputs);
-    runAmpDiscriminator(
-        active_cfg,
-        activeModeProfile().tag,
-        activeModeProfile().amp_discriminator.get(),
-        obs,
-        stacked_obs_buffer_);
 
     for (auto &value : target_action)
     {
