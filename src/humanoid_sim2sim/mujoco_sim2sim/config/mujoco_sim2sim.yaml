@@ -48,9 +48,8 @@ mujoco_sim_bridge:
     # In inactive/hold phases they apply to all canonical joints.
     # In policy RUNNING they apply only to canonical joints that are not in the
     # active profile's action_joint_order.
-    # If hold_target_source=explicit, hold_joint_target_q size must be 1 or
-    # match the canonical joint count.
-    # hold_joint_target_q: [0.0]
+    # Hold target positions always come from the active mode profile's
+    # robot.zero_joint_angles, resolved in canonical joint order.
     # PD gains are accepted only in per-joint named form, and they must cover
     # the full canonical joint set.
     # Example:

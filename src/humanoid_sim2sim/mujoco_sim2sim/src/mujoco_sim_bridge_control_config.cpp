@@ -79,41 +79,6 @@ const char *MujocoSimBridge::simJointRuntimeModeName(SimJointRuntimeMode mode)
     }
 }
 
-MujocoSimBridge::HoldTargetSource MujocoSimBridge::parseHoldTargetSource(const std::string &raw_source)
-{
-    const std::string source = toLowerCopy(trimCopy(raw_source));
-    if (source == "zero_joint_angles")
-    {
-        return HoldTargetSource::kZeroJointAngles;
-    }
-    if (source == "default_joint_angles")
-    {
-        return HoldTargetSource::kDefaultJointAngles;
-    }
-    if (source == "explicit")
-    {
-        return HoldTargetSource::kExplicit;
-    }
-    throw std::runtime_error(
-        "hold_target_source must be one of: zero_joint_angles, default_joint_angles, explicit. got='" +
-        raw_source + "'");
-}
-
-const char *MujocoSimBridge::holdTargetSourceName(HoldTargetSource source)
-{
-    switch (source)
-    {
-    case HoldTargetSource::kZeroJointAngles:
-        return "zero_joint_angles";
-    case HoldTargetSource::kDefaultJointAngles:
-        return "default_joint_angles";
-    case HoldTargetSource::kExplicit:
-        return "explicit";
-    default:
-        return "unknown";
-    }
-}
-
 MujocoSimBridge::ActuatorBackend MujocoSimBridge::classifyModelActuatorBackend(
     const mjModel_ *model,
     int actuator_id)
@@ -184,11 +149,7 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
     }
 
     std::map<std::string, float> hold_source_targets;
-    const auto &source_angles =
-        (hold_target_source_ == HoldTargetSource::kDefaultJointAngles)
-            ? active_cfg.robotCfg.default_joint_angles
-            : active_cfg.robotCfg.zero_joint_angles;
-    for (const auto &entry : source_angles)
+    for (const auto &entry : active_cfg.robotCfg.zero_joint_angles)
     {
         hold_source_targets[entry.first] = entry.second;
     }
@@ -266,30 +227,14 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
             }
         }
 
-        double hold_q = 0.0;
-        if (hold_target_source_ == HoldTargetSource::kExplicit)
+        const auto target_it = hold_source_targets.find(joint_name);
+        if (target_it == hold_source_targets.end())
         {
-            if (i >= hold_target_q_.size())
-            {
-                throw std::runtime_error(
-                    "hold_joint_target_q is missing explicit value for canonical joint '" +
-                    joint_name + "'");
-            }
-            hold_q = hold_target_q_[i];
+            throw std::runtime_error(
+                "robot.zero_joint_angles is missing canonical joint '" + joint_name +
+                "' required by sim2sim hold targets");
         }
-        else
-        {
-            const auto target_it = hold_source_targets.find(joint_name);
-            if (target_it == hold_source_targets.end())
-            {
-                throw std::runtime_error(
-                    std::string("hold target source '") + holdTargetSourceName(hold_target_source_) +
-                    "' is missing joint '" + joint_name + "'");
-            }
-            hold_q = target_it->second;
-        }
-
-        resolved_hold_target_q_[i] = static_cast<float>(hold_q);
+        resolved_hold_target_q_[i] = static_cast<float>(target_it->second);
     }
 
     resolved_control_mode_id_ = active_mode_id;

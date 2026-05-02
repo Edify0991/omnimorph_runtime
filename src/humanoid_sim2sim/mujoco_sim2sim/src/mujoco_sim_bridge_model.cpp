@@ -175,13 +175,12 @@ void MujocoSimBridge::resolveModelMappings()
     }
     RCLCPP_INFO(
         this->get_logger(),
-        "Actuator control mode: %s (model_position_like=%d/%zu, resolved_torque_joints=%zu, resolved_position_joints=%zu), hold_target_source=%s",
+        "Actuator control mode: %s (model_position_like=%d/%zu, resolved_torque_joints=%zu, resolved_position_joints=%zu)",
         use_mixed_actuator_control_ ? "mixed" : (use_position_actuator_control_ ? "position" : "torque"),
         model_position_like_actuator_count,
         joint_names_.size(),
         resolved_torque_joint_count,
-        resolved_position_joint_count,
-        holdTargetSourceName(hold_target_source_));
+        resolved_position_joint_count);
 
     base_body_id_ = mj_name2id(model_, mjOBJ_BODY, base_body_name_.c_str());
     if (base_body_id_ < 0)

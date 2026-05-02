@@ -66,13 +66,6 @@ public:
         kR1,
     };
 
-    enum class HoldTargetSource
-    {
-        kZeroJointAngles = 0,
-        kDefaultJointAngles,
-        kExplicit,
-    };
-
     enum class ActuatorBackend
     {
         kTorque = 0,
@@ -171,8 +164,6 @@ private:
         const std::string &raw_mode,
         const std::string &context);
     static const char *simJointRuntimeModeName(SimJointRuntimeMode mode);
-    static HoldTargetSource parseHoldTargetSource(const std::string &raw_source);
-    static const char *holdTargetSourceName(HoldTargetSource source);
     static ActuatorBackend classifyModelActuatorBackend(const mjModel_ *model, int actuator_id);
     static const char *actuatorBackendName(ActuatorBackend backend);
 
@@ -203,7 +194,6 @@ private:
     bool sim_only_force_policy_csp_ = false;
     std::string actuator_control_mode_ = "auto";
     std::vector<std::string> joint_runtime_mode_override_entries_;
-    HoldTargetSource hold_target_source_ = HoldTargetSource::kZeroJointAngles;
     bool use_position_actuator_control_ = false;
     bool use_mixed_actuator_control_ = false;
     bool enable_viewer_ = false;
@@ -221,7 +211,6 @@ private:
     std::vector<double> hold_kp_;
     std::vector<double> hold_kd_;
     std::vector<double> hold_torque_limit_;
-    std::vector<double> hold_target_q_;
     std::vector<double> position_actuator_kp_;
     std::vector<double> position_actuator_kv_;
     std::vector<double> position_actuator_forcerange_;

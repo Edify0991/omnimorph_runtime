@@ -39,7 +39,6 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<bool>("sim_only_force_policy_csp", false);
     this->declare_parameter<std::string>("actuator_control_mode", "auto");
     this->declare_parameter<std::vector<std::string>>("joint_runtime_mode_overrides", std::vector<std::string>{});
-    this->declare_parameter<std::string>("hold_target_source", "zero_joint_angles");
     this->declare_parameter<bool>("enable_viewer", false);
     this->declare_parameter<bool>("enable_python_viewer_stream", false);
     this->declare_parameter<std::string>("viewer_frame_topic", kDefaultViewerFrameTopic);
@@ -52,7 +51,6 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::string>("viewer_title", "MuJoCo Sim2Sim Viewer");
     this->declare_parameter<bool>("enable_state_telemetry", true);
     this->declare_parameter<double>("state_telemetry_hz", 50.0);
-    this->declare_parameter<std::vector<double>>("hold_joint_target_q", std::vector<double>{});
 
     model_path_ = this->get_parameter("model_path").as_string();
     base_body_name_ = this->get_parameter("base_body_name").as_string();
@@ -78,7 +76,6 @@ void MujocoSimBridge::loadParameters()
     sim_only_force_policy_csp_ = this->get_parameter("sim_only_force_policy_csp").as_bool();
     actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
     joint_runtime_mode_override_entries_ = this->get_parameter("joint_runtime_mode_overrides").as_string_array();
-    hold_target_source_ = parseHoldTargetSource(this->get_parameter("hold_target_source").as_string());
     enable_viewer_ = this->get_parameter("enable_viewer").as_bool();
     enable_python_viewer_stream_ = this->get_parameter("enable_python_viewer_stream").as_bool();
     viewer_frame_topic_ = this->get_parameter("viewer_frame_topic").as_string();
@@ -187,34 +184,9 @@ void MujocoSimBridge::loadParameters()
     actuator_ids_.assign(joint_names_.size(), -1);
     applied_tau_.assign(joint_names_.size(), 0.0f);
     last_target_q_.assign(joint_names_.size(), 0.0f);
-    const size_t hold_count = joint_names_.size();
     hold_kp_ = loadRequiredNamedJointParams("hold_kp", joint_names_, false);
     hold_kd_ = loadRequiredNamedJointParams("hold_kd", joint_names_, false);
     hold_torque_limit_ = loadRequiredNamedJointParams("hold_torque_limit", joint_names_, true);
-    const auto hold_target_raw = this->get_parameter("hold_joint_target_q").as_double_array();
-    hold_target_q_.clear();
-    if (!hold_target_raw.empty())
-    {
-        if (hold_target_raw.size() == 1 && hold_count > 0)
-        {
-            hold_target_q_.assign(hold_count, hold_target_raw.front());
-        }
-        else if (hold_target_raw.size() == hold_count)
-        {
-            hold_target_q_ = hold_target_raw;
-        }
-        else
-        {
-            throw std::runtime_error("hold_joint_target_q size must be 1 or match canonical joint_names");
-        }
-    }
-    if (hold_target_source_ == HoldTargetSource::kExplicit &&
-        hold_count > 0 &&
-        hold_target_q_.empty())
-    {
-        throw std::runtime_error(
-            "hold_joint_target_q must be provided when hold_target_source=explicit and canonical joint_names are non-empty");
-    }
     if (model_path_.empty())
     {
         throw std::runtime_error(
