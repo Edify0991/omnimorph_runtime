@@ -161,6 +161,7 @@ add_library(rl_master_runtime SHARED
   RL_controller.cpp
   onnx_policy_runner.cpp
   observation_builder.cpp
+  policy_runtime.cpp
   pinocchio_motion_features.cpp
   reference_motion_provider.cpp
   runtime/integrated_controller_runtime.cpp

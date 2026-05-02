@@ -610,6 +610,11 @@ public:
     std::string humanoid_rl_root_dir;
     std::string policy_name;
     std::string policy_family = "amp"; // amp / beyondmimic / custom
+    std::string policy_adapter = "onnx";
+    std::string inference_strategy = "sync_step"; // sync_step / chunked_receding
+    int action_chunk_steps = 1;
+    int action_chunk_execute_steps = 1;
+    int action_chunk_replan_interval = 1;
     int obs_stack_N = 1;
     double cycle_time = 1.0;
 
@@ -926,6 +931,14 @@ public:
 
             policy_name = yamlReadOr<std::string>(cfg, "policy_name", "");
             policy_family = yamlReadOr<std::string>(cfg, "policy_family", "amp");
+            policy_adapter = yamlReadOr<std::string>(cfg, "policy_adapter", "onnx");
+            inference_strategy = yamlReadOr<std::string>(cfg, "inference_strategy", "sync_step");
+            action_chunk_steps = yamlReadOr<int>(cfg, "action_chunk_steps", 1);
+            action_chunk_execute_steps = yamlReadOr<int>(cfg, "action_chunk_execute_steps", 1);
+            action_chunk_replan_interval = yamlReadOr<int>(
+                cfg,
+                "action_chunk_replan_interval",
+                action_chunk_execute_steps);
             obs_stack_N = cfg["obs_stack_N"].as<int>();
             cycle_time = cfg["cycle_time"].as<double>();
 
@@ -946,6 +959,43 @@ public:
             if (solver_control_hz <= 0)
             {
                 throw std::runtime_error("solver_control_hz must be > 0");
+            }
+            if (policy_adapter != "onnx")
+            {
+                throw std::runtime_error("policy_adapter currently only supports 'onnx'");
+            }
+            if (inference_strategy != "sync_step" &&
+                inference_strategy != "chunked_receding")
+            {
+                throw std::runtime_error(
+                    "inference_strategy must be one of: sync_step, chunked_receding");
+            }
+            if (action_chunk_steps <= 0)
+            {
+                throw std::runtime_error("action_chunk_steps must be > 0");
+            }
+            if (action_chunk_execute_steps <= 0)
+            {
+                throw std::runtime_error("action_chunk_execute_steps must be > 0");
+            }
+            if (action_chunk_execute_steps > action_chunk_steps)
+            {
+                throw std::runtime_error(
+                    "action_chunk_execute_steps must be <= action_chunk_steps");
+            }
+            if (action_chunk_replan_interval <= 0)
+            {
+                throw std::runtime_error("action_chunk_replan_interval must be > 0");
+            }
+            if (action_chunk_replan_interval > action_chunk_execute_steps)
+            {
+                throw std::runtime_error(
+                    "action_chunk_replan_interval must be <= action_chunk_execute_steps");
+            }
+            if (inference_strategy == "chunked_receding" && action_chunk_steps <= 1)
+            {
+                throw std::runtime_error(
+                    "chunked_receding inference_strategy requires action_chunk_steps > 1");
             }
             if (obs_joint_order.empty())
             {
@@ -1656,8 +1706,13 @@ public:
         std::cout << "=== Sim2Real Configuration ===" << std::endl;
         std::cout << "Policy Name: " << policy_name << std::endl;
         std::cout << "Policy Family: " << policy_family << std::endl;
+        std::cout << "Policy Adapter: " << policy_adapter << std::endl;
+        std::cout << "Inference Strategy: " << inference_strategy << std::endl;
         std::cout << "Policy Path: " << policy_path << std::endl;
         std::cout << "Obs Stack N: " << obs_stack_N << std::endl;
+        std::cout << "Action Chunk Steps: " << action_chunk_steps << std::endl;
+        std::cout << "Action Chunk Execute Steps: " << action_chunk_execute_steps << std::endl;
+        std::cout << "Action Chunk Replan Interval: " << action_chunk_replan_interval << std::endl;
         std::cout << "Action Scale: " << action_scale << std::endl;
         std::cout << "Zero Joint Angles: " << robotCfg.zero_joint_angles.size() << std::endl;
         std::cout << "Control Mode: " << control_mode << std::endl;

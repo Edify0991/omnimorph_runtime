@@ -20,8 +20,8 @@
 #include "logging/runtime_log_types.h"
 #include "math_tool.h"
 #include "mode_profile_registry.h"
-#include "onnx_policy_runner.h"
 #include "observation_builder.h"
+#include "policy_runtime.h"
 #include "reference_motion_provider.h"
 #include "rl_cfg.h"
 #include "robot_types.h"
@@ -68,12 +68,13 @@ private:
     {
         std::string name;
         float weight = 1.0f;
-        std::unique_ptr<OnnxPolicyRunner> runner;
+        std::unique_ptr<PolicyAdapter> runner;
     };
 
     struct PolicyRuntimeGroup
     {
         std::vector<PolicyRunnerNode> runners;
+        std::unique_ptr<PolicyInferenceStrategy> strategy;
     };
 
     struct PolicyRunOutput

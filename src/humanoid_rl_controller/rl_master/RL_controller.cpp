@@ -607,6 +607,10 @@ void RL_controller::handlePolicySwitch()
     if (cfg.reset_policy_on_mode_switch)
     {
         auto &group = activePolicyGroup();
+        if (group.strategy)
+        {
+            group.strategy->reset();
+        }
         for (auto &node : group.runners)
         {
             if (node.runner)
@@ -1090,11 +1094,26 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
     }
 
     group->runners.clear();
+    if (cfg.inference_strategy == "chunked_receding")
+    {
+        group->strategy = std::make_unique<ChunkedRecedingInferenceStrategy>();
+    }
+    else
+    {
+        group->strategy = std::make_unique<SyncWeightedInferenceStrategy>();
+    }
+    group->strategy->configure(PolicyInferenceConfig{
+        cfg.inference_strategy,
+        static_cast<size_t>(std::max(0, cfg.action_dim)),
+        cfg.action_chunk_steps,
+        cfg.action_chunk_execute_steps,
+        cfg.action_chunk_replan_interval});
+    group->strategy->reset();
 
     PolicyRunnerNode primary;
     primary.name = tag + "/main";
     primary.weight = 1.0f;
-    primary.runner = std::make_unique<OnnxPolicyRunner>(
+    primary.runner = std::make_unique<OnnxPolicyAdapter>(
         onnx_env_,
         cfg.policy_path,
         cfg,
@@ -1131,7 +1150,7 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
         PolicyRunnerNode node;
         node.name = tag + "/" + sub.name;
         node.weight = std::max(0.0f, sub.weight);
-        node.runner = std::make_unique<OnnxPolicyRunner>(
+        node.runner = std::make_unique<OnnxPolicyAdapter>(
             onnx_env_,
             sub_cfg.policy_path,
             sub_cfg,
@@ -1152,49 +1171,40 @@ RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(
     {
         throw std::runtime_error("runPolicyGroup: empty policy group");
     }
+    if (!group->strategy)
+    {
+        throw std::runtime_error("runPolicyGroup: policy inference strategy is null");
+    }
 
-    const size_t expected_dim = static_cast<size_t>(std::max(0, activePolicyCfg().action_dim));
-    PolicyRunOutput output;
-    output.action.assign(expected_dim, 0.0f);
-
-    float total_weight = 0.0f;
-    bool primary_done = false;
+    std::vector<PolicyAdapterNodeView> nodes;
+    nodes.reserve(group->runners.size());
     for (auto &node : group->runners)
     {
         if (!node.runner)
         {
             continue;
         }
-
-        PolicyInferenceResult result =
-            node.runner->forward(
-                stacked_obs,
-                current_observation,
-                feature_context.named_features,
-                advance_time_step);
-        const float weight = primary_done ? node.weight : 1.0f;
-        const size_t dim = std::min(output.action.size(), result.action.size());
-        for (size_t i = 0; i < dim; ++i)
-        {
-            output.action[i] += weight * result.action[i];
-        }
-        total_weight += weight;
-
-        for (auto &kv : result.extra_outputs)
-        {
-            output.extra_outputs[node.name + "/" + kv.first] = std::move(kv.second);
-        }
-
-        primary_done = true;
+        nodes.push_back(PolicyAdapterNodeView{node.name, node.weight, node.runner.get()});
     }
-
-    if (total_weight > 1e-6f)
+    if (nodes.empty())
     {
-        for (auto &v : output.action)
-        {
-            v /= total_weight;
-        }
+        throw std::runtime_error("runPolicyGroup: no valid policy adapters");
     }
+
+    const PolicyExecutionRequest request{
+        &stacked_obs,
+        &current_observation,
+        &feature_context.named_features,
+        advance_time_step,
+        static_cast<uint64_t>(policy_step_counter_)};
+    PolicyGroupExecutionResult strategy_output =
+        group->strategy->execute(
+            nodes,
+            request);
+
+    PolicyRunOutput output;
+    output.action = std::move(strategy_output.action);
+    output.extra_outputs = std::move(strategy_output.extra_outputs);
     return output;
 }
 
@@ -1219,6 +1229,10 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs()
     if (profile.policy_group.runners.empty() || !profile.policy_group.runners.front().runner)
     {
         return;
+    }
+    if (!profile.policy_group.strategy)
+    {
+        throw std::runtime_error("prefetchCurrentPolicyReferenceOutputs: policy inference strategy is null");
     }
 
     std::vector<std::string> requested_output_names;
@@ -1299,13 +1313,32 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs()
         current_observation.assign(static_cast<size_t>(active_cfg.obs_dim), 0.0f);
     }
 
+    std::vector<PolicyAdapterNodeView> nodes;
+    nodes.reserve(profile.policy_group.runners.size());
+    for (auto &node : profile.policy_group.runners)
+    {
+        if (!node.runner)
+        {
+            continue;
+        }
+        nodes.push_back(PolicyAdapterNodeView{node.name, node.weight, node.runner.get()});
+    }
+    if (nodes.empty())
+    {
+        return;
+    }
+
+    const PolicyExecutionRequest request{
+        &stacked_obs_buffer_,
+        &current_observation,
+        &latest_observation_feature_context_.named_features,
+        cfg.advance_time_step_on_reference_prefetch,
+        static_cast<uint64_t>(policy_step_counter_)};
     const auto prefetched =
-        profile.policy_group.runners.front().runner->prefetchExtraOutputs(
+        profile.policy_group.strategy->prefetchPrimaryExtraOutputs(
+            nodes,
             requested_output_names,
-            stacked_obs_buffer_,
-            current_observation,
-            latest_observation_feature_context_.named_features,
-            cfg.advance_time_step_on_reference_prefetch);
+            request);
 
     const std::string prefix = profile.policy_group.runners.front().name + "/";
     for (const auto &kv : prefetched)
