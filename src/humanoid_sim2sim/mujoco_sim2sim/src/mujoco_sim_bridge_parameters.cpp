@@ -19,9 +19,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::string>("base_free_joint_name", "");
     this->declare_parameter<std::vector<std::string>>("joint_names", canonical_names);
     this->declare_parameter<std::vector<std::string>>("actuator_names", std::vector<std::string>{});
-    this->declare_parameter<std::vector<std::string>>("position_actuator_joint_names", std::vector<std::string>{});
-    this->declare_parameter<std::vector<std::string>>("hold_joint_names", std::vector<std::string>{});
-    this->declare_parameter<std::vector<std::string>>("hold_actuator_names", std::vector<std::string>{});
+    this->declare_parameter<std::vector<std::string>>("position_controlled_joint_names", std::vector<std::string>{});
     this->declare_parameter<int>("startup_mode_id", rl_master::kModeCodeMin);
     this->declare_parameter<double>("control_hz", 50.0);
     this->declare_parameter<double>("sim_dt", 0.001);
@@ -104,19 +102,7 @@ void MujocoSimBridge::loadParameters()
     enable_state_telemetry_ = this->get_parameter("enable_state_telemetry").as_bool();
     state_telemetry_hz_ = std::max(0.0, this->get_parameter("state_telemetry_hz").as_double());
 
-    std::vector<std::string> joint_names_param = canonical_names;
-    const auto joint_names_param_obj = this->get_parameter("joint_names");
-    if (joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
-    {
-        joint_names_param = joint_names_param_obj.as_string_array();
-    }
-    if (joint_names_param.empty())
-    {
-        throw std::runtime_error(
-            "joint_names resolved empty. "
-            "Provide robot_global_joint_order through ModeProfileRegistry or set ROS parameter 'joint_names' explicitly.");
-    }
-    joint_names_ = normalizeNameParam(joint_names_param, canonical_names);
+    joint_names_ = canonical_names;
 
     std::vector<std::string> actuator_names_param;
     const auto actuator_names_param_obj = this->get_parameter("actuator_names");
@@ -130,35 +116,17 @@ void MujocoSimBridge::loadParameters()
             "actuator_names must be configured explicitly. "
             "Implicit fallback from actuator_names to joint_names has been disabled for strict debugging.");
     }
-    actuator_names_ = normalizeNameParam(actuator_names_param, joint_names_);
+    if (actuator_names_param.size() != joint_names_.size())
+    {
+        throw std::runtime_error("actuator_names vector size mismatch. Expect " + std::to_string(joint_names_.size()));
+    }
+    actuator_names_ = actuator_names_param;
 
-    position_actuator_joint_names_.clear();
-    const auto position_joint_names_param_obj = this->get_parameter("position_actuator_joint_names");
-    if (position_joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
+    position_controlled_joint_names_.clear();
+    const auto position_controlled_joint_names_param_obj = this->get_parameter("position_controlled_joint_names");
+    if (position_controlled_joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
     {
-        position_actuator_joint_names_ = position_joint_names_param_obj.as_string_array();
-    }
-    hold_joint_names_.clear();
-    const auto hold_joint_names_param_obj = this->get_parameter("hold_joint_names");
-    if (hold_joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
-    {
-        hold_joint_names_ = hold_joint_names_param_obj.as_string_array();
-    }
-    hold_actuator_names_.clear();
-    const auto hold_actuator_names_param_obj = this->get_parameter("hold_actuator_names");
-    if (hold_actuator_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
-    {
-        hold_actuator_names_ = hold_actuator_names_param_obj.as_string_array();
-    }
-    if (!hold_joint_names_.empty() && hold_actuator_names_.empty())
-    {
-        throw std::runtime_error(
-            "hold_actuator_names must be configured explicitly when hold_joint_names is non-empty. "
-            "Implicit fallback from hold_actuator_names to hold_joint_names has been disabled for strict debugging.");
-    }
-    if (!hold_actuator_names_.empty() && hold_actuator_names_.size() != hold_joint_names_.size())
-    {
-        throw std::runtime_error("hold_actuator_names size must match hold_joint_names");
+        position_controlled_joint_names_ = position_controlled_joint_names_param_obj.as_string_array();
     }
 
     if (!prepose_joint_q_.empty() &&
@@ -193,10 +161,25 @@ void MujocoSimBridge::loadParameters()
             return values;
         };
 
-    position_actuator_kp_ = loadRequiredNamedJointParams("position_actuator_kp", position_actuator_joint_names_, false);
-    position_actuator_kv_ = loadRequiredNamedJointParams("position_actuator_kv", position_actuator_joint_names_, false);
-    position_actuator_forcerange_ =
-        loadRequiredNamedJointParams("position_actuator_forcerange", position_actuator_joint_names_, true);
+    std::string actuator_mode_lower = actuator_control_mode_;
+    std::transform(
+        actuator_mode_lower.begin(),
+        actuator_mode_lower.end(),
+        actuator_mode_lower.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (actuator_mode_lower == "mixed")
+    {
+        position_actuator_kp_ = loadRequiredNamedJointParams("position_actuator_kp", position_controlled_joint_names_, false);
+        position_actuator_kv_ = loadRequiredNamedJointParams("position_actuator_kv", position_controlled_joint_names_, false);
+        position_actuator_forcerange_ =
+            loadRequiredNamedJointParams("position_actuator_forcerange", position_controlled_joint_names_, true);
+    }
+    else
+    {
+        position_actuator_kp_.clear();
+        position_actuator_kv_.clear();
+        position_actuator_forcerange_.clear();
+    }
 
     kp_ = loadRequiredNamedJointParams("kp", joint_names_, false);
     kd_ = loadRequiredNamedJointParams("kd", joint_names_, false);
@@ -207,10 +190,10 @@ void MujocoSimBridge::loadParameters()
     actuator_ids_.assign(joint_names_.size(), -1);
     applied_tau_.assign(joint_names_.size(), 0.0f);
     last_target_q_.assign(joint_names_.size(), 0.0f);
-    const size_t hold_count = hold_joint_names_.size();
-    hold_kp_ = loadRequiredNamedJointParams("hold_kp", hold_joint_names_, false);
-    hold_kd_ = loadRequiredNamedJointParams("hold_kd", hold_joint_names_, false);
-    hold_torque_limit_ = loadRequiredNamedJointParams("hold_torque_limit", hold_joint_names_, true);
+    const size_t hold_count = joint_names_.size();
+    hold_kp_ = loadRequiredNamedJointParams("hold_kp", joint_names_, false);
+    hold_kd_ = loadRequiredNamedJointParams("hold_kd", joint_names_, false);
+    hold_torque_limit_ = loadRequiredNamedJointParams("hold_torque_limit", joint_names_, true);
     const auto hold_target_raw = this->get_parameter("hold_joint_target_q").as_double_array();
     hold_target_q_.clear();
     if (!hold_target_raw.empty())
@@ -225,7 +208,7 @@ void MujocoSimBridge::loadParameters()
         }
         else
         {
-            throw std::runtime_error("hold_joint_target_q size must be 1 or match hold_joint_names");
+            throw std::runtime_error("hold_joint_target_q size must be 1 or match canonical joint_names");
         }
     }
     if (hold_target_source_ == HoldTargetSource::kExplicit &&
@@ -233,7 +216,7 @@ void MujocoSimBridge::loadParameters()
         hold_target_q_.empty())
     {
         throw std::runtime_error(
-            "hold_joint_target_q must be provided when hold_target_source=explicit and hold_joint_names is non-empty");
+            "hold_joint_target_q must be provided when hold_target_source=explicit and canonical joint_names are non-empty");
     }
     if (model_path_.empty())
     {

@@ -167,9 +167,6 @@ private:
 
     // Small parsing/math helpers shared by the split implementation files.
     static std::array<float, 3> quatXyzwToRpy(const std::array<float, 4> &quat_xyzw);
-    static std::vector<std::string> normalizeNameParam(
-        const std::vector<std::string> &input,
-        const std::vector<std::string> &fallback);
     static SimJointRuntimeMode parseSimJointRuntimeMode(
         const std::string &raw_mode,
         const std::string &context);
@@ -185,9 +182,7 @@ private:
     std::string base_free_joint_name_;
     std::vector<std::string> joint_names_;
     std::vector<std::string> actuator_names_;
-    std::vector<std::string> position_actuator_joint_names_;
-    std::vector<std::string> hold_joint_names_;
-    std::vector<std::string> hold_actuator_names_;
+    std::vector<std::string> position_controlled_joint_names_;
 
     // Runtime parameters loaded from ROS/YAML.
     double control_hz_ = 200.0;
@@ -246,22 +241,12 @@ private:
     std::vector<float> last_target_q_;
 
     // Hold joints and per-mode resolved control buffers.
-    std::vector<int> hold_joint_ids_;
-    std::vector<int> hold_qpos_addrs_;
-    std::vector<int> hold_qvel_addrs_;
-    std::vector<int> hold_actuator_ids_;
-    std::vector<int> hold_main_joint_indices_;
-    std::vector<ActuatorBackend> hold_actuator_backends_;
-    std::vector<float> hold_applied_tau_;
-    std::vector<double> latched_hold_target_q_;
-    std::vector<int> joint_hold_config_indices_;
     std::vector<SimJointRuntimeMode> resolved_joint_runtime_modes_;
     std::vector<bool> joint_is_policy_controlled_;
     std::vector<double> resolved_policy_profile_kp_;
     std::vector<double> resolved_policy_profile_kd_;
     std::vector<double> resolved_policy_profile_torque_limit_;
     std::vector<float> resolved_hold_target_q_;
-    std::vector<double> resolved_hold_config_target_q_;
     std::vector<float> joint_cmd_q_;
     std::vector<float> joint_cmd_dq_;
     std::vector<float> joint_cmd_tau_;

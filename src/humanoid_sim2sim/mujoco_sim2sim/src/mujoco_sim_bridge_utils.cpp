@@ -30,19 +30,4 @@ std::array<float, 3> MujocoSimBridge::quatXyzwToRpy(const std::array<float, 4> &
         static_cast<float>(yaw)};
 }
 
-std::vector<std::string> MujocoSimBridge::normalizeNameParam(
-    const std::vector<std::string> &input,
-    const std::vector<std::string> &fallback)
-{
-    if (input.empty())
-    {
-        return fallback;
-    }
-    if (!fallback.empty() && input.size() != fallback.size())
-    {
-        throw std::runtime_error("Name vector size mismatch. Expect " + std::to_string(fallback.size()));
-    }
-    return input;
-}
-
 } // namespace mujoco_sim2sim

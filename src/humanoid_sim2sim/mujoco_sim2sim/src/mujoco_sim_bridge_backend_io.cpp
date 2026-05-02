@@ -193,7 +193,6 @@ void MujocoSimBridge::updateControlInput(
 
     const bool inactive_hold_position = !control_active && (no_command_behavior_ == "hold_position");
     const bool inactive_zero_torque = !control_active && (no_command_behavior_ == "zero_torque");
-    const bool allow_hold_latch_targets = !control_active && (hold_settle_ticks_remaining_ <= 0);
     if (inactive_hold_position &&
         !use_mixed_actuator_control_ &&
         !use_position_actuator_control_ &&
@@ -236,8 +235,6 @@ void MujocoSimBridge::updateControlInput(
         const double dq = data_->qvel[qvel_adr];
         const bool policy_controlled_joint =
             i < joint_is_policy_controlled_.size() ? joint_is_policy_controlled_[i] : isPolicyControlledJoint(i);
-        const int hold_cfg_idx =
-            (i < joint_hold_config_indices_.size()) ? joint_hold_config_indices_[i] : -1;
         const ActuatorBackend actuator_backend =
             i < joint_actuator_backends_.size() ? joint_actuator_backends_[i]
                                                 : (use_position_actuator_control_ ? ActuatorBackend::kPosition
@@ -281,7 +278,7 @@ void MujocoSimBridge::updateControlInput(
             }
             else
             {
-                if (hold_cfg_idx >= 0 && i < resolved_hold_target_q_.size())
+                if (i < resolved_hold_target_q_.size())
                 {
                     q_des = static_cast<double>(resolved_hold_target_q_[i]);
                 }
@@ -336,7 +333,17 @@ void MujocoSimBridge::updateControlInput(
             double kp = kp_[i];
             double kd = kd_[i];
             double torque_limit = torque_limit_[i];
-            if (forced_policy_csp &&
+            const bool use_hold_gains = (!control_active) || (mode_policy && !policy_controlled_joint);
+            if (use_hold_gains &&
+                i < hold_kp_.size() &&
+                i < hold_kd_.size() &&
+                i < hold_torque_limit_.size())
+            {
+                kp = hold_kp_[i];
+                kd = hold_kd_[i];
+                torque_limit = hold_torque_limit_[i];
+            }
+            else if (forced_policy_csp &&
                 i < resolved_policy_profile_kp_.size() &&
                 i < resolved_policy_profile_kd_.size() &&
                 i < resolved_policy_profile_torque_limit_.size())
@@ -366,61 +373,6 @@ void MujocoSimBridge::updateControlInput(
 
             data_->ctrl[actuator_id] = tau;
             applied_tau_[i] = static_cast<float>(tau);
-        }
-    }
-
-    for (size_t i = 0; i < hold_qpos_addrs_.size(); ++i)
-    {
-        const int qpos_adr = hold_qpos_addrs_[i];
-        const int qvel_adr = hold_qvel_addrs_[i];
-        const int actuator_id = hold_actuator_ids_[i];
-        if (qpos_adr < 0 || qvel_adr < 0 || actuator_id < 0)
-        {
-            continue;
-        }
-        if (qpos_adr >= model_->nq || qvel_adr >= model_->nv || actuator_id >= model_->nu)
-        {
-            continue;
-        }
-        if (i >= hold_target_q_.size())
-        {
-            continue;
-        }
-
-        const double q = data_->qpos[qpos_adr];
-        const double dq = data_->qvel[qvel_adr];
-        double q_des =
-            (i < resolved_hold_config_target_q_.size() &&
-             hold_target_source_ != HoldTargetSource::kExplicit)
-                ? resolved_hold_config_target_q_[i]
-                : hold_target_q_[i];
-        if (allow_hold_latch_targets && i < latched_hold_target_q_.size())
-        {
-            q_des = latched_hold_target_q_[i];
-        }
-        const ActuatorBackend actuator_backend =
-            i < hold_actuator_backends_.size() ? hold_actuator_backends_[i]
-                                               : (use_position_actuator_control_ ? ActuatorBackend::kPosition
-                                                                                 : ActuatorBackend::kTorque);
-
-        if (actuator_backend == ActuatorBackend::kPosition)
-        {
-            data_->ctrl[actuator_id] = q_des;
-            if (i < hold_applied_tau_.size())
-            {
-                hold_applied_tau_[i] = 0.0f;
-            }
-        }
-        else
-        {
-            double tau = hold_kp_[i] * (q_des - q) + hold_kd_[i] * (-dq);
-            const double limit = std::max(1e-6, std::abs(hold_torque_limit_[i]));
-            tau = std::clamp(tau, -limit, limit);
-            data_->ctrl[actuator_id] = tau;
-            if (i < hold_applied_tau_.size())
-            {
-                hold_applied_tau_[i] = static_cast<float>(tau);
-            }
         }
     }
 }

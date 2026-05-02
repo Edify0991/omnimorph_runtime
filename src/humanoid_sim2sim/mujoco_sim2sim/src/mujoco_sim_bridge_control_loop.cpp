@@ -218,14 +218,6 @@ void MujocoSimBridge::controlLoopTick()
                     last_target_q_[i] = static_cast<float>(data_->qpos[qpos_adr]);
                 }
             }
-            for (size_t i = 0; i < hold_qpos_addrs_.size(); ++i)
-            {
-                const int qpos_adr = hold_qpos_addrs_[i];
-                if (qpos_adr >= 0 && qpos_adr < model_->nq)
-                {
-                    latched_hold_target_q_[i] = data_->qpos[qpos_adr];
-                }
-            }
             hold_target_latched_ = true;
             RCLCPP_INFO(this->get_logger(), "Controller inactive, latch current pose for hold behavior.");
         }

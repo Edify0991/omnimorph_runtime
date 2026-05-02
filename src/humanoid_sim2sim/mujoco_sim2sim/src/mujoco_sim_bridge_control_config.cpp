@@ -41,25 +41,6 @@ void MujocoSimBridge::initializeState()
             last_target_q_[i] = static_cast<float>(data_->qpos[qpos_adr]);
         }
     }
-
-    if (hold_target_source_ == HoldTargetSource::kExplicit &&
-        hold_target_q_.empty() &&
-        !hold_qpos_addrs_.empty())
-    {
-        hold_target_q_.assign(hold_qpos_addrs_.size(), 0.0);
-        for (size_t i = 0; i < hold_qpos_addrs_.size(); ++i)
-        {
-            const int qpos_adr = hold_qpos_addrs_[i];
-            if (qpos_adr >= 0 && qpos_adr < model_->nq)
-            {
-                hold_target_q_[i] = data_->qpos[qpos_adr];
-            }
-        }
-        RCLCPP_INFO(
-            this->get_logger(),
-            "hold_joint_target_q not configured, latch %zu extra hold joints from model initial qpos.",
-            hold_target_q_.size());
-    }
 }
 
 MujocoSimBridge::SimJointRuntimeMode MujocoSimBridge::parseSimJointRuntimeMode(
@@ -222,7 +203,6 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
     joint_cmd_dq_.assign(joint_names_.size(), 0.0f);
     joint_cmd_tau_.assign(joint_names_.size(), 0.0f);
     joint_cmd_mode_.assign(joint_names_.size(), 0.0f);
-    resolved_hold_config_target_q_.assign(hold_joint_names_.size(), 0.0);
 
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
@@ -279,22 +259,16 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
             }
         }
 
-        const int hold_cfg_idx = (i < joint_hold_config_indices_.size()) ? joint_hold_config_indices_[i] : -1;
-        if (hold_cfg_idx < 0)
-        {
-            continue;
-        }
-
         double hold_q = 0.0;
         if (hold_target_source_ == HoldTargetSource::kExplicit)
         {
-            if (static_cast<size_t>(hold_cfg_idx) >= hold_target_q_.size())
+            if (i >= hold_target_q_.size())
             {
                 throw std::runtime_error(
-                    "hold_joint_target_q is missing explicit value for hold_joint_names[" +
-                    std::to_string(hold_cfg_idx) + "]='" + hold_joint_names_[static_cast<size_t>(hold_cfg_idx)] + "'");
+                    "hold_joint_target_q is missing explicit value for canonical joint '" +
+                    joint_name + "'");
             }
-            hold_q = hold_target_q_[static_cast<size_t>(hold_cfg_idx)];
+            hold_q = hold_target_q_[i];
         }
         else
         {
@@ -309,39 +283,6 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
         }
 
         resolved_hold_target_q_[i] = static_cast<float>(hold_q);
-        resolved_hold_config_target_q_[static_cast<size_t>(hold_cfg_idx)] = hold_q;
-    }
-
-    for (size_t i = 0; i < hold_joint_names_.size(); ++i)
-    {
-        if (hold_main_joint_indices_[i] >= 0)
-        {
-            continue;
-        }
-
-        double hold_q = 0.0;
-        if (hold_target_source_ == HoldTargetSource::kExplicit)
-        {
-            if (i >= hold_target_q_.size())
-            {
-                throw std::runtime_error(
-                    "hold_joint_target_q is missing explicit value for extra hold joint '" +
-                    hold_joint_names_[i] + "'");
-            }
-            hold_q = hold_target_q_[i];
-        }
-        else
-        {
-            const auto target_it = hold_source_targets.find(hold_joint_names_[i]);
-            if (target_it == hold_source_targets.end())
-            {
-                throw std::runtime_error(
-                    std::string("hold target source '") + holdTargetSourceName(hold_target_source_) +
-                    "' is missing extra hold joint '" + hold_joint_names_[i] + "'");
-            }
-            hold_q = target_it->second;
-        }
-        resolved_hold_config_target_q_[i] = hold_q;
     }
 
     resolved_control_mode_id_ = active_mode_id;

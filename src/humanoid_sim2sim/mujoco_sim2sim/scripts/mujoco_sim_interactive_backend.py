@@ -5,10 +5,13 @@ import math
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from pathlib import Path
 from typing import List
 
 import rclpy
+import yaml
+from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Float32MultiArray
@@ -28,11 +31,6 @@ except Exception as exc:
     mujoco = None  # type: ignore[assignment]
     _MUJOCO_IMPORT_ERROR = exc
 
-
-K_JOINT_COUNT = 12
-K_JOINT_STATE_VALUE_COUNT = K_JOINT_COUNT * 3
-K_JOINT_CMD_VALUE_COUNT = K_JOINT_STATE_VALUE_COUNT + 3
-K_ROBOT_STATE_VALUE_COUNT = K_JOINT_STATE_VALUE_COUNT + 3 + 4 + 3
 
 K_OPEN_RL_DISABLED = 0.0
 K_OPEN_RL_POLICY = 10.0
@@ -62,21 +60,40 @@ def normalize_no_command_behavior(raw: str) -> str:
     return "hold_position"
 
 
-def default_joint_names() -> List[str]:
-    return [
-        "right_hip_roll",
-        "right_hip_yaw",
-        "right_hip_pitch",
-        "right_knee_pitch",
-        "right_ankle_pitch",
-        "right_ankle_roll",
-        "left_hip_roll",
-        "left_hip_yaw",
-        "left_hip_pitch",
-        "left_knee_pitch",
-        "left_ankle_pitch",
-        "left_ankle_roll",
-    ]
+def resolve_rl_cfg_path() -> Path:
+    try:
+        return Path(get_package_share_directory("rl_master")) / "config" / "rl_cfg.yaml"
+    except Exception:
+        source_tree_candidate = (
+            Path(__file__).resolve().parents[4]
+            / "src"
+            / "humanoid_rl_controller"
+            / "rl_master"
+            / "config"
+            / "rl_cfg.yaml"
+        )
+        if source_tree_candidate.exists():
+            return source_tree_candidate
+        raise RuntimeError(
+            "failed to locate rl_master/config/rl_cfg.yaml for python interactive backend"
+        )
+
+
+def load_robot_global_joint_order() -> List[str]:
+    cfg_path = resolve_rl_cfg_path()
+    with cfg_path.open("r", encoding="utf-8") as f:
+        root = yaml.safe_load(f)
+    joint_order = root.get("robot_global_joint_order")
+    if not isinstance(joint_order, list) or not joint_order:
+        raise RuntimeError(
+            f"robot_global_joint_order is missing or empty in {cfg_path}"
+        )
+    names = [str(x) for x in joint_order]
+    if any(not name for name in names):
+        raise RuntimeError(f"robot_global_joint_order contains empty joint name in {cfg_path}")
+    if len(set(names)) != len(names):
+        raise RuntimeError(f"robot_global_joint_order contains duplicate joint names in {cfg_path}")
+    return names
 
 
 def mode_match(value: float, target: float) -> bool:
@@ -126,16 +143,25 @@ def normalize_name_vector(values: List[str], fallback: List[str], expected_count
 
 @dataclass
 class CommandCache:
-    q: np.ndarray = field(default_factory=lambda: np.zeros(K_JOINT_COUNT, dtype=np.float32))
-    dq: np.ndarray = field(default_factory=lambda: np.zeros(K_JOINT_COUNT, dtype=np.float32))
-    tau: np.ndarray = field(default_factory=lambda: np.zeros(K_JOINT_COUNT, dtype=np.float32))
+    q: np.ndarray
+    dq: np.ndarray
+    tau: np.ndarray
     open_rl: float = K_OPEN_RL_DISABLED
     protocol_version: int = 1
-    active_joint_count: int = K_JOINT_COUNT
+    active_joint_count: int = 0
     sequence: int = 0
     remote_stamp_sec: float = 0.0
     recv_time_sec: float = 0.0
     valid: bool = False
+
+
+def make_command_cache(joint_count: int) -> CommandCache:
+    return CommandCache(
+        q=np.zeros(joint_count, dtype=np.float32),
+        dq=np.zeros(joint_count, dtype=np.float32),
+        tau=np.zeros(joint_count, dtype=np.float32),
+        active_joint_count=joint_count,
+    )
 
 
 class MujocoInteractiveBackend(Node):
@@ -152,13 +178,14 @@ class MujocoInteractiveBackend(Node):
 
         control_period = 1.0 / self.control_hz
         self.substeps_per_control = max(1, int(round(control_period / self.sim_dt)))
-        self.applied_tau = np.zeros(K_JOINT_COUNT, dtype=np.float32)
+        self.applied_tau = np.zeros(self.joint_count, dtype=np.float32)
 
         self._resolve_mappings()
         self._initialize_base_lock_if_enabled()
         self._initialize_last_targets()
         self._log_startup_diagnostics()
         self._warned_idle_position_fallback = False
+        self._last_protocol_warn_sec = 0.0
 
         qos_cmd = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -175,12 +202,13 @@ class MujocoInteractiveBackend(Node):
         self.cmd_sub = self.create_subscription(Float32MultiArray, TOPIC_POLICY_COMMAND, self._on_command, qos_cmd)
 
         self.command_lock = threading.Lock()
-        self.latest_command = CommandCache()
+        self.latest_command = make_command_cache(self.joint_count)
         self.last_timeout_warn_sec = 0.0
 
         self.get_logger().info(
             "interactive backend ready: "
             f"model={self.model_path} "
+            f"joints={self.joint_count} "
             f"control_hz={self.control_hz:.1f} "
             f"substeps={self.substeps_per_control} "
             f"viewer={'on' if self.enable_viewer else 'off'} "
@@ -191,8 +219,8 @@ class MujocoInteractiveBackend(Node):
         self.declare_parameter("model_path", "")
         self.declare_parameter("base_body_name", "base_link")
         self.declare_parameter("base_free_joint_name", "")
-        self.declare_parameter("joint_names", default_joint_names())
-        self.declare_parameter("actuator_names", default_joint_names())
+        self.declare_parameter("joint_names", [])
+        self.declare_parameter("actuator_names", [])
         self.declare_parameter("hold_joint_names", [])
         self.declare_parameter("hold_actuator_names", [])
         self.declare_parameter("control_hz", 100.0)
@@ -237,19 +265,31 @@ class MujocoInteractiveBackend(Node):
         self.show_left_ui = bool(self.get_parameter("show_left_ui").value)
         self.show_right_ui = bool(self.get_parameter("show_right_ui").value)
 
+        canonical_joint_names = load_robot_global_joint_order()
         names_joint = self.get_parameter("joint_names").get_parameter_value().string_array_value
         names_act = self.get_parameter("actuator_names").get_parameter_value().string_array_value
-        self.joint_names = normalize_name_vector(list(names_joint), default_joint_names(), K_JOINT_COUNT)
-        self.actuator_names = normalize_name_vector(list(names_act), self.joint_names, K_JOINT_COUNT)
+        joint_names_override = list(names_joint)
+        if joint_names_override and joint_names_override != canonical_joint_names:
+            raise RuntimeError(
+                "joint_names override is no longer supported in MuJoCo sim2sim python interactive backend. "
+                "Controlled joint order must come from rl_master robot_global_joint_order."
+            )
+        self.joint_names = canonical_joint_names
+        self.joint_count = len(self.joint_names)
+        actuator_names_override = list(names_act)
+        if not actuator_names_override:
+            raise RuntimeError(
+                "actuator_names must be configured explicitly in MuJoCo sim2sim python interactive backend"
+            )
+        self.actuator_names = normalize_name_vector(actuator_names_override, self.joint_names, self.joint_count)
         hold_joint_names_raw = list(self.get_parameter("hold_joint_names").get_parameter_value().string_array_value)
         hold_actuator_names_raw = list(self.get_parameter("hold_actuator_names").get_parameter_value().string_array_value)
         self.hold_joint_names = hold_joint_names_raw
-        if hold_actuator_names_raw:
-            if len(hold_actuator_names_raw) != len(self.hold_joint_names):
-                raise RuntimeError("hold_actuator_names size must match hold_joint_names")
-            self.hold_actuator_names = hold_actuator_names_raw
-        else:
-            self.hold_actuator_names = list(self.hold_joint_names)
+        if self.hold_joint_names and not hold_actuator_names_raw:
+            raise RuntimeError("hold_actuator_names must be configured explicitly when hold_joint_names is non-empty")
+        if hold_actuator_names_raw and len(hold_actuator_names_raw) != len(self.hold_joint_names):
+            raise RuntimeError("hold_actuator_names size must match hold_joint_names")
+        self.hold_actuator_names = hold_actuator_names_raw
 
         def load_required_named_gain_vector(prefix: str, names: List[str], absolute_value: bool = False) -> np.ndarray:
             values: List[float] = []
@@ -292,11 +332,29 @@ class MujocoInteractiveBackend(Node):
             return mujoco.MjModel.from_binary_path(self.model_path)
         return mujoco.MjModel.from_xml_path(self.model_path)
 
+    def _joint_state_value_count(self) -> int:
+        return self.joint_count * 3
+
+    def _joint_cmd_value_count(self) -> int:
+        return self._joint_state_value_count() + 3
+
+    def _robot_state_value_count(self) -> int:
+        return self._joint_state_value_count() + 3 + 4 + 3
+
+    def _make_command_cache(self) -> CommandCache:
+        return make_command_cache(self.joint_count)
+
+    def _warn_protocol_mismatch(self, message: str) -> None:
+        now_sec = time.monotonic()
+        if (now_sec - self._last_protocol_warn_sec) > 1.0:
+            self.get_logger().warn(message)
+            self._last_protocol_warn_sec = now_sec
+
     def _resolve_mappings(self) -> None:
-        self.joint_ids = np.full(K_JOINT_COUNT, -1, dtype=np.int32)
-        self.qpos_addrs = np.full(K_JOINT_COUNT, -1, dtype=np.int32)
-        self.qvel_addrs = np.full(K_JOINT_COUNT, -1, dtype=np.int32)
-        self.actuator_ids = np.full(K_JOINT_COUNT, -1, dtype=np.int32)
+        self.joint_ids = np.full(self.joint_count, -1, dtype=np.int32)
+        self.qpos_addrs = np.full(self.joint_count, -1, dtype=np.int32)
+        self.qvel_addrs = np.full(self.joint_count, -1, dtype=np.int32)
+        self.actuator_ids = np.full(self.joint_count, -1, dtype=np.int32)
         self.hold_joint_ids: List[int] = [-1 for _ in self.hold_joint_names]
         self.hold_qpos_addrs: List[int] = [-1 for _ in self.hold_joint_names]
         self.hold_qvel_addrs: List[int] = [-1 for _ in self.hold_joint_names]
@@ -349,7 +407,7 @@ class MujocoInteractiveBackend(Node):
         elif self.actuator_control_mode == "torque":
             self.use_position_actuator_control = False
         else:
-            self.use_position_actuator_control = position_like_count > (K_JOINT_COUNT // 2)
+            self.use_position_actuator_control = position_like_count > (self.joint_count // 2)
 
         self.base_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, self.base_body_name)
         if self.base_body_id < 0:
@@ -377,8 +435,8 @@ class MujocoInteractiveBackend(Node):
             self.base_free_qvel_adr = int(self.model.jnt_dofadr[self.base_free_joint_id])
 
     def _initialize_last_targets(self) -> None:
-        self.last_target_q = np.zeros(K_JOINT_COUNT, dtype=np.float64)
-        for i in range(K_JOINT_COUNT):
+        self.last_target_q = np.zeros(self.joint_count, dtype=np.float64)
+        for i in range(self.joint_count):
             adr = int(self.qpos_addrs[i])
             if 0 <= adr < int(self.model.nq):
                 self.last_target_q[i] = float(self.data.qpos[adr])
@@ -403,7 +461,7 @@ class MujocoInteractiveBackend(Node):
             f"hold_extra_joints={len(self.hold_joint_names)}"
         )
 
-        for i in range(K_JOINT_COUNT):
+        for i in range(self.joint_count):
             jid = int(self.joint_ids[i])
             aid = int(self.actuator_ids[i])
             qadr = int(self.qpos_addrs[i])
@@ -469,7 +527,7 @@ class MujocoInteractiveBackend(Node):
 
         if near_limit_count > 0:
             self.get_logger().warn(
-                f"{near_limit_count}/{K_JOINT_COUNT} joints start near their limits. "
+                f"{near_limit_count}/{self.joint_count} joints start near their limits. "
                 "This usually means model init pose or joint mapping needs checking."
             )
         self.get_logger().info("===== End startup diagnostics =====")
@@ -514,7 +572,7 @@ class MujocoInteractiveBackend(Node):
             self.data.qvel[self.base_free_qvel_adr + i] = 0.0
 
     def _on_command(self, msg: Float32MultiArray) -> None:
-        cache = CommandCache()
+        cache = self._make_command_cache()
         is_v2 = (
             len(msg.data) >= 7
             and int(round(float(msg.data[0]))) == K_PROTOCOL_V2_MAGIC
@@ -526,10 +584,19 @@ class MujocoInteractiveBackend(Node):
             joint_count = int(max(0, int(round(float(msg.data[3])))))
             expected = 7 + 3 * joint_count
             if len(msg.data) < expected:
+                self._warn_protocol_mismatch(
+                    f"drop v2 policy command: payload too short for joint_count={joint_count}, "
+                    f"expected>={expected}, got={len(msg.data)}"
+                )
+                return
+            if joint_count != self.joint_count:
+                self._warn_protocol_mismatch(
+                    f"drop v2 policy command: joint_count mismatch, command={joint_count}, backend={self.joint_count}"
+                )
                 return
             cache.protocol_version = K_PROTOCOL_V2_VERSION
             cache.active_joint_count = joint_count
-            for i in range(min(K_JOINT_COUNT, joint_count)):
+            for i in range(joint_count):
                 off = 7 + i * 3
                 cache.q[i] = msg.data[off + 0]
                 cache.dq[i] = msg.data[off + 1]
@@ -538,19 +605,24 @@ class MujocoInteractiveBackend(Node):
             cache.sequence = int(max(0.0, float(msg.data[5])))
             cache.remote_stamp_sec = float(msg.data[6])
         else:
-            if len(msg.data) < K_JOINT_CMD_VALUE_COUNT:
+            expected = self._joint_cmd_value_count()
+            if len(msg.data) < expected:
+                self._warn_protocol_mismatch(
+                    f"drop legacy policy command: payload too short, expected>={expected}, got={len(msg.data)}"
+                )
                 return
-            for i in range(K_JOINT_COUNT):
+            for i in range(self.joint_count):
                 off = i * 3
                 cache.q[i] = msg.data[off + 0]
                 cache.dq[i] = msg.data[off + 1]
                 cache.tau[i] = msg.data[off + 2]
 
-            cache.open_rl = float(msg.data[K_JOINT_STATE_VALUE_COUNT])
-            cache.sequence = int(max(0.0, float(msg.data[K_JOINT_STATE_VALUE_COUNT + 1])))
-            cache.remote_stamp_sec = float(msg.data[K_JOINT_STATE_VALUE_COUNT + 2])
+            joint_state_value_count = self._joint_state_value_count()
+            cache.open_rl = float(msg.data[joint_state_value_count])
+            cache.sequence = int(max(0.0, float(msg.data[joint_state_value_count + 1])))
+            cache.remote_stamp_sec = float(msg.data[joint_state_value_count + 2])
             cache.protocol_version = 1
-            cache.active_joint_count = K_JOINT_COUNT
+            cache.active_joint_count = self.joint_count
         cache.recv_time_sec = time.monotonic()
         cache.valid = True
 
@@ -598,7 +670,7 @@ class MujocoInteractiveBackend(Node):
             )
             self._warned_idle_position_fallback = True
 
-        for i in range(K_JOINT_COUNT):
+        for i in range(self.joint_count):
             qadr = int(self.qpos_addrs[i])
             vadr = int(self.qvel_addrs[i])
             aid = int(self.actuator_ids[i])
@@ -667,14 +739,14 @@ class MujocoInteractiveBackend(Node):
 
     def _publish_robot_state(self) -> None:
         msg = Float32MultiArray()
-        data = np.zeros(K_ROBOT_STATE_V2_HEADER_COUNT + K_ROBOT_STATE_VALUE_COUNT, dtype=np.float32)
+        data = np.zeros(K_ROBOT_STATE_V2_HEADER_COUNT + self._robot_state_value_count(), dtype=np.float32)
         data[0] = float(K_PROTOCOL_V2_MAGIC)
         data[1] = float(K_PROTOCOL_V2_VERSION)
         data[2] = float(K_PROTOCOL_V2_PAYLOAD_ROBOT_STATE)
-        data[3] = float(K_JOINT_COUNT)
+        data[3] = float(self.joint_count)
 
         cursor = K_ROBOT_STATE_V2_HEADER_COUNT
-        for i in range(K_JOINT_COUNT):
+        for i in range(self.joint_count):
             qadr = int(self.qpos_addrs[i])
             vadr = int(self.qvel_addrs[i])
             if 0 <= qadr < int(self.model.nq):
