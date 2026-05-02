@@ -218,20 +218,27 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
             {
                 const size_t policy_idx =
                     static_cast<size_t>(std::distance(active_cfg.action_joint_order.begin(), action_it));
-                resolved_policy_profile_kp_[i] =
-                    policy_idx < active_cfg.kps.size() ? static_cast<double>(active_cfg.kps[policy_idx]) : kp_[i];
-                resolved_policy_profile_kd_[i] =
-                    policy_idx < active_cfg.kds.size() ? static_cast<double>(active_cfg.kds[policy_idx]) : kd_[i];
+                if (policy_idx >= active_cfg.kps.size() ||
+                    policy_idx >= active_cfg.kds.size() ||
+                    policy_idx >= active_cfg.tau_limit.size())
+                {
+                    throw std::runtime_error(
+                        "active mode profile does not fully cover action joint '" + joint_name +
+                        "' in kps/kds/tau_limit");
+                }
+                // active_cfg.{kps,kds,tau_limit} are stored in action_joint_order.
+                // The backend loop executes in canonical joint order, so we materialize a
+                // per-canonical-joint view here without changing each joint's runtime mode.
+                resolved_policy_profile_kp_[i] = static_cast<double>(active_cfg.kps[policy_idx]);
+                resolved_policy_profile_kd_[i] = static_cast<double>(active_cfg.kds[policy_idx]);
                 resolved_policy_profile_torque_limit_[i] =
-                    policy_idx < active_cfg.tau_limit.size()
-                        ? std::abs(static_cast<double>(active_cfg.tau_limit[policy_idx]))
-                        : std::abs(torque_limit_[i]);
+                    std::abs(static_cast<double>(active_cfg.tau_limit[policy_idx]));
             }
             else
             {
-                resolved_policy_profile_kp_[i] = kp_[i];
-                resolved_policy_profile_kd_[i] = kd_[i];
-                resolved_policy_profile_torque_limit_[i] = std::abs(torque_limit_[i]);
+                throw std::runtime_error(
+                    "policy-controlled canonical joint '" + joint_name +
+                    "' is missing from active_cfg.action_joint_order");
             }
         }
         if (joint_is_policy_controlled_[i] &&

@@ -217,10 +217,7 @@ private:
     int viewer_height_ = 720;
     std::string viewer_title_ = "MuJoCo Sim2Sim Viewer";
 
-    // Controller and hold gains/limits.
-    std::vector<double> kp_;
-    std::vector<double> kd_;
-    std::vector<double> torque_limit_;
+    // Hold and policy-resolved gains/limits.
     std::vector<double> hold_kp_;
     std::vector<double> hold_kd_;
     std::vector<double> hold_torque_limit_;

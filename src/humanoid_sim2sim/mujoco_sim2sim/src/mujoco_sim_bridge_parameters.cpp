@@ -181,9 +181,6 @@ void MujocoSimBridge::loadParameters()
         position_actuator_forcerange_.clear();
     }
 
-    kp_ = loadRequiredNamedJointParams("kp", joint_names_, false);
-    kd_ = loadRequiredNamedJointParams("kd", joint_names_, false);
-    torque_limit_ = loadRequiredNamedJointParams("torque_limit", joint_names_, true);
     joint_ids_.assign(joint_names_.size(), -1);
     qpos_addrs_.assign(joint_names_.size(), -1);
     qvel_addrs_.assign(joint_names_.size(), -1);

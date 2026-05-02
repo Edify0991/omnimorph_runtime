@@ -245,7 +245,6 @@ void MujocoSimBridge::updateControlInput(
         double tau_ff = 0.0;
         double tau_cmd = 0.0;
         SimJointRuntimeMode joint_mode = SimJointRuntimeMode::kCsp;
-        bool forced_policy_csp = false;
 
         if (!control_active)
         {
@@ -260,7 +259,6 @@ void MujocoSimBridge::updateControlInput(
                 joint_mode == SimJointRuntimeMode::kCst)
             {
                 joint_mode = SimJointRuntimeMode::kCsp;
-                forced_policy_csp = true;
             }
             if (policy_controlled_joint)
             {
@@ -330,46 +328,76 @@ void MujocoSimBridge::updateControlInput(
         }
         else
         {
-            double kp = kp_[i];
-            double kd = kd_[i];
-            double torque_limit = torque_limit_[i];
             const bool use_hold_gains = (!control_active) || (mode_policy && !policy_controlled_joint);
             if (use_hold_gains &&
                 i < hold_kp_.size() &&
                 i < hold_kd_.size() &&
                 i < hold_torque_limit_.size())
             {
-                kp = hold_kp_[i];
-                kd = hold_kd_[i];
-                torque_limit = hold_torque_limit_[i];
-            }
-            else if (forced_policy_csp &&
-                i < resolved_policy_profile_kp_.size() &&
-                i < resolved_policy_profile_kd_.size() &&
-                i < resolved_policy_profile_torque_limit_.size())
-            {
-                kp = resolved_policy_profile_kp_[i];
-                kd = resolved_policy_profile_kd_[i];
-                torque_limit = resolved_policy_profile_torque_limit_[i];
+                double tau = hold_kp_[i] * (q_des - q) + hold_kd_[i] * (dq_des - dq);
+                const double limit = std::max(1e-6, std::abs(hold_torque_limit_[i]));
+                tau = std::clamp(tau, -limit, limit);
+                data_->ctrl[actuator_id] = tau;
+                applied_tau_[i] = static_cast<float>(tau);
+                continue;
             }
 
             double tau = 0.0;
-            if (control_active && joint_mode == SimJointRuntimeMode::kCst)
+            if (control_active &&
+                mode_policy &&
+                policy_controlled_joint)
             {
-                tau = tau_cmd;
+                if (joint_mode == SimJointRuntimeMode::kCst)
+                {
+                    // Policy CST is already fully resolved by RL_controller.
+                    tau = tau_cmd;
+                }
+                else
+                {
+                    if (i >= resolved_policy_profile_kp_.size() ||
+                        i >= resolved_policy_profile_kd_.size() ||
+                        i >= resolved_policy_profile_torque_limit_.size())
+                    {
+                        throw std::runtime_error(
+                            "resolved policy profile gains/limits size mismatch for canonical joint '" +
+                            joint_names_[i] + "'");
+                    }
+                    tau =
+                        resolved_policy_profile_kp_[i] * (q_des - q) +
+                        resolved_policy_profile_kd_[i] * (dq_des - dq);
+                    if (joint_mode == SimJointRuntimeMode::kR1)
+                    {
+                        tau += tau_ff;
+                    }
+                    const double limit = std::max(1e-6, std::abs(resolved_policy_profile_torque_limit_[i]));
+                    tau = std::clamp(tau, -limit, limit);
+                }
             }
             else
             {
-                tau = kp * (q_des - q) + kd * (dq_des - dq);
-                if (control_active &&
-                    joint_mode == SimJointRuntimeMode::kR1 &&
-                    policy_controlled_joint)
+                if (control_active && joint_mode == SimJointRuntimeMode::kCst)
                 {
-                    tau += tau_ff;
+                    tau = tau_cmd;
+                }
+                else
+                {
+                    if (i >= hold_kp_.size() ||
+                        i >= hold_kd_.size() ||
+                        i >= hold_torque_limit_.size())
+                    {
+                        throw std::runtime_error(
+                            "hold gains/limits size mismatch for canonical joint '" +
+                            joint_names_[i] + "'");
+                    }
+                    tau = hold_kp_[i] * (q_des - q) + hold_kd_[i] * (dq_des - dq);
+                    if (control_active && joint_mode == SimJointRuntimeMode::kR1)
+                    {
+                        tau += tau_ff;
+                    }
+                    const double limit = std::max(1e-6, std::abs(hold_torque_limit_[i]));
+                    tau = std::clamp(tau, -limit, limit);
                 }
             }
-            const double limit = std::max(1e-6, std::abs(torque_limit));
-            tau = std::clamp(tau, -limit, limit);
 
             data_->ctrl[actuator_id] = tau;
             applied_tau_[i] = static_cast<float>(tau);
