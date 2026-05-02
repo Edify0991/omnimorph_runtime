@@ -55,6 +55,7 @@ PolicyInferenceResult OnnxPolicyAdapter::infer(const PolicyExecutionRequest &req
     return runner_->forward(
         requireVector(request.stacked_observation, "stacked_observation"),
         requireVector(request.current_observation, "current_observation"),
+        request.last_action ? *request.last_action : std::vector<float>{},
         requireFeatures(request.features),
         request.advance_time_step);
 }
@@ -67,6 +68,7 @@ std::unordered_map<std::string, std::vector<float>> OnnxPolicyAdapter::prefetchE
         extra_output_names,
         requireVector(request.stacked_observation, "stacked_observation"),
         requireVector(request.current_observation, "current_observation"),
+        request.last_action ? *request.last_action : std::vector<float>{},
         requireFeatures(request.features),
         request.advance_time_step);
 }

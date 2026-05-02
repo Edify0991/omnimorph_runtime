@@ -455,7 +455,7 @@ struct ExternalObservationSpec
 struct OnnxInputSpec
 {
     std::string name;
-    std::string source = "stacked_observation"; // stacked_observation / observation / time_step / feature / constant
+    std::string source = "stacked_observation"; // stacked_observation / observation / last_action / time_step / feature / constant
     std::string feature_name;
     std::vector<int64_t> shape;
     std::vector<float> constant;
@@ -612,6 +612,7 @@ public:
     std::string policy_family = "amp"; // amp / beyondmimic / custom
     std::string policy_adapter = "onnx";
     std::string inference_strategy = "sync_step"; // sync_step / chunked_receding
+    std::string action_output_layout = "step_flat"; // step_flat / chunk_flat
     int action_chunk_steps = 1;
     int action_chunk_execute_steps = 1;
     int action_chunk_replan_interval = 1;
@@ -904,6 +905,7 @@ public:
                     }
                     if (spec.source != "stacked_observation" &&
                         spec.source != "observation" &&
+                        spec.source != "last_action" &&
                         spec.source != "time_step" &&
                         spec.source != "feature" &&
                         spec.source != "constant")
@@ -933,6 +935,7 @@ public:
             policy_family = yamlReadOr<std::string>(cfg, "policy_family", "amp");
             policy_adapter = yamlReadOr<std::string>(cfg, "policy_adapter", "onnx");
             inference_strategy = yamlReadOr<std::string>(cfg, "inference_strategy", "sync_step");
+            action_output_layout = yamlReadOr<std::string>(cfg, "action_output_layout", "step_flat");
             action_chunk_steps = yamlReadOr<int>(cfg, "action_chunk_steps", 1);
             action_chunk_execute_steps = yamlReadOr<int>(cfg, "action_chunk_execute_steps", 1);
             action_chunk_replan_interval = yamlReadOr<int>(
@@ -970,6 +973,12 @@ public:
                 throw std::runtime_error(
                     "inference_strategy must be one of: sync_step, chunked_receding");
             }
+            if (action_output_layout != "step_flat" &&
+                action_output_layout != "chunk_flat")
+            {
+                throw std::runtime_error(
+                    "action_output_layout must be one of: step_flat, chunk_flat");
+            }
             if (action_chunk_steps <= 0)
             {
                 throw std::runtime_error("action_chunk_steps must be > 0");
@@ -996,6 +1005,12 @@ public:
             {
                 throw std::runtime_error(
                     "chunked_receding inference_strategy requires action_chunk_steps > 1");
+            }
+            if (inference_strategy == "chunked_receding" &&
+                action_output_layout != "chunk_flat")
+            {
+                throw std::runtime_error(
+                    "chunked_receding inference_strategy requires action_output_layout=chunk_flat");
             }
             if (obs_joint_order.empty())
             {
@@ -1708,6 +1723,7 @@ public:
         std::cout << "Policy Family: " << policy_family << std::endl;
         std::cout << "Policy Adapter: " << policy_adapter << std::endl;
         std::cout << "Inference Strategy: " << inference_strategy << std::endl;
+        std::cout << "Action Output Layout: " << action_output_layout << std::endl;
         std::cout << "Policy Path: " << policy_path << std::endl;
         std::cout << "Obs Stack N: " << obs_stack_N << std::endl;
         std::cout << "Action Chunk Steps: " << action_chunk_steps << std::endl;

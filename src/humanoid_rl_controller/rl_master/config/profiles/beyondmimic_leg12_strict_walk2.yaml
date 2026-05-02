@@ -5,9 +5,14 @@ beyondmimic_leg12_strict_walk2:
   inference_strategy: sync_step
   # For chunked/generative policies, switch to:
   # inference_strategy: chunked_receding
+  # action_output_layout: chunk_flat
   # action_chunk_steps: 8
   # action_chunk_execute_steps: 4
   # action_chunk_replan_interval: 4
+  # onnx_inputs:
+  #   - name: prev_action
+  #     source: last_action
+  #     shape: [1, 12]
   obs_stack_N: 1
   cycle_time: 1.0
   kps:

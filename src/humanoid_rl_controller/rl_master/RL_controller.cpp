@@ -1194,6 +1194,7 @@ RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(
     const PolicyExecutionRequest request{
         &stacked_obs,
         &current_observation,
+        &action,
         &feature_context.named_features,
         advance_time_step,
         static_cast<uint64_t>(policy_step_counter_)};
@@ -1331,6 +1332,7 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs()
     const PolicyExecutionRequest request{
         &stacked_obs_buffer_,
         &current_observation,
+        &action,
         &latest_observation_feature_context_.named_features,
         cfg.advance_time_step_on_reference_prefetch,
         static_cast<uint64_t>(policy_step_counter_)};

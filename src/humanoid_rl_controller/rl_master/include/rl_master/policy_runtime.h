@@ -17,6 +17,7 @@ struct PolicyExecutionRequest
 {
     const std::vector<float> *stacked_observation = nullptr;
     const std::vector<float> *current_observation = nullptr;
+    const std::vector<float> *last_action = nullptr;
     const std::unordered_map<std::string, std::vector<float>> *features = nullptr;
     bool advance_time_step = true;
     uint64_t policy_step_index = 0;

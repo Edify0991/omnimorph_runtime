@@ -358,6 +358,7 @@ void OnnxPolicyRunner::reset()
 PolicyInferenceResult OnnxPolicyRunner::forward(
     const std::vector<float> &stacked_observation,
     const std::vector<float> &current_observation,
+    const std::vector<float> &last_action,
     const std::unordered_map<std::string, std::vector<float>> &features,
     bool advance_time_step)
 {
@@ -365,6 +366,7 @@ PolicyInferenceResult OnnxPolicyRunner::forward(
         selected_output_names_,
         stacked_observation,
         current_observation,
+        last_action,
         features,
         advance_time_step);
 }
@@ -373,6 +375,7 @@ std::unordered_map<std::string, std::vector<float>> OnnxPolicyRunner::prefetchEx
     const std::vector<std::string> &extra_output_names,
     const std::vector<float> &stacked_observation,
     const std::vector<float> &current_observation,
+    const std::vector<float> &last_action,
     const std::unordered_map<std::string, std::vector<float>> &features,
     bool advance_time_step)
 {
@@ -384,6 +387,7 @@ std::unordered_map<std::string, std::vector<float>> OnnxPolicyRunner::prefetchEx
                extra_output_names,
                stacked_observation,
                current_observation,
+               last_action,
                features,
                advance_time_step)
         .extra_outputs;
@@ -393,6 +397,7 @@ PolicyInferenceResult OnnxPolicyRunner::runSelectedOutputs(
     const std::vector<std::string> &requested_output_names,
     const std::vector<float> &stacked_observation,
     const std::vector<float> &current_observation,
+    const std::vector<float> &last_action,
     const std::unordered_map<std::string, std::vector<float>> &features,
     bool advance_time_step)
 {
@@ -419,7 +424,7 @@ PolicyInferenceResult OnnxPolicyRunner::runSelectedOutputs(
     {
         const auto &binding = input_bindings_[binding_index];
         auto &buffer = input_buffers_[binding_index];
-        buffer.data = resolveInputData(binding, stacked_observation, current_observation, features);
+        buffer.data = resolveInputData(binding, stacked_observation, current_observation, last_action, features);
         input_name_ptrs.push_back(binding.name.c_str());
         input_tensors.emplace_back(Ort::Value::CreateTensor<float>(
             memory_info,
@@ -488,7 +493,11 @@ PolicyInferenceResult OnnxPolicyRunner::runSelectedOutputs(
             const auto raw_action = flattenFloatTensor(output_tensors[output_idx]);
             if (cfg_.action_dim > 0)
             {
-                const size_t expected_dim = static_cast<size_t>(cfg_.action_dim);
+                size_t expected_dim = static_cast<size_t>(cfg_.action_dim);
+                if (cfg_.action_output_layout == "chunk_flat")
+                {
+                    expected_dim *= static_cast<size_t>(std::max(1, cfg_.action_chunk_steps));
+                }
                 if (raw_action.size() < expected_dim)
                 {
                     throw std::runtime_error(
@@ -532,6 +541,7 @@ std::vector<float> OnnxPolicyRunner::resolveInputData(
     const InputBinding &binding,
     const std::vector<float> &stacked_observation,
     const std::vector<float> &current_observation,
+    const std::vector<float> &last_action,
     const std::unordered_map<std::string, std::vector<float>> &features) const
 {
     const size_t target_count = elementCountFromShape(binding.shape);
@@ -545,6 +555,10 @@ std::vector<float> OnnxPolicyRunner::resolveInputData(
     else if (source == "observation")
     {
         source_data = current_observation;
+    }
+    else if (source == "last_action")
+    {
+        source_data = last_action;
     }
     else if (source == "time_step")
     {
@@ -761,6 +775,11 @@ void OnnxPolicyRunner::validateModelMetadata()
     if (cfg_.action_dim > 0)
     {
         validateIntFieldIfPresent("action_dim", static_cast<int64_t>(cfg_.action_dim));
+    }
+    validateStringFieldIfPresent("action_output_layout", cfg_.action_output_layout);
+    if (cfg_.action_output_layout == "chunk_flat" && cfg_.action_chunk_steps > 0)
+    {
+        validateIntFieldIfPresent("action_chunk_steps", static_cast<int64_t>(cfg_.action_chunk_steps));
     }
     if (cfg_.obs_stack_N > 0)
     {
