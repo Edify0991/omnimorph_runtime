@@ -89,11 +89,26 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
 
   set(MUJOCO_SIM_BRIDGE_SOURCES
     src/main.cpp
+
+    # Runtime shell and configuration.
     src/mujoco_sim_bridge_core.cpp
-    src/mujoco_sim_bridge_ros_io_logging.cpp
+    src/mujoco_sim_bridge_parameters.cpp
+    src/mujoco_sim_bridge_model.cpp
+
+    # Control lifecycle and MuJoCo backend adapter.
     src/mujoco_sim_bridge_control_config.cpp
+    src/mujoco_sim_bridge_base_lock.cpp
     src/mujoco_sim_bridge_control_loop.cpp
+    src/mujoco_sim_bridge_backend_io.cpp
+
+    # ROS IO, telemetry, logging, and publishing.
+    src/mujoco_sim_bridge_ros_io.cpp
+    src/mujoco_sim_bridge_telemetry.cpp
+    src/mujoco_sim_bridge_logging.cpp
     src/mujoco_sim_bridge_publishing_utils.cpp
+
+    # Shared helpers and optional native viewer.
+    src/mujoco_sim_bridge_utils.cpp
     src/mujoco_sim_bridge_viewer.cpp
   )
 

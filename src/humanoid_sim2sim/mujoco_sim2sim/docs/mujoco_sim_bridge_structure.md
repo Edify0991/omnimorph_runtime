@@ -8,32 +8,58 @@ translation unit.
 
 - `mujoco_sim_bridge_core.cpp`
   - Node construction and shutdown
-  - Parameter declaration/loading
+
+- `mujoco_sim_bridge_model.cpp`
   - MuJoCo model loading
-  - Joint, actuator, and base mapping
+  - Controlled/hold joint and actuator mapping
+  - Base body/free-joint discovery
+  - Position-actuator gain and force-limit tuning
+
+- `mujoco_sim_bridge_parameters.cpp`
+  - ROS parameter declaration and loading
+  - Name/order normalization
+  - Per-joint gain/limit parameter expansion and validation
 
 - `mujoco_sim_bridge_control_config.cpp`
   - Initial state setup
   - Per-mode control parameter resolution
   - Joint runtime mode parsing
-  - Hold/prepose/base-lock configuration helpers
+
+- `mujoco_sim_bridge_base_lock.cpp`
+  - Fixed-base and dynamic base-lock helpers
+  - Sim-only prepose snap
+  - RUNNING-entry reference synchronization
 
 - `mujoco_sim_bridge_control_loop.cpp`
   - Main control-loop tick
   - Deploy lifecycle glue
-  - Fixed-base locking and RUNNING entry sync
-  - Robot state extraction from MuJoCo
-  - Command-to-MuJoCo control application
+  - Runtime transition orchestration around base-lock/RUNNING helpers
 
-- `mujoco_sim_bridge_ros_io_logging.cpp`
+- `mujoco_sim_bridge_backend_io.cpp`
+  - Robot state extraction from MuJoCo `qpos/qvel/cvel`
+  - Controller command conversion into MuJoCo `data->ctrl`
+  - Torque/position backend behavior and inactive hold behavior
+
+- `mujoco_sim_bridge_ros_io.cpp`
   - ROS publishers, subscriptions, timers, and input executor
+  - Teleop and mode-control subscription callbacks
+
+- `mujoco_sim_bridge_telemetry.cpp`
+  - State telemetry worker thread
+  - Python viewer telemetry worker thread
+  - State/viewer mirror updates consumed by publishers
+
+- `mujoco_sim_bridge_logging.cpp`
   - Runtime recorder setup
   - Runtime tick/event/source-sample emission
-  - State/viewer telemetry worker threads
+  - Sim2sim session metadata for MCAP logs
 
 - `mujoco_sim_bridge_publishing_utils.cpp`
   - Robot-state publishing helpers
   - Python viewer frame/inspector message encoding
+
+- `mujoco_sim_bridge_utils.cpp`
+  - Shared math and parameter-normalization helpers
 
 - `mujoco_sim_bridge_viewer.cpp`
   - Optional GLFW viewer initialization
