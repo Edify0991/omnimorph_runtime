@@ -212,13 +212,7 @@ class MujocoInteractiveBackend(Node):
         self.declare_parameter("viewer_title", "MuJoCo Sim2Sim Viewer")
         self.declare_parameter("show_left_ui", True)
         self.declare_parameter("show_right_ui", True)
-        self.declare_parameter("kp", [80.0])
-        self.declare_parameter("kd", [2.0])
-        self.declare_parameter("torque_limit", [120.0])
         self.declare_parameter("hold_joint_target_q", [])
-        self.declare_parameter("hold_kp", [80.0])
-        self.declare_parameter("hold_kd", [2.0])
-        self.declare_parameter("hold_torque_limit", [120.0])
 
     def _load_parameters(self) -> None:
         self.model_path = self.get_parameter("model_path").get_parameter_value().string_value
@@ -257,19 +251,26 @@ class MujocoInteractiveBackend(Node):
         else:
             self.hold_actuator_names = list(self.hold_joint_names)
 
-        kp_raw = list(self.get_parameter("kp").get_parameter_value().double_array_value)
-        kd_raw = list(self.get_parameter("kd").get_parameter_value().double_array_value)
-        tau_raw = list(self.get_parameter("torque_limit").get_parameter_value().double_array_value)
-        self.kp = np.array(normalize_numeric_vector(kp_raw, 80.0, K_JOINT_COUNT), dtype=np.float64)
-        self.kd = np.array(normalize_numeric_vector(kd_raw, 2.0, K_JOINT_COUNT), dtype=np.float64)
-        self.torque_limit = np.array(normalize_numeric_vector(tau_raw, 120.0, K_JOINT_COUNT), dtype=np.float64)
+        def load_required_named_gain_vector(prefix: str, names: List[str], absolute_value: bool = False) -> np.ndarray:
+            values: List[float] = []
+            for joint_name in names:
+                param_name = f"{prefix}.{joint_name}"
+                self.declare_parameter(param_name, float("nan"))
+                raw_value = float(self.get_parameter(param_name).value)
+                if not math.isfinite(raw_value):
+                    raise RuntimeError(
+                        f"parameter set '{prefix}' must be configured using per-joint name/value entries; missing joint '{joint_name}'"
+                    )
+                values.append(abs(raw_value) if absolute_value else raw_value)
+            return np.array(values, dtype=np.float64)
+
+        self.kp = load_required_named_gain_vector("kp", self.joint_names)
+        self.kd = load_required_named_gain_vector("kd", self.joint_names)
+        self.torque_limit = load_required_named_gain_vector("torque_limit", self.joint_names, absolute_value=True)
         hold_count = len(self.hold_joint_names)
-        hold_kp_raw = list(self.get_parameter("hold_kp").get_parameter_value().double_array_value)
-        hold_kd_raw = list(self.get_parameter("hold_kd").get_parameter_value().double_array_value)
-        hold_tau_raw = list(self.get_parameter("hold_torque_limit").get_parameter_value().double_array_value)
-        self.hold_kp = np.array(normalize_numeric_vector(hold_kp_raw, 80.0, hold_count), dtype=np.float64)
-        self.hold_kd = np.array(normalize_numeric_vector(hold_kd_raw, 2.0, hold_count), dtype=np.float64)
-        self.hold_torque_limit = np.array(normalize_numeric_vector(hold_tau_raw, 120.0, hold_count), dtype=np.float64)
+        self.hold_kp = load_required_named_gain_vector("hold_kp", self.hold_joint_names)
+        self.hold_kd = load_required_named_gain_vector("hold_kd", self.hold_joint_names)
+        self.hold_torque_limit = load_required_named_gain_vector("hold_torque_limit", self.hold_joint_names, absolute_value=True)
         hold_target_raw = list(self.get_parameter("hold_joint_target_q").get_parameter_value().double_array_value)
         if not hold_target_raw:
             self.hold_target_q = np.zeros(hold_count, dtype=np.float64)

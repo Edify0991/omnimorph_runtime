@@ -23,7 +23,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::vector<std::string>>("hold_joint_names", std::vector<std::string>{});
     this->declare_parameter<std::vector<std::string>>("hold_actuator_names", std::vector<std::string>{});
     this->declare_parameter<int>("startup_mode_id", rl_master::kModeCodeMin);
-    this->declare_parameter<double>("control_hz", 100.0);
+    this->declare_parameter<double>("control_hz", 50.0);
     this->declare_parameter<double>("sim_dt", 0.001);
     this->declare_parameter<bool>("use_command_torque_ff", false);
     this->declare_parameter<bool>("pause_when_no_command", false);
@@ -54,16 +54,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::string>("viewer_title", "MuJoCo Sim2Sim Viewer");
     this->declare_parameter<bool>("enable_state_telemetry", true);
     this->declare_parameter<double>("state_telemetry_hz", 50.0);
-    this->declare_parameter<std::vector<double>>("kp", std::vector<double>(canonical_names.size(), 80.0));
-    this->declare_parameter<std::vector<double>>("kd", std::vector<double>(canonical_names.size(), 2.0));
-    this->declare_parameter<std::vector<double>>("torque_limit", std::vector<double>(canonical_names.size(), 120.0));
-    this->declare_parameter<std::vector<double>>("hold_kp", std::vector<double>{80.0});
-    this->declare_parameter<std::vector<double>>("hold_kd", std::vector<double>{2.0});
-    this->declare_parameter<std::vector<double>>("hold_torque_limit", std::vector<double>{120.0});
     this->declare_parameter<std::vector<double>>("hold_joint_target_q", std::vector<double>{});
-    this->declare_parameter<std::vector<double>>("position_actuator_kp", std::vector<double>{80.0});
-    this->declare_parameter<std::vector<double>>("position_actuator_kv", std::vector<double>{2.0});
-    this->declare_parameter<std::vector<double>>("position_actuator_forcerange", std::vector<double>{120.0});
 
     model_path_ = this->get_parameter("model_path").as_string();
     base_body_name_ = this->get_parameter("base_body_name").as_string();
@@ -147,70 +138,6 @@ void MujocoSimBridge::loadParameters()
     {
         position_actuator_joint_names_ = position_joint_names_param_obj.as_string_array();
     }
-    const size_t position_actuator_count = position_actuator_joint_names_.size();
-    position_actuator_kp_ = normalizeGainParam(
-        this->get_parameter("position_actuator_kp").as_double_array(),
-        80.0,
-        position_actuator_count);
-    position_actuator_kv_ = normalizeGainParam(
-        this->get_parameter("position_actuator_kv").as_double_array(),
-        2.0,
-        position_actuator_count);
-    position_actuator_forcerange_ = normalizeGainParam(
-        this->get_parameter("position_actuator_forcerange").as_double_array(),
-        120.0,
-        position_actuator_count);
-    for (size_t i = 0; i < position_actuator_forcerange_.size(); ++i)
-    {
-        position_actuator_forcerange_[i] = std::abs(position_actuator_forcerange_[i]);
-    }
-
-    auto overrideFromNamedPositionActuatorParams =
-        [this, &position_actuator_count](
-            const std::string &prefix,
-            std::vector<double> *values,
-            bool absolute_value) {
-            if (!values)
-            {
-                return;
-            }
-            std::vector<double> named_values(position_actuator_count, std::numeric_limits<double>::quiet_NaN());
-            bool any_named_override = false;
-            for (size_t i = 0; i < position_actuator_joint_names_.size(); ++i)
-            {
-                const std::string param_name = prefix + "." + position_actuator_joint_names_[i];
-                this->declare_parameter<double>(
-                    param_name,
-                    std::numeric_limits<double>::quiet_NaN());
-                const double raw_value = this->get_parameter(param_name).as_double();
-                if (std::isfinite(raw_value))
-                {
-                    named_values[i] = absolute_value ? std::abs(raw_value) : raw_value;
-                    any_named_override = true;
-                }
-            }
-
-            if (!any_named_override)
-            {
-                return;
-            }
-
-            for (size_t i = 0; i < position_actuator_joint_names_.size(); ++i)
-            {
-                if (!std::isfinite(named_values[i]))
-                {
-                    throw std::runtime_error(
-                        "named position actuator parameter set '" + prefix +
-                        "' is partial; missing joint '" + position_actuator_joint_names_[i] + "'");
-                }
-            }
-            *values = std::move(named_values);
-        };
-
-    overrideFromNamedPositionActuatorParams("position_actuator_kp", &position_actuator_kp_, false);
-    overrideFromNamedPositionActuatorParams("position_actuator_kv", &position_actuator_kv_, false);
-    overrideFromNamedPositionActuatorParams("position_actuator_forcerange", &position_actuator_forcerange_, true);
-
     hold_joint_names_.clear();
     const auto hold_joint_names_param_obj = this->get_parameter("hold_joint_names");
     if (hold_joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
@@ -241,19 +168,12 @@ void MujocoSimBridge::loadParameters()
         throw std::runtime_error("prepose_joint_q size must be 1 or match joint_names");
     }
 
-    auto overrideFromNamedMainJointParams =
+    auto loadRequiredNamedJointParams =
         [this](
             const std::string &prefix,
             const std::vector<std::string> &joint_names,
-            std::vector<double> *values,
-            bool absolute_value) {
-            if (!values)
-            {
-                return;
-            }
-
-            std::vector<double> named_values(joint_names.size(), std::numeric_limits<double>::quiet_NaN());
-            bool any_named_override = false;
+            bool absolute_value) -> std::vector<double> {
+            std::vector<double> values(joint_names.size(), std::numeric_limits<double>::quiet_NaN());
             for (size_t i = 0; i < joint_names.size(); ++i)
             {
                 const std::string param_name = prefix + "." + joint_names[i];
@@ -261,36 +181,26 @@ void MujocoSimBridge::loadParameters()
                     param_name,
                     std::numeric_limits<double>::quiet_NaN());
                 const double raw_value = this->get_parameter(param_name).as_double();
-                if (std::isfinite(raw_value))
-                {
-                    named_values[i] = absolute_value ? std::abs(raw_value) : raw_value;
-                    any_named_override = true;
-                }
-            }
-
-            if (!any_named_override)
-            {
-                return;
-            }
-
-            for (size_t i = 0; i < joint_names.size(); ++i)
-            {
-                if (!std::isfinite(named_values[i]))
+                if (!std::isfinite(raw_value))
                 {
                     throw std::runtime_error(
-                        "named joint parameter set '" + prefix +
-                        "' is partial; missing joint '" + joint_names[i] + "'");
+                        "parameter set '" + prefix +
+                        "' must be configured using per-joint name/value entries; missing joint '" +
+                        joint_names[i] + "'");
                 }
+                values[i] = absolute_value ? std::abs(raw_value) : raw_value;
             }
-            *values = std::move(named_values);
+            return values;
         };
 
-    kp_ = normalizeGainParam(this->get_parameter("kp").as_double_array(), 80.0, joint_names_.size());
-    kd_ = normalizeGainParam(this->get_parameter("kd").as_double_array(), 2.0, joint_names_.size());
-    torque_limit_ = normalizeGainParam(this->get_parameter("torque_limit").as_double_array(), 120.0, joint_names_.size());
-    overrideFromNamedMainJointParams("kp", joint_names_, &kp_, false);
-    overrideFromNamedMainJointParams("kd", joint_names_, &kd_, false);
-    overrideFromNamedMainJointParams("torque_limit", joint_names_, &torque_limit_, true);
+    position_actuator_kp_ = loadRequiredNamedJointParams("position_actuator_kp", position_actuator_joint_names_, false);
+    position_actuator_kv_ = loadRequiredNamedJointParams("position_actuator_kv", position_actuator_joint_names_, false);
+    position_actuator_forcerange_ =
+        loadRequiredNamedJointParams("position_actuator_forcerange", position_actuator_joint_names_, true);
+
+    kp_ = loadRequiredNamedJointParams("kp", joint_names_, false);
+    kd_ = loadRequiredNamedJointParams("kd", joint_names_, false);
+    torque_limit_ = loadRequiredNamedJointParams("torque_limit", joint_names_, true);
     joint_ids_.assign(joint_names_.size(), -1);
     qpos_addrs_.assign(joint_names_.size(), -1);
     qvel_addrs_.assign(joint_names_.size(), -1);
@@ -298,9 +208,9 @@ void MujocoSimBridge::loadParameters()
     applied_tau_.assign(joint_names_.size(), 0.0f);
     last_target_q_.assign(joint_names_.size(), 0.0f);
     const size_t hold_count = hold_joint_names_.size();
-    hold_kp_ = normalizeGainParam(this->get_parameter("hold_kp").as_double_array(), 80.0, hold_count);
-    hold_kd_ = normalizeGainParam(this->get_parameter("hold_kd").as_double_array(), 2.0, hold_count);
-    hold_torque_limit_ = normalizeGainParam(this->get_parameter("hold_torque_limit").as_double_array(), 120.0, hold_count);
+    hold_kp_ = loadRequiredNamedJointParams("hold_kp", hold_joint_names_, false);
+    hold_kd_ = loadRequiredNamedJointParams("hold_kd", hold_joint_names_, false);
+    hold_torque_limit_ = loadRequiredNamedJointParams("hold_torque_limit", hold_joint_names_, true);
     const auto hold_target_raw = this->get_parameter("hold_joint_target_q").as_double_array();
     hold_target_q_.clear();
     if (!hold_target_raw.empty())

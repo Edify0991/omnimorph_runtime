@@ -51,10 +51,20 @@ mujoco_sim_bridge:
     # hold_actuator_names: ["motor_waist_yaw", "motor_l_shoulder_pitch", "motor_r_shoulder_pitch"]
     # If omitted, hold targets latch from model initial qpos at startup.
     # hold_joint_target_q: [0.0, 0.0, 0.0]
-    # PD gains used only when actuator_control_mode resolves to torque.
-    hold_kp: [80.0]
-    hold_kd: [2.0]
-    hold_torque_limit: [120.0]
+    # PD gains are now accepted only in per-joint named form.
+    # Example:
+    # hold_kp:
+    #   waist_yaw: 80.0
+    #   left_shoulder_pitch: 80.0
+    #   right_shoulder_pitch: 80.0
+    # hold_kd:
+    #   waist_yaw: 2.0
+    #   left_shoulder_pitch: 2.0
+    #   right_shoulder_pitch: 2.0
+    # hold_torque_limit:
+    #   waist_yaw: 120.0
+    #   left_shoulder_pitch: 120.0
+    #   right_shoulder_pitch: 120.0
 
     # Control loop and sim integration.
     control_hz: 100.0
@@ -102,6 +112,42 @@ mujoco_sim_bridge:
 
     # Joint-space stabilization for simulation side.
     use_command_torque_ff: false
-    kp: [80.0]
-    kd: [2.0]
-    torque_limit: [120.0]
+    kp:
+      right_hip_roll: 80.0
+      right_hip_yaw: 80.0
+      right_hip_pitch: 80.0
+      right_knee_pitch: 80.0
+      right_ankle_pitch: 80.0
+      right_ankle_roll: 80.0
+      left_hip_roll: 80.0
+      left_hip_yaw: 80.0
+      left_hip_pitch: 80.0
+      left_knee_pitch: 80.0
+      left_ankle_pitch: 80.0
+      left_ankle_roll: 80.0
+    kd:
+      right_hip_roll: 2.0
+      right_hip_yaw: 2.0
+      right_hip_pitch: 2.0
+      right_knee_pitch: 2.0
+      right_ankle_pitch: 2.0
+      right_ankle_roll: 2.0
+      left_hip_roll: 2.0
+      left_hip_yaw: 2.0
+      left_hip_pitch: 2.0
+      left_knee_pitch: 2.0
+      left_ankle_pitch: 2.0
+      left_ankle_roll: 2.0
+    torque_limit:
+      right_hip_roll: 120.0
+      right_hip_yaw: 120.0
+      right_hip_pitch: 120.0
+      right_knee_pitch: 120.0
+      right_ankle_pitch: 120.0
+      right_ankle_roll: 120.0
+      left_hip_roll: 120.0
+      left_hip_yaw: 120.0
+      left_hip_pitch: 120.0
+      left_knee_pitch: 120.0
+      left_ankle_pitch: 120.0
+      left_ankle_roll: 120.0

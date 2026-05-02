@@ -167,10 +167,6 @@ private:
 
     // Small parsing/math helpers shared by the split implementation files.
     static std::array<float, 3> quatXyzwToRpy(const std::array<float, 4> &quat_xyzw);
-    static std::vector<double> normalizeGainParam(
-        const std::vector<double> &input,
-        double fallback,
-        size_t expected_count);
     static std::vector<std::string> normalizeNameParam(
         const std::vector<std::string> &input,
         const std::vector<std::string> &fallback);

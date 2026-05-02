@@ -30,29 +30,6 @@ std::array<float, 3> MujocoSimBridge::quatXyzwToRpy(const std::array<float, 4> &
         static_cast<float>(yaw)};
 }
 
-std::vector<double> MujocoSimBridge::normalizeGainParam(
-    const std::vector<double> &input,
-    double fallback,
-    size_t expected_count)
-{
-    std::vector<double> out(expected_count, fallback);
-    if (input.empty())
-    {
-        return out;
-    }
-    if (input.size() == 1)
-    {
-        out.assign(expected_count, input.front());
-        return out;
-    }
-    if (input.size() != expected_count)
-    {
-        throw std::runtime_error("Gain vector size mismatch. Expect 1 or " + std::to_string(expected_count));
-    }
-    out = input;
-    return out;
-}
-
 std::vector<std::string> MujocoSimBridge::normalizeNameParam(
     const std::vector<std::string> &input,
     const std::vector<std::string> &fallback)
