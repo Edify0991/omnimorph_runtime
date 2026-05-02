@@ -6,6 +6,9 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 
 这一节专门回答一个最容易混淆的问题：`mode`、`config_section`、`ModeProfile`、`policy_group`、`policy_family` 在当前代码里分别代表什么。
 
+如果你想继续看“最近新增的策略运行时抽象层”和“为什么不再按算法家族复制部署主链”，建议同时阅读
+[policy_runtime_architecture.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/policy_runtime_architecture.md)。
+
 ### 0.1 核心结论
 
 可以先记住这一句话：
