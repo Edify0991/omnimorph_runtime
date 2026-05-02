@@ -93,6 +93,16 @@ def generate_launch_description():
         default_value="false",
         description="Enable MuJoCo GLFW visualization window.",
     )
+    enable_python_viewer_stream_arg = DeclareLaunchArgument(
+        "enable_python_viewer_stream",
+        default_value="false",
+        description="Enable Python viewer frame stream topic for external frontend/inspection.",
+    )
+    enable_python_viewer_inspector_arg = DeclareLaunchArgument(
+        "enable_python_viewer_inspector",
+        default_value="false",
+        description="Enable Python viewer inspector telemetry topic.",
+    )
     viewer_fps_arg = DeclareLaunchArgument(
         "viewer_fps",
         default_value="60.0",
@@ -155,6 +165,8 @@ def generate_launch_description():
             "enable_prepose_snap": ParameterValue(LaunchConfiguration("enable_prepose_snap"), value_type=bool),
             "actuator_control_mode": LaunchConfiguration("actuator_control_mode"),
             "enable_viewer": ParameterValue(LaunchConfiguration("enable_viewer"), value_type=bool),
+            "enable_python_viewer_stream": ParameterValue(LaunchConfiguration("enable_python_viewer_stream"), value_type=bool),
+            "enable_python_viewer_inspector": ParameterValue(LaunchConfiguration("enable_python_viewer_inspector"), value_type=bool),
             "viewer_fps": ParameterValue(LaunchConfiguration("viewer_fps"), value_type=float),
             "viewer_inspector_hz": ParameterValue(LaunchConfiguration("viewer_inspector_hz"), value_type=float),
             "viewer_width": ParameterValue(LaunchConfiguration("viewer_width"), value_type=int),
@@ -243,6 +255,8 @@ def generate_launch_description():
             enable_prepose_snap_arg,
             actuator_mode_arg,
             enable_viewer_arg,
+            enable_python_viewer_stream_arg,
+            enable_python_viewer_inspector_arg,
             viewer_fps_arg,
             viewer_inspector_hz_arg,
             viewer_width_arg,

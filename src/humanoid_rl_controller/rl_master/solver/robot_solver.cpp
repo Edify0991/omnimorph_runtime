@@ -1123,6 +1123,21 @@ void RobotSolver::emitDerivedRuntimeEvents(const rl_master::logging::ControllerL
         runtime_recorder_.recordEvent(event);
         last_logged_deploy_state_ = controller_snapshot.deploy_state;
     }
+
+    if (controller_snapshot.runtime_warning_seq > 0 &&
+        controller_snapshot.runtime_warning_seq != last_logged_runtime_warning_seq_ &&
+        !controller_snapshot.runtime_warning_type.empty())
+    {
+        rl_master::logging::RuntimeEventRecord event;
+        event.monotonic_time_sec = controller_snapshot.monotonic_time_sec;
+        event.event_type = controller_snapshot.runtime_warning_type;
+        event.tags = controller_snapshot.runtime_warning_tags;
+        event.tags["message"] = controller_snapshot.runtime_warning_message;
+        event.tags["mode_id"] = std::to_string(controller_snapshot.active_mode_id);
+        event.tags["config_section"] = controller_snapshot.active_config_section;
+        runtime_recorder_.recordEvent(event);
+        last_logged_runtime_warning_seq_ = controller_snapshot.runtime_warning_seq;
+    }
 }
 
 void RobotSolver::logLoopData(const rl_master::logging::ControllerLogSnapshot &controller_snapshot)
@@ -1157,6 +1172,10 @@ void RobotSolver::logLoopData(const rl_master::logging::ControllerLogSnapshot &c
     record.active_tag = controller_snapshot.active_tag;
     record.active_config_section = controller_snapshot.active_config_section;
     record.policy_name = controller_snapshot.policy_name;
+    record.runtime_warning_seq = controller_snapshot.runtime_warning_seq;
+    record.runtime_warning_type = controller_snapshot.runtime_warning_type;
+    record.runtime_warning_message = controller_snapshot.runtime_warning_message;
+    record.runtime_warning_tags = controller_snapshot.runtime_warning_tags;
     record.joint_q = controller_snapshot.joint_q;
     record.joint_dq = controller_snapshot.joint_dq;
     record.joint_tau = controller_snapshot.joint_tau;

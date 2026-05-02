@@ -121,6 +121,10 @@ private:
     void handlePolicySwitch();
     int sanitizeRuntimeModeCommand(int mode_command);
     bool isKnownMode(int mode_id) const;
+    void queueRuntimeWarningEvent(
+        const std::string &event_type,
+        const std::string &message,
+        const std::map<std::string, std::string> &tags = {});
     void updateStateFromIO(const rl_master::RobotStateData &state);
     void updateCommandFromIO(const rl_master::TeleopCommand &command);
     void initPolicyGroup(const Sim2realCfg &cfg, const std::string &tag, PolicyRuntimeGroup *group);
@@ -160,6 +164,11 @@ private:
     int last_active_mode_id_ = std::numeric_limits<int>::min();
     int last_rejected_mode_command_ = std::numeric_limits<int>::min();
     int last_rejected_mode_id_ = std::numeric_limits<int>::min();
+    uint64_t runtime_warning_seq_counter_ = 0;
+    uint64_t pending_runtime_warning_seq_ = 0;
+    std::string pending_runtime_warning_type_;
+    std::string pending_runtime_warning_message_;
+    std::map<std::string, std::string> pending_runtime_warning_tags_;
 
     ExternalObservationProvider external_observation_provider_;
     rl_master::DeployStateMachine deploy_state_machine_;

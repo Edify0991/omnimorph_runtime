@@ -625,6 +625,17 @@ void RL_controller::handlePolicySwitch()
               << ", mode_id=" << active_mode_id_ << std::endl;
 }
 
+void RL_controller::queueRuntimeWarningEvent(
+    const std::string &event_type,
+    const std::string &message,
+    const std::map<std::string, std::string> &tags)
+{
+    pending_runtime_warning_seq_ = ++runtime_warning_seq_counter_;
+    pending_runtime_warning_type_ = event_type;
+    pending_runtime_warning_message_ = message;
+    pending_runtime_warning_tags_ = tags;
+}
+
 bool RL_controller::isKnownMode(int mode_id) const
 {
     return mode_to_profile_index_.find(mode_id) != mode_to_profile_index_.end();
@@ -655,11 +666,21 @@ int RL_controller::sanitizeRuntimeModeCommand(int mode_command)
     if (last_rejected_mode_command_ != mode_command ||
         last_rejected_mode_id_ != requested_mode)
     {
-        std::cerr << "[RL_controller] ignore invalid runtime mode request: control_word="
-                  << mode_command
+        const std::string warning_message =
+            "ignore invalid runtime mode request and keep current active mode";
+        std::cerr << "[RL_controller] " << warning_message
+                  << ": control_word=" << mode_command
                   << ", requested_mode_id=" << requested_mode
                   << ", keep active_mode_id=" << active_mode_id_
                   << std::endl;
+        queueRuntimeWarningEvent(
+            "invalid_runtime_mode_request_ignored",
+            warning_message,
+            {
+                {"control_word", std::to_string(mode_command)},
+                {"requested_mode_id", std::to_string(requested_mode)},
+                {"kept_active_mode_id", std::to_string(active_mode_id_)},
+            });
         last_rejected_mode_command_ = mode_command;
         last_rejected_mode_id_ = requested_mode;
     }
@@ -1719,10 +1740,19 @@ rl_master::RobotCommandData RL_controller::step(
     }
     else
     {
-        std::cerr << "[RL_controller] deploy state machine produced unknown locomotion_mode="
-                  << deploy_output.locomotion_mode
+        const std::string warning_message =
+            "deploy state machine produced unknown locomotion_mode, keep current active mode";
+        std::cerr << "[RL_controller] " << warning_message
+                  << ": locomotion_mode=" << deploy_output.locomotion_mode
                   << ", keep active_mode_id=" << active_mode_id_
                   << std::endl;
+        queueRuntimeWarningEvent(
+            "unknown_locomotion_mode_ignored",
+            warning_message,
+            {
+                {"locomotion_mode", std::to_string(deploy_output.locomotion_mode)},
+                {"kept_active_mode_id", std::to_string(active_mode_id_)},
+            });
     }
 
     const bool entered_running =
@@ -1883,6 +1913,10 @@ rl_master::RobotCommandData RL_controller::step(
     latest_log_snapshot_.active_tag = activeModeProfile().tag;
     latest_log_snapshot_.active_config_section = activeModeProfile().config_section;
     latest_log_snapshot_.policy_name = activePolicyCfg().policy_name;
+    latest_log_snapshot_.runtime_warning_seq = pending_runtime_warning_seq_;
+    latest_log_snapshot_.runtime_warning_type = pending_runtime_warning_type_;
+    latest_log_snapshot_.runtime_warning_message = pending_runtime_warning_message_;
+    latest_log_snapshot_.runtime_warning_tags = pending_runtime_warning_tags_;
     latest_log_snapshot_.joint_q = robot->joint_q;
     latest_log_snapshot_.joint_dq = robot->joint_dq;
     latest_log_snapshot_.joint_tau = robot->joint_tau;
@@ -1898,6 +1932,10 @@ rl_master::RobotCommandData RL_controller::step(
     {
         latest_log_snapshot_.external_feature_names.push_back(spec.name);
     }
+    pending_runtime_warning_seq_ = 0;
+    pending_runtime_warning_type_.clear();
+    pending_runtime_warning_message_.clear();
+    pending_runtime_warning_tags_.clear();
     return out_cmd;
 }
 

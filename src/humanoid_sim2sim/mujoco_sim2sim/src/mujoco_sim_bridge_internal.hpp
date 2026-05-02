@@ -351,6 +351,7 @@ private:
     bool runtime_logging_enabled_ = false;
     int last_logged_mode_id_ = std::numeric_limits<int>::min();
     int last_logged_deploy_state_ = std::numeric_limits<int>::min();
+    uint64_t last_logged_runtime_warning_seq_ = 0;
     uint64_t sim_loop_overrun_count_ = 0;
 };
 

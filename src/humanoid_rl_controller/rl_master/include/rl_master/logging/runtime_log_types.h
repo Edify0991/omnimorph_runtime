@@ -49,6 +49,10 @@ struct ControllerLogSnapshot
     std::string active_tag;
     std::string active_config_section;
     std::string policy_name;
+    uint64_t runtime_warning_seq = 0;
+    std::string runtime_warning_type;
+    std::string runtime_warning_message;
+    std::map<std::string, std::string> runtime_warning_tags;
     std::vector<float> joint_q;
     std::vector<float> joint_dq;
     std::vector<float> joint_tau;
@@ -84,6 +88,10 @@ struct RuntimeTickLogRecord
     std::string active_tag;
     std::string active_config_section;
     std::string policy_name;
+    uint64_t runtime_warning_seq = 0;
+    std::string runtime_warning_type;
+    std::string runtime_warning_message;
+    std::map<std::string, std::string> runtime_warning_tags;
 
     std::vector<float> joint_q;
     std::vector<float> joint_dq;

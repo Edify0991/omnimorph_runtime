@@ -204,6 +204,13 @@ std::string serializeTick(const RuntimeTickLogRecord &record, const RuntimeLoggi
     appendQuoted(oss, record.active_config_section);
     oss << ",\"policy_name\":";
     appendQuoted(oss, record.policy_name);
+    oss << ",\"runtime_warning_seq\":" << record.runtime_warning_seq;
+    oss << ",\"runtime_warning_type\":";
+    appendQuoted(oss, record.runtime_warning_type);
+    oss << ",\"runtime_warning_message\":";
+    appendQuoted(oss, record.runtime_warning_message);
+    oss << ",\"runtime_warning_tags\":";
+    appendStringMap(oss, record.runtime_warning_tags);
     oss << ",\"joint_q\":";
     appendFloatVector(oss, record.joint_q);
     oss << ",\"joint_dq\":";
