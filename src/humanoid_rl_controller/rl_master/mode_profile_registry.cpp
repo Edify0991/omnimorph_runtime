@@ -405,11 +405,9 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
     specs_ = loadDeployModeProfilesFromYAML(yaml_file);
     if (specs_.empty())
     {
-        DeployModeProfileSpec fallback_spec;
-        fallback_spec.mode_id = rl_master::kModeCodeMin;
-        fallback_spec.config_section = default_config_section_;
-        fallback_spec.tag = default_config_section_;
-        specs_.push_back(std::move(fallback_spec));
+        throw std::runtime_error(
+            "deploy_mode_profiles must not be empty in root rl config. "
+            "Implicit fallback config generation has been disabled for strict debugging.");
     }
 
     default_mode_id_ = specs_.front().mode_id;
@@ -601,22 +599,11 @@ void ModeProfileRegistry::loadInternal(const std::string &yaml_file, const std::
 
 const ModeProfileRegistry::Entry &ModeProfileRegistry::entryForMode(int mode_id, bool allow_fallback) const
 {
+    (void)allow_fallback;
     const auto it = mode_to_entry_index_.find(mode_id);
     if (it != mode_to_entry_index_.end())
     {
         return entries_.at(it->second);
-    }
-    if (allow_fallback)
-    {
-        const auto fallback_it = mode_to_entry_index_.find(default_mode_id_);
-        if (fallback_it != mode_to_entry_index_.end())
-        {
-            return entries_.at(fallback_it->second);
-        }
-        if (!entries_.empty())
-        {
-            return entries_.front();
-        }
     }
     throw std::runtime_error("unknown mode_id in mode profile registry: " + std::to_string(mode_id));
 }

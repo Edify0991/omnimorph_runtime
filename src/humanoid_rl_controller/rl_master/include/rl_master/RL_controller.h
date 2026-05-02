@@ -119,6 +119,8 @@ private:
     std::vector<float> activeZeroPose() const;
     void refreshPolicyMode(int requested_mode, bool sanitize_invalid_mode = true);
     void handlePolicySwitch();
+    int sanitizeRuntimeModeCommand(int mode_command);
+    bool isKnownMode(int mode_id) const;
     void updateStateFromIO(const rl_master::RobotStateData &state);
     void updateCommandFromIO(const rl_master::TeleopCommand &command);
     void initPolicyGroup(const Sim2realCfg &cfg, const std::string &tag, PolicyRuntimeGroup *group);
@@ -156,6 +158,8 @@ private:
     size_t active_profile_index_ = 0;
     int active_mode_id_ = rl_master::kModeCodeMin;
     int last_active_mode_id_ = std::numeric_limits<int>::min();
+    int last_rejected_mode_command_ = std::numeric_limits<int>::min();
+    int last_rejected_mode_id_ = std::numeric_limits<int>::min();
 
     ExternalObservationProvider external_observation_provider_;
     rl_master::DeployStateMachine deploy_state_machine_;

@@ -25,6 +25,12 @@ void IntegratedControllerRuntime::setModeProfileRegistry(std::shared_ptr<const r
 
 void IntegratedControllerRuntime::initialize(int startup_mode_id)
 {
+    if (!mode_registry_)
+    {
+        throw std::runtime_error(
+            "IntegratedControllerRuntime requires an injected ModeProfileRegistry before initialize().");
+    }
+
     controller_ = RL_controller::create(mode_registry_);
     if (!controller_)
     {

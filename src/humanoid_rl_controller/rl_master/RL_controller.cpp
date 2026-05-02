@@ -625,6 +625,52 @@ void RL_controller::handlePolicySwitch()
               << ", mode_id=" << active_mode_id_ << std::endl;
 }
 
+bool RL_controller::isKnownMode(int mode_id) const
+{
+    return mode_to_profile_index_.find(mode_id) != mode_to_profile_index_.end();
+}
+
+int RL_controller::sanitizeRuntimeModeCommand(int mode_command)
+{
+    const bool is_start_mode_command =
+        mode_command >= rl_master::kCtrlWordStartModeBase &&
+        mode_command < (rl_master::kCtrlWordStartModeBase + rl_master::kCtrlWordModeRange);
+    const bool is_set_mode_command =
+        mode_command >= rl_master::kCtrlWordSetModeBase &&
+        mode_command < (rl_master::kCtrlWordSetModeBase + rl_master::kCtrlWordModeRange);
+
+    if (!is_start_mode_command && !is_set_mode_command)
+    {
+        return mode_command;
+    }
+
+    const int requested_mode = is_start_mode_command
+                                   ? (mode_command - rl_master::kCtrlWordStartModeBase)
+                                   : (mode_command - rl_master::kCtrlWordSetModeBase);
+    if (isKnownMode(requested_mode))
+    {
+        return mode_command;
+    }
+
+    if (last_rejected_mode_command_ != mode_command ||
+        last_rejected_mode_id_ != requested_mode)
+    {
+        std::cerr << "[RL_controller] ignore invalid runtime mode request: control_word="
+                  << mode_command
+                  << ", requested_mode_id=" << requested_mode
+                  << ", keep active_mode_id=" << active_mode_id_
+                  << std::endl;
+        last_rejected_mode_command_ = mode_command;
+        last_rejected_mode_id_ = requested_mode;
+    }
+
+    if (is_start_mode_command)
+    {
+        return rl_master::kCtrlWordStartPolicy;
+    }
+    return -1;
+}
+
 void RL_controller::resetPolicyScheduler()
 {
     policy_step_counter_ = 0;
@@ -818,23 +864,13 @@ bool RL_controller::canHotSwitch(int from_mode, int to_mode) const
 
 size_t RL_controller::profileIndexForMode(int mode_id, bool sanitize_invalid_mode) const
 {
+    (void)sanitize_invalid_mode;
     const auto it = mode_to_profile_index_.find(mode_id);
     if (it != mode_to_profile_index_.end())
     {
         return it->second;
     }
-
-    if (!sanitize_invalid_mode)
-    {
-        throw std::runtime_error("Unknown mode id: " + std::to_string(mode_id));
-    }
-
-    const auto fallback_it = mode_to_profile_index_.find(default_mode_id_);
-    if (fallback_it != mode_to_profile_index_.end())
-    {
-        return fallback_it->second;
-    }
-    return 0;
+    throw std::runtime_error("Unknown mode id: " + std::to_string(mode_id));
 }
 
 std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsFromYaml() const
@@ -842,7 +878,9 @@ std::vector<RL_controller::ModeProfileSpec> RL_controller::loadModeProfileSpecsF
     std::shared_ptr<const rl_master::ModeProfileRegistry> registry = mode_registry_;
     if (!registry)
     {
-        registry = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
+        throw std::runtime_error(
+            "RL_controller requires an injected ModeProfileRegistry. "
+            "Lazy registry self-loading has been disabled for strict debugging.");
     }
 
     const auto &parsed_specs = registry->specs();
@@ -872,7 +910,9 @@ void RL_controller::initModeProfiles()
 
     if (!mode_registry_)
     {
-        mode_registry_ = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
+        throw std::runtime_error(
+            "RL_controller::initModeProfiles requires an injected ModeProfileRegistry. "
+            "Lazy registry self-loading has been disabled for strict debugging.");
     }
 
     const std::vector<ModeProfileSpec> specs = loadModeProfileSpecsFromYaml();
@@ -973,7 +1013,7 @@ void RL_controller::initModeProfiles()
 
     default_mode_id_ = mode_profiles_.front().mode_id;
     active_mode_id_ = default_mode_id_;
-    active_profile_index_ = profileIndexForMode(default_mode_id_, true);
+    active_profile_index_ = profileIndexForMode(default_mode_id_, false);
 
     std::cout << "[RL_controller] mode profiles loaded: " << mode_profiles_.size() << std::endl;
     for (const auto &profile : mode_profiles_)
@@ -1628,16 +1668,12 @@ void RL_controller::RL_controller_Init(int startup_mode_id)
     int initial_mode_id = startup_mode_id;
     if (mode_to_profile_index_.find(initial_mode_id) == mode_to_profile_index_.end())
     {
-        if (initial_mode_id != default_mode_id_)
-        {
-            std::cerr << "[RL_controller] startup mode_id " << initial_mode_id
-                      << " not found in deploy_mode_profiles, fallback to default mode_id "
-                      << default_mode_id_ << std::endl;
-        }
-        initial_mode_id = default_mode_id_;
+        throw std::runtime_error(
+            "[RL_controller] startup mode_id " + std::to_string(initial_mode_id) +
+            " is not present in deploy_mode_profiles");
     }
 
-    refreshPolicyMode(initial_mode_id, true);
+    refreshPolicyMode(initial_mode_id, false);
     handlePolicySwitch();
     deploy_state_machine_initialized_ = false;
     last_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
@@ -1668,15 +1704,26 @@ rl_master::RobotCommandData RL_controller::step(
     }
 
     const double now_s = rl_master::monotonicTimeSec();
+    const int sanitized_mode_command = sanitizeRuntimeModeCommand(mode_command);
     const auto deploy_output = deploy_state_machine_.update(
-        mode_command,
+        sanitized_mode_command,
         now_s,
         robot->joint_q,
         robot->joint_dq);
     const auto previous_state = last_deploy_state_;
 
-    refreshPolicyMode(deploy_output.locomotion_mode, true);
-    handlePolicySwitch();
+    if (isKnownMode(deploy_output.locomotion_mode))
+    {
+        refreshPolicyMode(deploy_output.locomotion_mode, false);
+        handlePolicySwitch();
+    }
+    else
+    {
+        std::cerr << "[RL_controller] deploy state machine produced unknown locomotion_mode="
+                  << deploy_output.locomotion_mode
+                  << ", keep active_mode_id=" << active_mode_id_
+                  << std::endl;
+    }
 
     const bool entered_running =
         (deploy_output.state == rl_master::DeployLifecycleState::kRunning) &&
@@ -1821,7 +1868,7 @@ rl_master::RobotCommandData RL_controller::step(
     latest_log_snapshot_.phase_t_global = phase_t;
     latest_log_snapshot_.phase_origin_t = phase_origin_t_;
     latest_log_snapshot_.requested_mode_command = mode_command;
-    latest_log_snapshot_.active_mode_id = deploy_output.locomotion_mode;
+    latest_log_snapshot_.active_mode_id = active_mode_id_;
     latest_log_snapshot_.deploy_state = static_cast<int>(deploy_output.state);
     latest_log_snapshot_.active_profile_index = static_cast<int>(active_profile_index_);
     latest_log_snapshot_.policy_step_index = static_cast<uint64_t>(policy_step_counter_);

@@ -317,13 +317,7 @@ class MujocoInteractiveBackend(Node):
 
             aid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, self.actuator_names[i])
             if aid < 0:
-                if int(self.model.nu) == K_JOINT_COUNT:
-                    aid = i
-                    self.get_logger().warn(
-                        f"actuator '{self.actuator_names[i]}' not found, fallback to actuator index {aid}"
-                    )
-                else:
-                    raise RuntimeError(f"actuator not found: {self.actuator_names[i]}")
+                raise RuntimeError(f"actuator not found: {self.actuator_names[i]}")
             self.actuator_ids[i] = aid
 
             if int(self.model.actuator_biastype[aid]) != int(mujoco.mjtBias.mjBIAS_NONE):

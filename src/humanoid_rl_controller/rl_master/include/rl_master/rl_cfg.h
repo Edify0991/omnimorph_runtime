@@ -404,18 +404,9 @@ inline JointGroupsConfig loadJointGroupsFromYAML(
 
 inline std::string resolveDeployConfigSectionForModeFromYAML(
     const std::string &yaml_file,
-    int mode_id,
-    const std::string &fallback_section = "engineai_walk")
+    int mode_id)
 {
-    std::vector<DeployModeProfileSpec> specs;
-    try
-    {
-        specs = loadDeployModeProfilesFromYAML(yaml_file);
-    }
-    catch (const std::exception &)
-    {
-        specs.clear();
-    }
+    const std::vector<DeployModeProfileSpec> specs = loadDeployModeProfilesFromYAML(yaml_file);
     for (const auto &spec : specs)
     {
         if (spec.mode_id == mode_id && !spec.config_section.empty())
@@ -423,11 +414,8 @@ inline std::string resolveDeployConfigSectionForModeFromYAML(
             return spec.config_section;
         }
     }
-    if (!specs.empty() && !specs.front().config_section.empty())
-    {
-        return specs.front().config_section;
-    }
-    return fallback_section;
+    throw std::runtime_error(
+        "failed to resolve deploy config section for mode_id=" + std::to_string(mode_id));
 }
 
 inline int readDeployModeIdFromEnv(
@@ -449,7 +437,8 @@ inline int readDeployModeIdFromEnv(
     }
     catch (const std::exception &)
     {
-        return fallback_mode_id;
+        throw std::runtime_error(
+            std::string("invalid integer in environment variable '") + env_key + "'");
     }
 }
 

@@ -6,16 +6,19 @@ using namespace bridge_internal;
 
 void MujocoSimBridge::loadParameters()
 {
-    std::vector<std::string> canonical_names = defaultJointNames();
-    if (mode_registry_ && !mode_registry_->jointOrder().empty())
+    if (!mode_registry_)
     {
-        canonical_names = mode_registry_->jointOrder();
+        throw std::runtime_error(
+            "MuJoCo sim2sim requires a valid mode registry. "
+            "Failed to load ModeProfileRegistry before parameter initialization.");
     }
+
+    const std::vector<std::string> canonical_names = mode_registry_->jointOrder();
     this->declare_parameter<std::string>("model_path", "");
     this->declare_parameter<std::string>("base_body_name", "base_link");
     this->declare_parameter<std::string>("base_free_joint_name", "");
     this->declare_parameter<std::vector<std::string>>("joint_names", canonical_names);
-    this->declare_parameter<std::vector<std::string>>("actuator_names", canonical_names);
+    this->declare_parameter<std::vector<std::string>>("actuator_names", std::vector<std::string>{});
     this->declare_parameter<std::vector<std::string>>("position_actuator_joint_names", std::vector<std::string>{});
     this->declare_parameter<std::vector<std::string>>("hold_joint_names", std::vector<std::string>{});
     this->declare_parameter<std::vector<std::string>>("hold_actuator_names", std::vector<std::string>{});
@@ -116,13 +119,25 @@ void MujocoSimBridge::loadParameters()
     {
         joint_names_param = joint_names_param_obj.as_string_array();
     }
+    if (joint_names_param.empty())
+    {
+        throw std::runtime_error(
+            "joint_names resolved empty. "
+            "Provide robot_global_joint_order through ModeProfileRegistry or set ROS parameter 'joint_names' explicitly.");
+    }
     joint_names_ = normalizeNameParam(joint_names_param, canonical_names);
 
-    std::vector<std::string> actuator_names_param = joint_names_;
+    std::vector<std::string> actuator_names_param;
     const auto actuator_names_param_obj = this->get_parameter("actuator_names");
     if (actuator_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
     {
         actuator_names_param = actuator_names_param_obj.as_string_array();
+    }
+    if (actuator_names_param.empty())
+    {
+        throw std::runtime_error(
+            "actuator_names must be configured explicitly. "
+            "Implicit fallback from actuator_names to joint_names has been disabled for strict debugging.");
     }
     actuator_names_ = normalizeNameParam(actuator_names_param, joint_names_);
 
@@ -208,9 +223,11 @@ void MujocoSimBridge::loadParameters()
     {
         hold_actuator_names_ = hold_actuator_names_param_obj.as_string_array();
     }
-    if (hold_actuator_names_.empty())
+    if (!hold_joint_names_.empty() && hold_actuator_names_.empty())
     {
-        hold_actuator_names_ = hold_joint_names_;
+        throw std::runtime_error(
+            "hold_actuator_names must be configured explicitly when hold_joint_names is non-empty. "
+            "Implicit fallback from hold_actuator_names to hold_joint_names has been disabled for strict debugging.");
     }
     if (!hold_actuator_names_.empty() && hold_actuator_names_.size() != hold_joint_names_.size())
     {

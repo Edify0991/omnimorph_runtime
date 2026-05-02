@@ -111,20 +111,8 @@ void MujocoSimBridge::resolveModelMappings()
         int actuator_id = mj_name2id(model_, mjOBJ_ACTUATOR, actuator_names_[i].c_str());
         if (actuator_id < 0)
         {
-            if (model_->nu == static_cast<int>(joint_names_.size()))
-            {
-                actuator_id = static_cast<int>(i);
-                RCLCPP_WARN(
-                    this->get_logger(),
-                    "Actuator '%s' not found, fallback to actuator index %d.",
-                    actuator_names_[i].c_str(),
-                    actuator_id);
-            }
-            else
-            {
-                throw std::runtime_error(
-                    "Actuator name not found in MuJoCo model: " + actuator_names_[i]);
-            }
+            throw std::runtime_error(
+                "Actuator name not found in MuJoCo model: " + actuator_names_[i]);
         }
 
         if (actuator_id < 0 || actuator_id >= model_->nu)

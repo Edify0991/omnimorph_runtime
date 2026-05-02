@@ -19,6 +19,8 @@ translation unit.
   - ROS parameter declaration and loading
   - Name/order normalization
   - Per-joint gain/limit parameter expansion and validation
+  - Requires joint order to come from `ModeProfileRegistry::jointOrder()` or
+    explicit ROS `joint_names`; no hard-coded joint-name fallback is allowed
 
 - `mujoco_sim_bridge_control_config.cpp`
   - Initial state setup

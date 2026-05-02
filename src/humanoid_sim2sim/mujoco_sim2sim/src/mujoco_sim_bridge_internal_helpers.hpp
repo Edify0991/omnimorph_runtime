@@ -6,23 +6,6 @@ inline constexpr const char *kDefaultViewerFrameTopic = "/humanoid/sim2sim/mujoc
 inline constexpr float kViewerFrameMagic = 260413.0f;
 inline constexpr float kViewerFrameVersion = 1.0f;
 
-inline std::vector<std::string> defaultJointNames()
-{
-    return {
-        "right_hip_roll",
-        "right_hip_yaw",
-        "right_hip_pitch",
-        "right_knee_pitch",
-        "right_ankle_pitch",
-        "right_ankle_roll",
-        "left_hip_roll",
-        "left_hip_yaw",
-        "left_hip_pitch",
-        "left_knee_pitch",
-        "left_ankle_pitch",
-        "left_ankle_roll"};
-}
-
 inline bool endsWith(const std::string &value, const std::string &suffix)
 {
     if (value.size() < suffix.size())

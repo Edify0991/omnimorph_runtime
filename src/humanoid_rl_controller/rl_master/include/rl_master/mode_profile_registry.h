@@ -38,11 +38,11 @@ public:
     const std::string &defaultConfigSection() const;
     const std::vector<std::string> &jointOrder() const;
     const JointGroupsConfig &jointGroups() const;
-    const std::string &configSectionForMode(int mode_id, bool allow_fallback = true) const;
-    const DeployModeProfileSpec &specForMode(int mode_id, bool allow_fallback = true) const;
-    const Sim2realCfg &cfgForMode(int mode_id, bool allow_fallback = true) const;
+    const std::string &configSectionForMode(int mode_id, bool allow_fallback = false) const;
+    const DeployModeProfileSpec &specForMode(int mode_id, bool allow_fallback = false) const;
+    const Sim2realCfg &cfgForMode(int mode_id, bool allow_fallback = false) const;
     const Sim2realCfg &cfgForSection(const std::string &section) const;
-    const ModeProfileJointLayout &layoutForMode(int mode_id, bool allow_fallback = true) const;
+    const ModeProfileJointLayout &layoutForMode(int mode_id, bool allow_fallback = false) const;
     const ModeProfileJointLayout &layoutForSection(const std::string &section) const;
 
 private:

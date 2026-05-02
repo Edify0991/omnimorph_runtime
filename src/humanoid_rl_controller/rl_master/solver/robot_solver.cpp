@@ -110,11 +110,13 @@ std::unique_ptr<RobotSolver> RobotSolver::create(
     solver->mode_registry_ = std::move(mode_registry);
     if (!solver->mode_registry_)
     {
-        solver->mode_registry_ = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
+        throw std::runtime_error(
+            "RobotSolver::create requires an injected ModeProfileRegistry. "
+            "Lazy registry self-loading has been disabled for strict debugging.");
     }
     solver->initModeProfileMap();
     solver->initializeJointLayout();
-    if (!solver->switchToModeConfig(startup_mode_id, true))
+    if (!solver->switchToModeConfig(startup_mode_id, false))
     {
         std::cerr << "Failed to load solver config section for mode_id=" << startup_mode_id << std::endl;
         return nullptr;
@@ -983,7 +985,7 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
         {
             oss << ",";
         }
-        const auto cfg = mode_registry_->cfgForMode(spec.mode_id, true);
+        const auto cfg = mode_registry_->cfgForMode(spec.mode_id, false);
         oss << "{";
         oss << "\"mode_id\":" << spec.mode_id << ",";
         oss << "\"tag\":";
