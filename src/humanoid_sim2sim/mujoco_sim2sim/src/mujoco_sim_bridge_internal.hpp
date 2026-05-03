@@ -88,7 +88,7 @@ private:
     void loadParameters();
     void loadModel();
     void resolveModelMappings();
-    void applyPositionActuatorTuning();
+    void refreshPositionActuatorTuning(bool control_active);
     void setupRosInterfaces();
     void initializeState();
 
@@ -208,9 +208,6 @@ private:
     std::vector<double> hold_kp_;
     std::vector<double> hold_kd_;
     std::vector<double> hold_torque_limit_;
-    std::vector<double> position_actuator_kp_;
-    std::vector<double> position_actuator_kv_;
-    std::vector<double> position_actuator_forcerange_;
     bool enable_state_telemetry_ = true;
     double state_telemetry_hz_ = 50.0;
 
@@ -220,6 +217,10 @@ private:
     std::vector<int> qvel_addrs_;
     std::vector<int> actuator_ids_;
     std::vector<ActuatorBackend> joint_actuator_backends_;
+    std::vector<int> position_actuator_joint_indices_;
+    std::vector<double> applied_position_actuator_kp_;
+    std::vector<double> applied_position_actuator_kv_;
+    std::vector<double> applied_position_actuator_forcerange_;
     std::vector<float> applied_tau_;
     std::vector<float> last_target_q_;
 

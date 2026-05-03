@@ -56,8 +56,8 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
 - `mode_id`: startup deploy mode id used by the embedded controller runtime
 - `pause_when_no_command`: pause stepping when controller output is inactive
 - `no_command_behavior`: inactive behavior for actuators
-- `actuator_control_mode`: `auto | torque | position | mixed`
-- `position_actuator_kp` / `position_actuator_kv` / `position_actuator_forcerange`: sim-only runtime tuning for MuJoCo `<position>` actuators keyed by joint name
+- MuJoCo actuator backend is inferred from the XML model per joint; there is no extra runtime `actuator_control_mode` selector in the strict path
+- MuJoCo `<position>` actuators are retuned dynamically from controller semantics: policy joints use active mode-profile `kps/kds/tau_limit`, non-policy or inactive joints use `hold_kp/hold_kd/hold_torque_limit`
 - `post_zeroing_hold_settle_ticks`: sim-only settle window after zeroing and before HOLD pose latch
 - `enable_state_telemetry`: enable low-frequency asynchronous `/humanoid/rl/state`
 - `state_telemetry_hz`: publish rate for asynchronous `/humanoid/rl/state`

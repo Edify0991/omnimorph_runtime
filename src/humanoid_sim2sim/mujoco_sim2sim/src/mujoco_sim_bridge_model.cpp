@@ -47,6 +47,10 @@ void MujocoSimBridge::resolveModelMappings()
 {
     joint_actuator_backends_.assign(joint_names_.size(), ActuatorBackend::kTorque);
     position_controlled_joint_names_.clear();
+    position_actuator_joint_indices_.clear();
+    applied_position_actuator_kp_.clear();
+    applied_position_actuator_kv_.clear();
+    applied_position_actuator_forcerange_.clear();
 
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
@@ -84,9 +88,22 @@ void MujocoSimBridge::resolveModelMappings()
         joint_actuator_backends_[i] = actual_backend;
         if (actual_backend == ActuatorBackend::kPosition)
         {
+            if (model_->actuator_gaintype[actuator_id] != mjGAIN_FIXED ||
+                model_->actuator_biastype[actuator_id] != mjBIAS_AFFINE)
+            {
+                throw std::runtime_error(
+                    "position actuator backend expects MuJoCo position shortcut layout "
+                    "(gaintype=fixed, biastype=affine) for joint '" +
+                    joint_names_[i] + "'");
+            }
             position_controlled_joint_names_.push_back(joint_names_[i]);
+            position_actuator_joint_indices_.push_back(static_cast<int>(i));
         }
     }
+
+    applied_position_actuator_kp_.assign(position_actuator_joint_indices_.size(), std::numeric_limits<double>::quiet_NaN());
+    applied_position_actuator_kv_.assign(position_actuator_joint_indices_.size(), std::numeric_limits<double>::quiet_NaN());
+    applied_position_actuator_forcerange_.assign(position_actuator_joint_indices_.size(), std::numeric_limits<double>::quiet_NaN());
 
     size_t resolved_torque_joint_count = 0;
     size_t resolved_position_joint_count = 0;
@@ -170,74 +187,38 @@ void MujocoSimBridge::resolveModelMappings()
     }
 }
 
-void MujocoSimBridge::applyPositionActuatorTuning()
+void MujocoSimBridge::refreshPositionActuatorTuning(bool control_active)
 {
-    if (!model_ || position_controlled_joint_names_.empty())
+    if (!model_ || position_actuator_joint_indices_.empty())
     {
         return;
     }
 
-    auto loadRequiredNamedJointParams =
-        [this](
-            const std::string &prefix,
-            const std::vector<std::string> &joint_names,
-            bool absolute_value) -> std::vector<double> {
-            std::vector<double> values(joint_names.size(), std::numeric_limits<double>::quiet_NaN());
-            for (size_t i = 0; i < joint_names.size(); ++i)
-            {
-                const std::string param_name = prefix + "." + joint_names[i];
-                this->declare_parameter<double>(
-                    param_name,
-                    std::numeric_limits<double>::quiet_NaN());
-                const double raw_value = this->get_parameter(param_name).as_double();
-                if (!std::isfinite(raw_value))
-                {
-                    throw std::runtime_error(
-                        "parameter set '" + prefix +
-                        "' must be configured using per-joint name/value entries; missing joint '" +
-                        joint_names[i] + "'");
-                }
-                values[i] = absolute_value ? std::abs(raw_value) : raw_value;
-            }
-            return values;
-        };
+    size_t updated_joint_count = 0;
+    std::ostringstream summary;
+    summary << "Refreshed MuJoCo position actuator tuning from active joint role source:";
 
-    position_actuator_kp_ =
-        loadRequiredNamedJointParams("position_actuator_kp", position_controlled_joint_names_, false);
-    position_actuator_kv_ =
-        loadRequiredNamedJointParams("position_actuator_kv", position_controlled_joint_names_, false);
-    position_actuator_forcerange_ =
-        loadRequiredNamedJointParams("position_actuator_forcerange", position_controlled_joint_names_, true);
-
-    for (size_t i = 0; i < position_controlled_joint_names_.size(); ++i)
+    for (size_t i = 0; i < position_actuator_joint_indices_.size(); ++i)
     {
-        const auto joint_it = std::find(joint_names_.begin(), joint_names_.end(), position_controlled_joint_names_[i]);
-        if (joint_it == joint_names_.end())
+        const int joint_index = position_actuator_joint_indices_[i];
+        if (joint_index < 0 || joint_index >= static_cast<int>(joint_names_.size()))
         {
             throw std::runtime_error(
-                "position actuator tuning in mixed mode requires position_controlled_joint_names to reference only canonical controlled joints; got '" +
-                position_controlled_joint_names_[i] + "'");
-        }
-        const size_t joint_index = static_cast<size_t>(std::distance(joint_names_.begin(), joint_it));
-        if (joint_index >= actuator_ids_.size())
-        {
-            throw std::runtime_error(
-                "position actuator tuning resolved invalid joint index for '" +
-                position_controlled_joint_names_[i] + "'");
+                "position actuator tuning resolved invalid canonical joint index");
         }
 
-        const int actuator_id = actuator_ids_[joint_index];
+        const int actuator_id = actuator_ids_[static_cast<size_t>(joint_index)];
         if (actuator_id < 0 || actuator_id >= model_->nu)
         {
             throw std::runtime_error(
                 "position actuator tuning resolved invalid actuator id for '" +
-                position_controlled_joint_names_[i] + "'");
+                joint_names_[static_cast<size_t>(joint_index)] + "'");
         }
-        if (joint_actuator_backends_[joint_index] != ActuatorBackend::kPosition)
+        if (joint_actuator_backends_[static_cast<size_t>(joint_index)] != ActuatorBackend::kPosition)
         {
             throw std::runtime_error(
                 "position actuator tuning requires a MuJoCo position actuator for joint '" +
-                position_controlled_joint_names_[i] + "'");
+                joint_names_[static_cast<size_t>(joint_index)] + "'");
         }
         if (model_->actuator_gaintype[actuator_id] != mjGAIN_FIXED ||
             model_->actuator_biastype[actuator_id] != mjBIAS_AFFINE)
@@ -245,34 +226,65 @@ void MujocoSimBridge::applyPositionActuatorTuning()
             throw std::runtime_error(
                 "position actuator tuning expects MuJoCo position shortcut layout "
                 "(gaintype=fixed, biastype=affine) for joint '" +
-                position_controlled_joint_names_[i] + "'");
+                joint_names_[static_cast<size_t>(joint_index)] + "'");
         }
 
-        const double kp = position_actuator_kp_[i];
-        const double kv = position_actuator_kv_[i];
-        const double force_limit = std::abs(position_actuator_forcerange_[i]);
+        const bool use_policy_profile =
+            control_active &&
+            static_cast<size_t>(joint_index) < joint_is_policy_controlled_.size() &&
+            joint_is_policy_controlled_[static_cast<size_t>(joint_index)];
+        const std::vector<double> &kp_source = use_policy_profile ? resolved_policy_profile_kp_ : hold_kp_;
+        const std::vector<double> &kd_source = use_policy_profile ? resolved_policy_profile_kd_ : hold_kd_;
+        const std::vector<double> &limit_source =
+            use_policy_profile ? resolved_policy_profile_torque_limit_ : hold_torque_limit_;
+
+        if (static_cast<size_t>(joint_index) >= kp_source.size() ||
+            static_cast<size_t>(joint_index) >= kd_source.size() ||
+            static_cast<size_t>(joint_index) >= limit_source.size())
+        {
+            throw std::runtime_error(
+                "position actuator tuning source size mismatch for canonical joint '" +
+                joint_names_[static_cast<size_t>(joint_index)] + "'");
+        }
+
+        const double kp = kp_source[static_cast<size_t>(joint_index)];
+        const double kv = kd_source[static_cast<size_t>(joint_index)];
+        const double force_limit = std::abs(limit_source[static_cast<size_t>(joint_index)]);
+        const bool unchanged =
+            std::abs(applied_position_actuator_kp_[i] - kp) < 1e-9 &&
+            std::abs(applied_position_actuator_kv_[i] - kv) < 1e-9 &&
+            std::abs(applied_position_actuator_forcerange_[i] - force_limit) < 1e-9;
+        if (unchanged)
+        {
+            continue;
+        }
+
         model_->actuator_gainprm[actuator_id * mjNGAIN + 0] = kp;
         model_->actuator_biasprm[actuator_id * mjNBIAS + 1] = -kp;
         model_->actuator_biasprm[actuator_id * mjNBIAS + 2] = -kv;
         model_->actuator_forcelimited[actuator_id] = 1;
         model_->actuator_forcerange[2 * actuator_id + 0] = -force_limit;
         model_->actuator_forcerange[2 * actuator_id + 1] = force_limit;
-    }
+        applied_position_actuator_kp_[i] = kp;
+        applied_position_actuator_kv_[i] = kv;
+        applied_position_actuator_forcerange_[i] = force_limit;
+        ++updated_joint_count;
 
-    std::ostringstream summary;
-    summary << "Applied position actuator tuning:";
-    for (size_t i = 0; i < position_controlled_joint_names_.size(); ++i)
-    {
-        summary << " " << position_controlled_joint_names_[i]
-                << "(kp=" << position_actuator_kp_[i]
-                << ", kv=" << position_actuator_kv_[i]
-                << ", force=" << position_actuator_forcerange_[i] << ")";
-        if (i + 1 < position_controlled_joint_names_.size())
+        summary << " " << joint_names_[static_cast<size_t>(joint_index)]
+                << "(" << (use_policy_profile ? "policy" : "hold")
+                << ", kp=" << kp
+                << ", kv=" << kv
+                << ", force=" << force_limit << ")";
+        if (i + 1 < position_actuator_joint_indices_.size())
         {
             summary << ",";
         }
     }
-    RCLCPP_INFO(this->get_logger(), "%s", summary.str().c_str());
+
+    if (updated_joint_count > 0)
+    {
+        RCLCPP_INFO(this->get_logger(), "%s", summary.str().c_str());
+    }
 }
 
 } // namespace mujoco_sim2sim

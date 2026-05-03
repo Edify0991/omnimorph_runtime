@@ -63,17 +63,10 @@ mujoco_sim_bridge:
     #   right_hip_roll: 120.0
     #   ...
     #
-    # If the MuJoCo model exposes any position actuators among canonical joints,
-    # these tuning scalars must be configured for those joint names.
-    # position_actuator_kp:
-    #   waist_yaw: 80.0
-    #   left_shoulder_pitch: 80.0
-    # position_actuator_kv:
-    #   waist_yaw: 2.0
-    #   left_shoulder_pitch: 2.0
-    # position_actuator_forcerange:
-    #   waist_yaw: 120.0
-    #   left_shoulder_pitch: 120.0
+    # Position actuators no longer have an independent sim-only tuning block.
+    # The bridge rewrites their internal kp/kv/force limits dynamically:
+    # - policy-controlled joints use the active mode profile kps/kds/tau_limit
+    # - non-policy or inactive joints use hold_kp/hold_kd/hold_torque_limit
 
     # Control loop and sim integration.
     control_hz: 100.0

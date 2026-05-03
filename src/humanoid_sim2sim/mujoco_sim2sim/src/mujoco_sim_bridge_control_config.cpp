@@ -7,6 +7,7 @@ using namespace bridge_internal;
 void MujocoSimBridge::initializeState()
 {
     resolvePerJointControlConfig(controller_runtime_.activeModeId());
+    refreshPositionActuatorTuning(false);
 
     captureBaseLockPoseFromModel();
 

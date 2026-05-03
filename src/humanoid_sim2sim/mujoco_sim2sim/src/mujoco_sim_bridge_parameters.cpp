@@ -149,9 +149,10 @@ void MujocoSimBridge::loadParameters()
         };
 
     position_controlled_joint_names_.clear();
-    position_actuator_kp_.clear();
-    position_actuator_kv_.clear();
-    position_actuator_forcerange_.clear();
+    position_actuator_joint_indices_.clear();
+    applied_position_actuator_kp_.clear();
+    applied_position_actuator_kv_.clear();
+    applied_position_actuator_forcerange_.clear();
 
     joint_ids_.assign(joint_names_.size(), -1);
     qpos_addrs_.assign(joint_names_.size(), -1);

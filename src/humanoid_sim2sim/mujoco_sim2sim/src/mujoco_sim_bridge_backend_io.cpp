@@ -170,6 +170,7 @@ void MujocoSimBridge::updateControlInput(
 
     const Sim2realCfg &active_cfg = controller_runtime_.runtimeCfg();
     resolvePerJointControlConfig(controller_runtime_.activeModeId());
+    refreshPositionActuatorTuning(control_active);
     const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
     const bool mode_policy = runtime_mode.mode == rl_master::CommandRuntimeMode::kPolicy;
 

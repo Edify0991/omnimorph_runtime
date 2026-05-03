@@ -13,7 +13,6 @@ MujocoSimBridge::MujocoSimBridge()
     loadParameters();
     loadModel();
     resolveModelMappings();
-    applyPositionActuatorTuning();
     controller_runtime_.setModeProfileRegistry(mode_registry_);
     controller_runtime_.initialize(startup_mode_id_);
     initializeState();
