@@ -202,15 +202,6 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
                     "' is missing from active_cfg.action_joint_order");
             }
         }
-        if (joint_is_policy_controlled_[i] &&
-            i < joint_actuator_backends_.size() &&
-            joint_actuator_backends_[i] == ActuatorBackend::kPosition)
-        {
-            throw std::runtime_error(
-                "mixed actuator config is invalid: policy-controlled joint '" + joint_name +
-                "' cannot use a position actuator");
-        }
-
         auto override_it = override_modes.find(joint_name);
         if (override_it != override_modes.end())
         {

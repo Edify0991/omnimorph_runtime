@@ -192,10 +192,7 @@ private:
     bool sim_sync_running_start_to_reference_ = false;
     std::vector<double> prepose_joint_q_;
     bool sim_only_force_policy_csp_ = false;
-    std::string actuator_control_mode_ = "auto";
     std::vector<std::string> joint_runtime_mode_override_entries_;
-    bool use_position_actuator_control_ = false;
-    bool use_mixed_actuator_control_ = false;
     bool enable_viewer_ = false;
     bool enable_python_viewer_stream_ = false;
     std::string viewer_frame_topic_ = "/humanoid/sim2sim/mujoco_viewer_frame";

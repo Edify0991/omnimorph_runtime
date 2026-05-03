@@ -85,7 +85,6 @@ mujoco_sim_bridge:
     post_zeroing_hold_settle_ticks: 250
     enable_prepose_snap: false
     sim_only_force_policy_csp: true
-    actuator_control_mode: "torque"
 
     enable_viewer: false
     enable_python_viewer_stream: false

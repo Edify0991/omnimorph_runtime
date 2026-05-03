@@ -150,6 +150,24 @@ void MujocoSimBridge::updateControlInput(
     bool control_active,
     rclcpp::Time now)
 {
+    // Execution contract in fused sim2sim:
+    // 1. installed_joint_run_modes expresses the physical motor-side control semantics
+    //    of each installed joint (csp / cst / r1).
+    // 2. ActuatorBackend expresses how MuJoCo can realize that joint in simulation
+    //    (torque actuator or position actuator).
+    // 3. The backend combines both layers as follows:
+    //    - policy joint + position actuator:
+    //        send controller-computed target_q directly
+    //    - policy joint + torque actuator:
+    //        cst -> send controller-computed target_tau directly
+    //        csp/r1 -> compute torque from target_q/(target_dq) using mode-profile PD
+    //    - non-policy joint + position actuator:
+    //        send hold target position directly
+    //    - non-policy joint + torque actuator:
+    //        compute hold torque from hold_kp/kd/limit
+    // Position actuators therefore collapse csp/cst/r1 into a position-target path in sim,
+    // while torque actuators preserve the physical control semantic distinction.
+
     const Sim2realCfg &active_cfg = controller_runtime_.runtimeCfg();
     resolvePerJointControlConfig(controller_runtime_.activeModeId());
     const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
@@ -193,9 +211,13 @@ void MujocoSimBridge::updateControlInput(
 
     const bool inactive_hold_position = !control_active && (no_command_behavior_ == "hold_position");
     const bool inactive_zero_torque = !control_active && (no_command_behavior_ == "zero_torque");
+    const bool has_any_position_actuator =
+        std::any_of(
+            joint_actuator_backends_.begin(),
+            joint_actuator_backends_.end(),
+            [](ActuatorBackend backend) { return backend == ActuatorBackend::kPosition; });
     if (inactive_hold_position &&
-        !use_mixed_actuator_control_ &&
-        !use_position_actuator_control_ &&
+        !has_any_position_actuator &&
         !warned_idle_position_fallback_)
     {
         RCLCPP_WARN(
@@ -235,10 +257,14 @@ void MujocoSimBridge::updateControlInput(
         const double dq = data_->qvel[qvel_adr];
         const bool policy_controlled_joint =
             i < joint_is_policy_controlled_.size() ? joint_is_policy_controlled_[i] : isPolicyControlledJoint(i);
-        const ActuatorBackend actuator_backend =
-            i < joint_actuator_backends_.size() ? joint_actuator_backends_[i]
-                                                : (use_position_actuator_control_ ? ActuatorBackend::kPosition
-                                                                                  : ActuatorBackend::kTorque);
+        if (i >= joint_actuator_backends_.size())
+        {
+            throw std::runtime_error(
+                "joint_actuator_backends size mismatch for canonical joint '" + joint_names_[i] + "'");
+        }
+        const ActuatorBackend actuator_backend = joint_actuator_backends_[i];
+        const bool use_hold_target =
+            (!control_active) || (mode_policy && !policy_controlled_joint);
 
         double q_des = static_cast<double>(last_target_q_[i]);
         double dq_des = 0.0;
@@ -319,17 +345,15 @@ void MujocoSimBridge::updateControlInput(
 
         if (actuator_backend == ActuatorBackend::kPosition)
         {
-            if (joint_mode == SimJointRuntimeMode::kCst)
-            {
-                q_des = q;
-            }
+            // Position actuators always receive a position target in sim:
+            // - policy-controlled joints get the controller-computed target_q
+            // - non-policy / hold joints get the resolved hold target
             data_->ctrl[actuator_id] = q_des;
             applied_tau_[i] = 0.0f;
         }
         else
         {
-            const bool use_hold_gains = (!control_active) || (mode_policy && !policy_controlled_joint);
-            if (use_hold_gains &&
+            if (use_hold_target &&
                 i < hold_kp_.size() &&
                 i < hold_kd_.size() &&
                 i < hold_torque_limit_.size())
@@ -349,7 +373,8 @@ void MujocoSimBridge::updateControlInput(
             {
                 if (joint_mode == SimJointRuntimeMode::kCst)
                 {
-                    // Policy CST is already fully resolved by RL_controller.
+                    // Physical CST maps to torque control on the real robot.
+                    // In sim, torque actuators consume the controller-computed target_tau directly.
                     tau = tau_cmd;
                 }
                 else

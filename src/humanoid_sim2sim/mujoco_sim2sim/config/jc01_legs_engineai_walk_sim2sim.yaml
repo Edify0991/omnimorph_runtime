@@ -104,7 +104,6 @@ mujoco_sim_bridge:
     # robot state from the H5/play distribution instead of snapping joints to
     # the reference command after the first policy inference.
     sim_sync_running_start_to_reference: false
-    actuator_control_mode: "torque"
 
     enable_viewer: false
     enable_python_viewer_stream: false

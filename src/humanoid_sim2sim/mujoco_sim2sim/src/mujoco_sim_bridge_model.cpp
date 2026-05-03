@@ -45,44 +45,8 @@ void MujocoSimBridge::loadModel()
 
 void MujocoSimBridge::resolveModelMappings()
 {
-    int model_position_like_actuator_count = 0;
     joint_actuator_backends_.assign(joint_names_.size(), ActuatorBackend::kTorque);
-
-    const std::string mode_lower = [&]() {
-        std::string out = actuator_control_mode_;
-        std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
-            return static_cast<char>(std::tolower(c));
-        });
-        return out;
-    }();
-    use_mixed_actuator_control_ = (mode_lower == "mixed");
-
-    std::vector<bool> joint_expected_position(joint_names_.size(), false);
-    if (use_mixed_actuator_control_)
-    {
-        if (position_controlled_joint_names_.empty())
-        {
-            throw std::runtime_error(
-                "actuator_control_mode=mixed requires non-empty position_controlled_joint_names");
-        }
-        for (const auto &joint_name : position_controlled_joint_names_)
-        {
-            const auto it = std::find(joint_names_.begin(), joint_names_.end(), joint_name);
-            if (it == joint_names_.end())
-            {
-                throw std::runtime_error(
-                    "actuator_control_mode=mixed requires every position_controlled_joint_names entry to be a canonical controlled joint; got '" +
-                    joint_name + "'");
-            }
-            const size_t joint_index = static_cast<size_t>(std::distance(joint_names_.begin(), it));
-            if (joint_expected_position[joint_index])
-            {
-                throw std::runtime_error(
-                    "position_controlled_joint_names contains duplicate joint in mixed mode: '" + joint_name + "'");
-            }
-            joint_expected_position[joint_index] = true;
-        }
-    }
+    position_controlled_joint_names_.clear();
 
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
@@ -117,51 +81,15 @@ void MujocoSimBridge::resolveModelMappings()
         actuator_ids_[i] = actuator_id;
 
         const ActuatorBackend actual_backend = classifyModelActuatorBackend(model_, actuator_id);
+        joint_actuator_backends_[i] = actual_backend;
         if (actual_backend == ActuatorBackend::kPosition)
         {
-            ++model_position_like_actuator_count;
-        }
-
-        if (use_mixed_actuator_control_)
-        {
-            const ActuatorBackend expected_backend =
-                joint_expected_position[i] ? ActuatorBackend::kPosition : ActuatorBackend::kTorque;
-            if (actual_backend != expected_backend)
-            {
-                throw std::runtime_error(
-                    "mixed actuator validation failed for joint '" + joint_names_[i] +
-                    "' actuator '" + actuator_names_[i] + "': expected " +
-                    actuatorBackendName(expected_backend) + ", model provides " +
-                    actuatorBackendName(actual_backend));
-            }
-            joint_actuator_backends_[i] = actual_backend;
+            position_controlled_joint_names_.push_back(joint_names_[i]);
         }
     }
 
     size_t resolved_torque_joint_count = 0;
     size_t resolved_position_joint_count = 0;
-    if (use_mixed_actuator_control_)
-    {
-        use_position_actuator_control_ = false;
-    }
-    else if (mode_lower == "position")
-    {
-        use_position_actuator_control_ = true;
-    }
-    else
-    {
-        use_position_actuator_control_ =
-            (mode_lower == "auto") ? (model_position_like_actuator_count > static_cast<int>(joint_names_.size() / 2))
-                                   : false;
-    }
-
-    if (!use_mixed_actuator_control_)
-    {
-        const ActuatorBackend global_backend =
-            use_position_actuator_control_ ? ActuatorBackend::kPosition : ActuatorBackend::kTorque;
-        std::fill(joint_actuator_backends_.begin(), joint_actuator_backends_.end(), global_backend);
-    }
-
     for (const ActuatorBackend backend : joint_actuator_backends_)
     {
         if (backend == ActuatorBackend::kPosition)
@@ -175,9 +103,7 @@ void MujocoSimBridge::resolveModelMappings()
     }
     RCLCPP_INFO(
         this->get_logger(),
-        "Actuator control mode: %s (model_position_like=%d/%zu, resolved_torque_joints=%zu, resolved_position_joints=%zu)",
-        use_mixed_actuator_control_ ? "mixed" : (use_position_actuator_control_ ? "position" : "torque"),
-        model_position_like_actuator_count,
+        "Resolved actuator backends from model (canonical_joints=%zu, torque_joints=%zu, position_joints=%zu)",
         joint_names_.size(),
         resolved_torque_joint_count,
         resolved_position_joint_count);
@@ -246,17 +172,42 @@ void MujocoSimBridge::resolveModelMappings()
 
 void MujocoSimBridge::applyPositionActuatorTuning()
 {
-    if (!model_ || !use_mixed_actuator_control_ || position_controlled_joint_names_.empty())
+    if (!model_ || position_controlled_joint_names_.empty())
     {
         return;
     }
-    if (position_actuator_kp_.size() != position_controlled_joint_names_.size() ||
-        position_actuator_kv_.size() != position_controlled_joint_names_.size() ||
-        position_actuator_forcerange_.size() != position_controlled_joint_names_.size())
-    {
-        throw std::runtime_error(
-            "position actuator tuning vectors must match position_controlled_joint_names in mixed mode");
-    }
+
+    auto loadRequiredNamedJointParams =
+        [this](
+            const std::string &prefix,
+            const std::vector<std::string> &joint_names,
+            bool absolute_value) -> std::vector<double> {
+            std::vector<double> values(joint_names.size(), std::numeric_limits<double>::quiet_NaN());
+            for (size_t i = 0; i < joint_names.size(); ++i)
+            {
+                const std::string param_name = prefix + "." + joint_names[i];
+                this->declare_parameter<double>(
+                    param_name,
+                    std::numeric_limits<double>::quiet_NaN());
+                const double raw_value = this->get_parameter(param_name).as_double();
+                if (!std::isfinite(raw_value))
+                {
+                    throw std::runtime_error(
+                        "parameter set '" + prefix +
+                        "' must be configured using per-joint name/value entries; missing joint '" +
+                        joint_names[i] + "'");
+                }
+                values[i] = absolute_value ? std::abs(raw_value) : raw_value;
+            }
+            return values;
+        };
+
+    position_actuator_kp_ =
+        loadRequiredNamedJointParams("position_actuator_kp", position_controlled_joint_names_, false);
+    position_actuator_kv_ =
+        loadRequiredNamedJointParams("position_actuator_kv", position_controlled_joint_names_, false);
+    position_actuator_forcerange_ =
+        loadRequiredNamedJointParams("position_actuator_forcerange", position_controlled_joint_names_, true);
 
     for (size_t i = 0; i < position_controlled_joint_names_.size(); ++i)
     {

@@ -19,7 +19,6 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::string>("base_free_joint_name", "");
     this->declare_parameter<std::vector<std::string>>("joint_names", canonical_names);
     this->declare_parameter<std::vector<std::string>>("actuator_names", std::vector<std::string>{});
-    this->declare_parameter<std::vector<std::string>>("position_controlled_joint_names", std::vector<std::string>{});
     this->declare_parameter<int>("startup_mode_id", rl_master::kModeCodeMin);
     this->declare_parameter<double>("control_hz", 50.0);
     this->declare_parameter<double>("sim_dt", 0.001);
@@ -37,7 +36,6 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<bool>("sim_sync_running_start_to_reference", false);
     this->declare_parameter<std::vector<double>>("prepose_joint_q", std::vector<double>{});
     this->declare_parameter<bool>("sim_only_force_policy_csp", false);
-    this->declare_parameter<std::string>("actuator_control_mode", "auto");
     this->declare_parameter<std::vector<std::string>>("joint_runtime_mode_overrides", std::vector<std::string>{});
     this->declare_parameter<bool>("enable_viewer", false);
     this->declare_parameter<bool>("enable_python_viewer_stream", false);
@@ -74,7 +72,6 @@ void MujocoSimBridge::loadParameters()
     sim_sync_running_start_to_reference_ = this->get_parameter("sim_sync_running_start_to_reference").as_bool();
     prepose_joint_q_ = this->get_parameter("prepose_joint_q").as_double_array();
     sim_only_force_policy_csp_ = this->get_parameter("sim_only_force_policy_csp").as_bool();
-    actuator_control_mode_ = this->get_parameter("actuator_control_mode").as_string();
     joint_runtime_mode_override_entries_ = this->get_parameter("joint_runtime_mode_overrides").as_string_array();
     enable_viewer_ = this->get_parameter("enable_viewer").as_bool();
     enable_python_viewer_stream_ = this->get_parameter("enable_python_viewer_stream").as_bool();
@@ -119,13 +116,6 @@ void MujocoSimBridge::loadParameters()
     }
     actuator_names_ = actuator_names_param;
 
-    position_controlled_joint_names_.clear();
-    const auto position_controlled_joint_names_param_obj = this->get_parameter("position_controlled_joint_names");
-    if (position_controlled_joint_names_param_obj.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
-    {
-        position_controlled_joint_names_ = position_controlled_joint_names_param_obj.as_string_array();
-    }
-
     if (!prepose_joint_q_.empty() &&
         prepose_joint_q_.size() != 1 &&
         prepose_joint_q_.size() != joint_names_.size())
@@ -158,25 +148,10 @@ void MujocoSimBridge::loadParameters()
             return values;
         };
 
-    std::string actuator_mode_lower = actuator_control_mode_;
-    std::transform(
-        actuator_mode_lower.begin(),
-        actuator_mode_lower.end(),
-        actuator_mode_lower.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    if (actuator_mode_lower == "mixed")
-    {
-        position_actuator_kp_ = loadRequiredNamedJointParams("position_actuator_kp", position_controlled_joint_names_, false);
-        position_actuator_kv_ = loadRequiredNamedJointParams("position_actuator_kv", position_controlled_joint_names_, false);
-        position_actuator_forcerange_ =
-            loadRequiredNamedJointParams("position_actuator_forcerange", position_controlled_joint_names_, true);
-    }
-    else
-    {
-        position_actuator_kp_.clear();
-        position_actuator_kv_.clear();
-        position_actuator_forcerange_.clear();
-    }
+    position_controlled_joint_names_.clear();
+    position_actuator_kp_.clear();
+    position_actuator_kv_.clear();
+    position_actuator_forcerange_.clear();
 
     joint_ids_.assign(joint_names_.size(), -1);
     qpos_addrs_.assign(joint_names_.size(), -1);

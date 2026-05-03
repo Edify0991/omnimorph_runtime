@@ -63,8 +63,8 @@ mujoco_sim_bridge:
     #   right_hip_roll: 120.0
     #   ...
     #
-    # Mixed actuator mode only:
-    # position_controlled_joint_names: ["waist_yaw", "left_shoulder_pitch"]
+    # If the MuJoCo model exposes any position actuators among canonical joints,
+    # these tuning scalars must be configured for those joint names.
     # position_actuator_kp:
     #   waist_yaw: 80.0
     #   left_shoulder_pitch: 80.0
@@ -96,8 +96,6 @@ mujoco_sim_bridge:
     enable_prepose_snap: false
     # If configured, size must be 1 or match joint_names.
     # prepose_joint_q: [0.0]
-    # auto / torque / position
-    actuator_control_mode: "auto"
     enable_viewer: false
     # When true, C++ fused backend publishes full MuJoCo frame snapshots for
     # a separate Python viewer frontend. Use launch `backend:=python_frontend`
