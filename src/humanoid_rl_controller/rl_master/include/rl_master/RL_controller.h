@@ -153,7 +153,6 @@ private:
     ModeProfile &activeModeProfile();
     const ModeProfile &activeModeProfile() const;
     void syncActiveProfileToRobotState();
-
     Ort::Env onnx_env_;
     std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry_;
     std::vector<std::string> joint_order_;
@@ -183,6 +182,7 @@ private:
     double phase_origin_t_ = 0.0;
     bool phase_origin_initialized_ = false;
     bool phase_reset_pending_ = true;
+    bool observation_history_prefill_pending_ = false;
 
     std::vector<float> action;
     std::vector<float> joint_target_q;

@@ -60,7 +60,15 @@ def normalize_no_command_behavior(raw: str) -> str:
     return "hold_position"
 
 
-def resolve_rl_cfg_path() -> Path:
+def resolve_rl_cfg_path(config_override: str = "") -> Path:
+    override = str(config_override or "").strip()
+    if override:
+        path = Path(override).expanduser()
+        if not path.is_absolute():
+            path = path.resolve()
+        if not path.exists():
+            raise RuntimeError(f"configured rl_cfg_path does not exist: {path}")
+        return path
     try:
         return Path(get_package_share_directory("rl_master")) / "config" / "rl_cfg.yaml"
     except Exception:
@@ -79,8 +87,8 @@ def resolve_rl_cfg_path() -> Path:
         )
 
 
-def load_robot_global_joint_order() -> List[str]:
-    cfg_path = resolve_rl_cfg_path()
+def load_robot_global_joint_order(config_override: str = "") -> List[str]:
+    cfg_path = resolve_rl_cfg_path(config_override)
     with cfg_path.open("r", encoding="utf-8") as f:
         root = yaml.safe_load(f)
     joint_order = root.get("robot_global_joint_order")
@@ -216,6 +224,7 @@ class MujocoInteractiveBackend(Node):
         )
 
     def _declare_parameters(self) -> None:
+        self.declare_parameter("rl_cfg_path", "")
         self.declare_parameter("model_path", "")
         self.declare_parameter("base_body_name", "base_link")
         self.declare_parameter("base_free_joint_name", "")
@@ -243,6 +252,7 @@ class MujocoInteractiveBackend(Node):
         self.declare_parameter("hold_joint_target_q", [])
 
     def _load_parameters(self) -> None:
+        self.rl_cfg_path = str(self.get_parameter("rl_cfg_path").value)
         self.model_path = self.get_parameter("model_path").get_parameter_value().string_value
         self.base_body_name = self.get_parameter("base_body_name").get_parameter_value().string_value
         self.base_free_joint_name = self.get_parameter("base_free_joint_name").get_parameter_value().string_value
@@ -265,7 +275,7 @@ class MujocoInteractiveBackend(Node):
         self.show_left_ui = bool(self.get_parameter("show_left_ui").value)
         self.show_right_ui = bool(self.get_parameter("show_right_ui").value)
 
-        canonical_joint_names = load_robot_global_joint_order()
+        canonical_joint_names = load_robot_global_joint_order(self.rl_cfg_path)
         names_joint = self.get_parameter("joint_names").get_parameter_value().string_array_value
         names_act = self.get_parameter("actuator_names").get_parameter_value().string_array_value
         joint_names_override = list(names_joint)

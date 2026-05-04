@@ -28,6 +28,11 @@ def generate_launch_description():
         default_value=default_bridge_cfg,
         description="Parameter yaml for mujoco_sim_bridge node.",
     )
+    rl_cfg_path_arg = DeclareLaunchArgument(
+        "rl_cfg_path",
+        default_value="",
+        description="Optional absolute path to rl_master root config yaml used by the fused runtime.",
+    )
     control_hz_arg = DeclareLaunchArgument(
         "control_hz",
         default_value="100.0",
@@ -152,6 +157,7 @@ def generate_launch_description():
         LaunchConfiguration("bridge_config"),
         {
             "model_path": LaunchConfiguration("model_path"),
+            "rl_cfg_path": LaunchConfiguration("rl_cfg_path"),
             "control_hz": ParameterValue(LaunchConfiguration("control_hz"), value_type=float),
             "startup_mode_id": ParameterValue(LaunchConfiguration("mode_id"), value_type=int),
             "pause_when_no_command": ParameterValue(LaunchConfiguration("pause_when_no_command"), value_type=bool),
@@ -242,6 +248,7 @@ def generate_launch_description():
             model_path_arg,
             backend_arg,
             bridge_cfg_arg,
+            rl_cfg_path_arg,
             control_hz_arg,
             mode_id_arg,
             pause_no_cmd_arg,

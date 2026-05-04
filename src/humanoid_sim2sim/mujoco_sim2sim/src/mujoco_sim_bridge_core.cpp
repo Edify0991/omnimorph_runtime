@@ -8,7 +8,14 @@ MujocoSimBridge::MujocoSimBridge()
     : rclcpp::Node("mujoco_sim_bridge")
 {
     fixed_base_qpos_.fill(0.0);
-    mode_registry_ = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
+    this->declare_parameter<std::string>("rl_cfg_path", RL_CFG_PATH);
+    rl_cfg_path_ = trimCopy(this->get_parameter("rl_cfg_path").as_string());
+    if (rl_cfg_path_.empty())
+    {
+        rl_cfg_path_ = RL_CFG_PATH;
+    }
+
+    mode_registry_ = rl_master::ModeProfileRegistry::loadFromYaml(rl_cfg_path_, "engineai_walk");
 
     loadParameters();
     loadModel();
@@ -47,6 +54,10 @@ MujocoSimBridge::MujocoSimBridge()
         post_zeroing_hold_settle_ticks_,
         enable_prepose_snap_ ? "on" : "off",
         sim_only_force_policy_csp_ ? "on" : "off");
+    RCLCPP_INFO(
+        this->get_logger(),
+        "MuJoCo sim2sim RL root config: %s",
+        rl_cfg_path_.c_str());
 }
 
 MujocoSimBridge::~MujocoSimBridge()

@@ -594,6 +594,7 @@ void RL_controller::handlePolicySwitch()
     action.assign(static_cast<size_t>(cfg.action_dim), 0.0f);
     joint_target_q.assign(joint_order_.size(), 0.0f);
     joint_target_torque.assign(joint_order_.size(), 0.0f);
+    observation_history_prefill_pending_ = true;
     prefetched_policy_extra_outputs_.clear();
     latest_policy_extra_outputs_.clear();
     resetPolicyScheduler();
@@ -1839,13 +1840,17 @@ rl_master::RobotCommandData RL_controller::step(
                 prefetchCurrentPolicyReferenceOutputs();
             }
             std::vector<float> current_obs = get_robot_observation(local_phase_t);
-            if (entered_running && activePolicyCfg().prefill_observation_history_on_running_start)
+            const bool should_prefill_observation_history =
+                activePolicyCfg().prefill_observation_history_on_running_start &&
+                (entered_running || observation_history_prefill_pending_);
+            if (should_prefill_observation_history)
             {
                 obs_deque.clear();
                 for (int i = 0; i < std::max(1, activePolicyCfg().obs_stack_N); ++i)
                 {
                     obs_deque.push_back(current_obs);
                 }
+                observation_history_prefill_pending_ = false;
             }
             else
             {

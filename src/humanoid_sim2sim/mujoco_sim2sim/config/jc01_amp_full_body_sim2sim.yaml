@@ -1,0 +1,203 @@
+mujoco_sim_bridge:
+  ros__parameters:
+    # Use the workspace-local tuned full-body sim2sim model so AMP-specific
+    # stability fixes live with this repo instead of relying on an external XML.
+    model_path: "/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/scene_jingchu01.xml"
+
+    base_body_name: "Body"
+    base_free_joint_name: ""
+
+    # Must match rl_cfg_amp_mjlab_jc01_full_body.yaml robot_global_joint_order.
+    joint_names:
+      - "right_hip_roll"
+      - "right_hip_yaw"
+      - "right_hip_pitch"
+      - "right_knee_pitch"
+      - "right_ankle_pitch"
+      - "right_ankle_roll"
+      - "left_hip_roll"
+      - "left_hip_yaw"
+      - "left_hip_pitch"
+      - "left_knee_pitch"
+      - "left_ankle_pitch"
+      - "left_ankle_roll"
+      - "waist_roll"
+      - "waist_yaw"
+      - "right_shoulder_pitch"
+      - "right_shoulder_roll"
+      - "right_shoulder_yaw"
+      - "right_elbow_pitch"
+      - "right_elbow_yaw"
+      - "right_wrist_pitch"
+      - "right_wrist_roll"
+      - "left_shoulder_pitch"
+      - "left_shoulder_roll"
+      - "left_shoulder_yaw"
+      - "left_elbow_pitch"
+      - "left_elbow_yaw"
+      - "left_wrist_pitch"
+      - "left_wrist_roll"
+
+    actuator_names:
+      - "motor_right_hip_roll"
+      - "motor_right_hip_yaw"
+      - "motor_right_hip_pitch"
+      - "motor_right_knee_pitch"
+      - "motor_right_ankle_pitch"
+      - "motor_right_ankle_roll"
+      - "motor_left_hip_roll"
+      - "motor_left_hip_yaw"
+      - "motor_left_hip_pitch"
+      - "motor_left_knee_pitch"
+      - "motor_left_ankle_pitch"
+      - "motor_left_ankle_roll"
+      - "motor_waist_roll"
+      - "motor_waist_yaw"
+      - "motor_right_shoulder_pitch"
+      - "motor_right_shoulder_roll"
+      - "motor_right_shoulder_yaw"
+      - "motor_right_elbow_pitch"
+      - "motor_right_elbow_yaw"
+      - "motor_right_wrist_pitch"
+      - "motor_right_wrist_roll"
+      - "motor_left_shoulder_pitch"
+      - "motor_left_shoulder_roll"
+      - "motor_left_shoulder_yaw"
+      - "motor_left_elbow_pitch"
+      - "motor_left_elbow_yaw"
+      - "motor_left_wrist_pitch"
+      - "motor_left_wrist_roll"
+
+    # Use the same hold gains as the AMP full-body deploy profile so startup,
+    # zeroing, and inactive phases remain in the same joint space contract.
+    hold_kp:
+      right_hip_roll: 394.213
+      right_hip_yaw: 99.511
+      right_hip_pitch: 394.213
+      right_knee_pitch: 300.0
+      right_ankle_pitch: 138.023
+      right_ankle_roll: 138.023
+      left_hip_roll: 394.213
+      left_hip_yaw: 99.511
+      left_hip_pitch: 394.213
+      left_knee_pitch: 300.0
+      left_ankle_pitch: 138.023
+      left_ankle_roll: 138.023
+      waist_roll: 394.213
+      waist_yaw: 99.511
+      right_shoulder_pitch: 69.012
+      right_shoulder_roll: 69.012
+      right_shoulder_yaw: 56.287
+      right_elbow_pitch: 56.287
+      right_elbow_yaw: 34.426
+      right_wrist_pitch: 34.426
+      right_wrist_roll: 34.426
+      left_shoulder_pitch: 69.012
+      left_shoulder_roll: 69.012
+      left_shoulder_yaw: 56.287
+      left_elbow_pitch: 56.287
+      left_elbow_yaw: 34.426
+      left_wrist_pitch: 34.426
+      left_wrist_roll: 34.426
+    hold_kd:
+      right_hip_roll: 23.005
+      right_hip_yaw: 5.807
+      right_hip_pitch: 23.005
+      right_knee_pitch: 17.507
+      right_ankle_pitch: 8.055
+      right_ankle_roll: 8.055
+      left_hip_roll: 23.005
+      left_hip_yaw: 5.807
+      left_hip_pitch: 23.005
+      left_knee_pitch: 17.507
+      left_ankle_pitch: 8.055
+      left_ankle_roll: 8.055
+      waist_roll: 23.005
+      waist_yaw: 5.807
+      right_shoulder_pitch: 4.027
+      right_shoulder_roll: 4.027
+      right_shoulder_yaw: 3.285
+      right_elbow_pitch: 3.285
+      right_elbow_yaw: 2.009
+      right_wrist_pitch: 2.009
+      right_wrist_roll: 2.009
+      left_shoulder_pitch: 4.027
+      left_shoulder_roll: 4.027
+      left_shoulder_yaw: 3.285
+      left_elbow_pitch: 3.285
+      left_elbow_yaw: 2.009
+      left_wrist_pitch: 2.009
+      left_wrist_roll: 2.009
+    hold_torque_limit:
+      right_hip_roll: 330.0
+      right_hip_yaw: 150.0
+      right_hip_pitch: 330.0
+      right_knee_pitch: 306.0
+      right_ankle_pitch: 90.0
+      right_ankle_roll: 90.0
+      left_hip_roll: 330.0
+      left_hip_yaw: 150.0
+      left_hip_pitch: 330.0
+      left_knee_pitch: 306.0
+      left_ankle_pitch: 90.0
+      left_ankle_roll: 90.0
+      waist_roll: 330.0
+      waist_yaw: 150.0
+      right_shoulder_pitch: 90.0
+      right_shoulder_roll: 90.0
+      right_shoulder_yaw: 60.0
+      right_elbow_pitch: 60.0
+      right_elbow_yaw: 36.0
+      right_wrist_pitch: 36.0
+      right_wrist_roll: 36.0
+      left_shoulder_pitch: 90.0
+      left_shoulder_roll: 90.0
+      left_shoulder_yaw: 60.0
+      left_elbow_pitch: 60.0
+      left_elbow_yaw: 36.0
+      left_wrist_pitch: 36.0
+      left_wrist_roll: 36.0
+
+    # Keep AMP policy updates at 50 Hz, but run MuJoCo integration at 1 kHz/500 Hz
+    # style deployment cadence for numerical stability on the full-body XML.
+    # With RL_control_f=50, control_hz=500 means the policy still refreshes once
+    # every 10 bridge ticks (= 20 ms), while physics/contact integration stays
+    # much better behaved than the 5 ms fused step.
+    control_hz: 500.0
+    sim_dt: 0.001
+    command_timeout_sec: 0.1
+    open_rl_enable_threshold: 1.0
+    pause_when_no_command: false
+    no_command_behavior: "hold_position"
+    fix_base: false
+    # Training/exported model base height is 0.92 m. Keep the fixed-base
+    # zeroing pose consistent with that; do not override this to 0.87 for AMP.
+    fixed_base_height: 0.92
+    enable_fixed_base_zeroing: true
+    enable_fixed_base_hold_after_zeroing: true
+    enable_release_before_running: true
+    # For AMP full-body sim2sim we want the first RUNNING tick to release the
+    # base and immediately apply the first policy action. Leaving a free-fall
+    # settle window here makes the first observation/action pair start from an
+    # already collapsing robot.
+    post_release_settle_ticks: 0
+    enable_prepose_snap: false
+    sim_sync_running_start_to_reference: false
+
+    enable_viewer: false
+    enable_python_viewer_stream: false
+    viewer_frame_topic: "/humanoid/sim2sim/mujoco_viewer_frame"
+    enable_python_viewer_inspector: false
+    viewer_inspector_topic: "/humanoid/sim2sim/mujoco_viewer_inspector"
+    viewer_fps: 60.0
+    viewer_inspector_hz: 10.0
+    viewer_width: 1280
+    viewer_height: 720
+    viewer_title: "MuJoCo Sim2Sim Viewer"
+    enable_state_telemetry: true
+    state_telemetry_hz: 50.0
+    show_left_ui: true
+    show_right_ui: true
+
+    use_command_torque_ff: false
+    sim_only_force_policy_csp: false

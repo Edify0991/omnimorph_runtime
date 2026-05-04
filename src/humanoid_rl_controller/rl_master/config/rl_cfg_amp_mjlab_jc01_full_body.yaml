@@ -19,13 +19,6 @@ robot_global_joint_order:
 - left_ankle_roll
 - waist_roll
 - waist_yaw
-- left_shoulder_pitch
-- left_shoulder_roll
-- left_shoulder_yaw
-- left_elbow_pitch
-- left_elbow_yaw
-- left_wrist_pitch
-- left_wrist_roll
 - right_shoulder_pitch
 - right_shoulder_roll
 - right_shoulder_yaw
@@ -33,6 +26,13 @@ robot_global_joint_order:
 - right_elbow_yaw
 - right_wrist_pitch
 - right_wrist_roll
+- left_shoulder_pitch
+- left_shoulder_roll
+- left_shoulder_yaw
+- left_elbow_pitch
+- left_elbow_yaw
+- left_wrist_pitch
+- left_wrist_roll
 joint_groups:
   leg:
   - right_hip_roll
@@ -51,13 +51,6 @@ joint_groups:
   - waist_roll
   - waist_yaw
   arm:
-  - left_shoulder_pitch
-  - left_shoulder_roll
-  - left_shoulder_yaw
-  - left_elbow_pitch
-  - left_elbow_yaw
-  - left_wrist_pitch
-  - left_wrist_roll
   - right_shoulder_pitch
   - right_shoulder_roll
   - right_shoulder_yaw
@@ -65,6 +58,13 @@ joint_groups:
   - right_elbow_yaw
   - right_wrist_pitch
   - right_wrist_roll
+  - left_shoulder_pitch
+  - left_shoulder_roll
+  - left_shoulder_yaw
+  - left_elbow_pitch
+  - left_elbow_yaw
+  - left_wrist_pitch
+  - left_wrist_roll
 deploy_mode_profiles:
 - mode_id: 0
   config_section: amp_mjlab_jc01_full_body

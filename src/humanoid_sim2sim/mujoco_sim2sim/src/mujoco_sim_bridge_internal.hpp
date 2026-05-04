@@ -168,6 +168,7 @@ private:
     static const char *actuatorBackendName(ActuatorBackend backend);
 
     // Configured model/control names.
+    std::string rl_cfg_path_;
     std::string model_path_;
     std::string base_body_name_;
     std::string base_free_joint_name_;

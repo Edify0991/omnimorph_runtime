@@ -165,7 +165,7 @@ beyondmimic_leg12_strict_walk2:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-      velocity_source: body_object_velocity_local
+      # velocity_source: body_object_velocity_local
     policy_extra_outputs:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
@@ -192,8 +192,8 @@ beyondmimic_leg12_strict_walk2:
     action_output_name: actions
     enable_time_step_input: true
     time_step_input_name: time_step
-    time_step_start: 12250
-    advance_time_step_on_reference_prefetch: true
+    time_step_start: 50
+    advance_time_step_on_reference_prefetch: false
     strict_model_io: true
     enable_metadata_check: true
     metadata_check_strict: false
