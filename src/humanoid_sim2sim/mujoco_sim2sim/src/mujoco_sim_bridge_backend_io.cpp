@@ -70,12 +70,12 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
     {
         mjtNum vel6_local[6] = {0, 0, 0, 0, 0, 0};
         mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_local, 1);
-        state.base_ang_vel[0] = static_cast<float>(vel6_local[0]);
-        state.base_ang_vel[1] = static_cast<float>(vel6_local[1]);
-        state.base_ang_vel[2] = static_cast<float>(vel6_local[2]);
-        state.base_lin_vel[0] = static_cast<float>(vel6_local[3]);
-        state.base_lin_vel[1] = static_cast<float>(vel6_local[4]);
-        state.base_lin_vel[2] = static_cast<float>(vel6_local[5]);
+        state.base_ang_vel[0] = static_cast<float>(vel6_local[3]);
+        state.base_ang_vel[1] = static_cast<float>(vel6_local[4]);
+        state.base_ang_vel[2] = static_cast<float>(vel6_local[5]);
+        state.base_lin_vel[0] = static_cast<float>(vel6_local[0]);
+        state.base_lin_vel[1] = static_cast<float>(vel6_local[1]);
+        state.base_lin_vel[2] = static_cast<float>(vel6_local[2]);
     }
     else if (velocity_source == "body_cvel" &&
              base_body_id_ >= 0 && base_body_id_ < model_->nbody && data_->cvel)
