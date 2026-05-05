@@ -50,21 +50,101 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rl_master REQUIRED)
 
+set(ONNXRUNTIME_ROOT "" CACHE PATH "ONNX Runtime installation prefix.")
+if(NOT ONNXRUNTIME_ROOT AND DEFINED ENV{ONNXRUNTIME_ROOT})
+  set(ONNXRUNTIME_ROOT "$ENV{ONNXRUNTIME_ROOT}")
+endif()
+if(NOT ONNXRUNTIME_ROOT AND DEFINED ENV{ONNXRUNTIME_DIR})
+  set(ONNXRUNTIME_ROOT "$ENV{ONNXRUNTIME_DIR}")
+endif()
+
+find_path(ONNXRUNTIME_INCLUDE_DIR
+  NAMES onnxruntime_cxx_api.h
+  HINTS
+    ${ONNXRUNTIME_ROOT}
+    /usr/local
+    /usr
+  PATH_SUFFIXES
+    include
+    include/onnxruntime
+    include/onnxruntime/core/session
+)
+
+find_library(ONNXRUNTIME_LIBRARY
+  NAMES onnxruntime libonnxruntime
+  HINTS
+    ${ONNXRUNTIME_ROOT}
+    /usr/local
+    /usr
+  PATH_SUFFIXES
+    lib
+    lib64
+)
+
+if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIBRARY)
+  message(FATAL_ERROR
+    "mujoco_sim2sim: ONNX Runtime not found.\n"
+    "Set ONNXRUNTIME_ROOT (or env ONNXRUNTIME_ROOT/ONNXRUNTIME_DIR) to a prefix that contains:\n"
+    "  include/onnxruntime_cxx_api.h (or include/onnxruntime/...)\n"
+    "  lib/libonnxruntime.so")
+endif()
+
+if(NOT TARGET onnxruntime::onnxruntime)
+  add_library(onnxruntime::onnxruntime UNKNOWN IMPORTED)
+  set_target_properties(onnxruntime::onnxruntime PROPERTIES
+    IMPORTED_LOCATION "${ONNXRUNTIME_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIR}"
+  )
+endif()
+
+set(_mujoco_root_hints
+  $ENV{MUJOCO_ROOT}
+  $ENV{MUJOCO_PATH}
+)
+
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+  execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -c "import pathlib, mujoco; print(pathlib.Path(mujoco.__file__).resolve().parent)"
+    OUTPUT_VARIABLE _mujoco_python_root
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  if(_mujoco_python_root)
+    list(APPEND _mujoco_root_hints "${_mujoco_python_root}")
+  endif()
+endif()
+list(REMOVE_DUPLICATES _mujoco_root_hints)
+
 find_path(MUJOCO_INCLUDE_DIR
   NAMES mujoco/mujoco.h
   HINTS
-    $ENV{MUJOCO_ROOT}
-    $ENV{MUJOCO_PATH}
+    ${_mujoco_root_hints}
   PATH_SUFFIXES include
 )
 
 find_library(MUJOCO_LIBRARY
   NAMES mujoco libmujoco
   HINTS
-    $ENV{MUJOCO_ROOT}
-    $ENV{MUJOCO_PATH}
-  PATH_SUFFIXES lib bin
+    ${_mujoco_root_hints}
+  PATH_SUFFIXES lib bin ""
 )
+
+if(NOT MUJOCO_LIBRARY)
+  foreach(_mujoco_root IN LISTS _mujoco_root_hints)
+    file(GLOB _mujoco_candidate_libraries
+      "${_mujoco_root}/libmujoco.so*"
+      "${_mujoco_root}/lib/libmujoco.so*"
+      "${_mujoco_root}/bin/libmujoco.so*"
+    )
+    if(_mujoco_candidate_libraries)
+      list(SORT _mujoco_candidate_libraries)
+      list(GET _mujoco_candidate_libraries 0 MUJOCO_LIBRARY)
+      set(MUJOCO_LIBRARY "${MUJOCO_LIBRARY}" CACHE FILEPATH "MuJoCo library" FORCE)
+      break()
+    endif()
+  endforeach()
+endif()
 
 if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
   set(MUJOCO_SIM2SIM_WITH_VIEWER OFF)
@@ -121,6 +201,9 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
     $<INSTALL_INTERFACE:include>
     ${MUJOCO_INCLUDE_DIR}
   )
+  target_include_directories(mujoco_sim_bridge PRIVATE
+    ${ONNXRUNTIME_INCLUDE_DIR}
+  )
 
   ament_target_dependencies(mujoco_sim_bridge
     rclcpp
@@ -131,6 +214,7 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
 
   target_link_libraries(mujoco_sim_bridge
     rl_master::rl_master_runtime
+    onnxruntime::onnxruntime
     ${MUJOCO_LIBRARY}
     mujoco_sim2sim_arch_flags
   )
