@@ -54,6 +54,7 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
     }
 
     std::array<float, 4> base_quat_xyzw{0.0f, 0.0f, 0.0f, 1.0f};
+    bool base_velocity_valid = false;
 
     if (velocity_source == "freejoint_qvel" &&
         base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
@@ -64,18 +65,22 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
         state.base_ang_vel[0] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 3]);
         state.base_ang_vel[1] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 4]);
         state.base_ang_vel[2] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 5]);
+        base_velocity_valid = true;
     }
     else if (velocity_source == "body_object_velocity_local" &&
              base_body_id_ >= 0 && base_body_id_ < model_->nbody)
     {
         mjtNum vel6_local[6] = {0, 0, 0, 0, 0, 0};
+        mjtNum vel6_global[6] = {0, 0, 0, 0, 0, 0};
         mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_local, 1);
-        state.base_ang_vel[0] = static_cast<float>(vel6_local[3]);
-        state.base_ang_vel[1] = static_cast<float>(vel6_local[4]);
-        state.base_ang_vel[2] = static_cast<float>(vel6_local[5]);
-        state.base_lin_vel[0] = static_cast<float>(vel6_local[0]);
-        state.base_lin_vel[1] = static_cast<float>(vel6_local[1]);
-        state.base_lin_vel[2] = static_cast<float>(vel6_local[2]);
+        mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_global, 0);
+        state.base_ang_vel[0] = static_cast<float>(vel6_global[0]);
+        state.base_ang_vel[1] = static_cast<float>(vel6_global[1]);
+        state.base_ang_vel[2] = static_cast<float>(vel6_global[2]);
+        state.base_lin_vel[0] = static_cast<float>(vel6_local[3]);
+        state.base_lin_vel[1] = static_cast<float>(vel6_local[4]);
+        state.base_lin_vel[2] = static_cast<float>(vel6_local[5]);
+        base_velocity_valid = true;
     }
     else if (velocity_source == "body_cvel" &&
              base_body_id_ >= 0 && base_body_id_ < model_->nbody && data_->cvel)
@@ -87,6 +92,7 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
         state.base_lin_vel[0] = static_cast<float>(cvel[0]);
         state.base_lin_vel[1] = static_cast<float>(cvel[1]);
         state.base_lin_vel[2] = static_cast<float>(cvel[2]);
+        base_velocity_valid = true;
     }
     else if (base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
     {
@@ -96,6 +102,7 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
         state.base_ang_vel[0] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 3]);
         state.base_ang_vel[1] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 4]);
         state.base_ang_vel[2] = static_cast<float>(data_->qvel[base_free_qvel_adr_ + 5]);
+        base_velocity_valid = true;
     }
     else if (base_body_id_ >= 0 && base_body_id_ < model_->nbody)
     {
@@ -107,6 +114,7 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
         state.base_lin_vel[0] = static_cast<float>(vel6_local[0]);
         state.base_lin_vel[1] = static_cast<float>(vel6_local[1]);
         state.base_lin_vel[2] = static_cast<float>(vel6_local[2]);
+        base_velocity_valid = true;
     }
     else if (base_body_id_ >= 0 && base_body_id_ < model_->nbody && data_->cvel)
     {
@@ -117,6 +125,7 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
         state.base_lin_vel[0] = static_cast<float>(cvel[0]);
         state.base_lin_vel[1] = static_cast<float>(cvel[1]);
         state.base_lin_vel[2] = static_cast<float>(cvel[2]);
+        base_velocity_valid = true;
     }
 
     if (base_free_qpos_adr_ >= 0 && (base_free_qpos_adr_ + 6) < model_->nq)
@@ -142,6 +151,7 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
 
     state.base_quat = base_quat_xyzw;
     state.base_rpy = quatXyzwToRpy(base_quat_xyzw);
+    state.base_lin_vel_valid = base_velocity_valid;
     return state;
 }
 

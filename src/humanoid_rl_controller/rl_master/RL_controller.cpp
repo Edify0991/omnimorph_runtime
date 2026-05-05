@@ -35,6 +35,34 @@ std::vector<float> fitDim(const std::vector<float> &values, size_t dim)
     return out;
 }
 
+std::array<float, 3> rotateVectorByQuat(
+    const std::array<float, 3> &vec,
+    const std::array<float, 4> &quat_xyzw)
+{
+    const float x = quat_xyzw[0];
+    const float y = quat_xyzw[1];
+    const float z = quat_xyzw[2];
+    const float w = quat_xyzw[3];
+    const float xx = x * x;
+    const float yy = y * y;
+    const float zz = z * z;
+    const float xy = x * y;
+    const float xz = x * z;
+    const float yz = y * z;
+    const float wx = w * x;
+    const float wy = w * y;
+    const float wz = w * z;
+    return {
+        (1.0f - 2.0f * (yy + zz)) * vec[0] + 2.0f * (xy - wz) * vec[1] + 2.0f * (xz + wy) * vec[2],
+        2.0f * (xy + wz) * vec[0] + (1.0f - 2.0f * (xx + zz)) * vec[1] + 2.0f * (yz - wx) * vec[2],
+        2.0f * (xz - wy) * vec[0] + 2.0f * (yz + wx) * vec[1] + (1.0f - 2.0f * (xx + yy)) * vec[2]};
+}
+
+float vectorNorm3(const std::array<float, 3> &vec)
+{
+    return std::sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
+}
+
 void markRequiredReferenceSource(
     const std::string &canonical_source_raw,
     ReferenceFeatureRequirements *requirements)
@@ -604,6 +632,11 @@ void RL_controller::handlePolicySwitch()
     {
         profile.pinocchio_motion_features->resetAlignment();
     }
+    if (cfg.source_contract.base_velocity_estimator.reset_on_mode_switch)
+    {
+        base_velocity_filter_.reset();
+        base_velocity_filter_time_initialized_ = false;
+    }
 
     if (cfg.reset_policy_on_mode_switch)
     {
@@ -1051,6 +1084,87 @@ void RL_controller::initModeProfiles()
     }
 }
 
+void RL_controller::configureBaseVelocityEstimator(const SourceContractBaseVelocityEstimator &cfg)
+{
+    rl_master::filters::BaseVelocityKalmanFilter::Options options;
+    options.initial_variance = cfg.initial_variance;
+    options.process_noise = cfg.process_noise;
+    options.accel_noise = cfg.accel_noise;
+    options.min_dt = cfg.min_dt;
+    options.max_dt = cfg.max_dt;
+    base_velocity_filter_.configure(options);
+}
+
+std::array<float, 3> RL_controller::estimateBaseLinearVelocity(const rl_master::RobotStateData &state)
+{
+    const auto &cfg = activePolicyCfg().source_contract.base_velocity_estimator;
+    if (!cfg.enabled)
+    {
+        return state.base_lin_vel;
+    }
+
+    configureBaseVelocityEstimator(cfg);
+
+    const double now_sec = rl_master::monotonicTimeSec();
+    float dt = 0.0f;
+    if (base_velocity_filter_time_initialized_)
+    {
+        dt = static_cast<float>(now_sec - base_velocity_filter_last_time_sec_);
+    }
+    base_velocity_filter_last_time_sec_ = now_sec;
+    base_velocity_filter_time_initialized_ = true;
+
+    if (!base_velocity_filter_.initialized())
+    {
+        base_velocity_filter_.reset(state.base_lin_vel_valid ? state.base_lin_vel : std::array<float, 3>{0.0f, 0.0f, 0.0f});
+    }
+
+    if (cfg.use_imu_prediction && state.base_lin_acc_valid)
+    {
+        std::array<float, 3> linear_acc_w = state.base_lin_acc;
+        if (toLowerCopy(cfg.imu_accel_frame) == "body")
+        {
+            linear_acc_w = rotateVectorByQuat(linear_acc_w, state.base_quat);
+        }
+        if (cfg.imu_accel_includes_gravity)
+        {
+            linear_acc_w[2] -= cfg.gravity_mps2;
+        }
+        base_velocity_filter_.predict(linear_acc_w, dt);
+    }
+    else
+    {
+        base_velocity_filter_.predict({0.0f, 0.0f, 0.0f}, dt);
+    }
+
+    if (cfg.use_input_velocity_measurement && state.base_lin_vel_valid)
+    {
+        base_velocity_filter_.updateVelocity(state.base_lin_vel, cfg.input_velocity_measurement_noise);
+    }
+
+    if (cfg.zero_velocity_update && state.base_lin_acc_valid)
+    {
+        float max_joint_dq = 0.0f;
+        for (const float dq : state.joint_dq)
+        {
+            max_joint_dq = std::max(max_joint_dq, std::fabs(dq));
+        }
+        const float ang_vel_norm = vectorNorm3(state.base_ang_vel);
+        const float acc_norm = vectorNorm3(state.base_lin_acc);
+        const float expected_acc_norm = cfg.imu_accel_includes_gravity ? cfg.gravity_mps2 : 0.0f;
+        const bool stationary =
+            max_joint_dq <= cfg.stationary_joint_velocity_threshold &&
+            ang_vel_norm <= cfg.stationary_ang_vel_threshold &&
+            std::fabs(acc_norm - expected_acc_norm) <= cfg.stationary_accel_norm_tolerance;
+        if (stationary)
+        {
+            base_velocity_filter_.updateVelocity({0.0f, 0.0f, 0.0f}, cfg.zero_velocity_measurement_noise);
+        }
+    }
+
+    return base_velocity_filter_.velocity();
+}
+
 void RL_controller::updateStateFromIO(const rl_master::RobotStateData &state)
 {
     const size_t joint_count = joint_order_.size();
@@ -1069,9 +1183,14 @@ void RL_controller::updateStateFromIO(const rl_master::RobotStateData &state)
     for (size_t i = 0; i < 3; ++i)
     {
         robot->base_pos_w[i] = state.base_pos_w[i];
-        robot->base_lin_vel[i] = state.base_lin_vel[i];
         robot->base_ang_vel[i] = state.base_ang_vel[i];
         robot->base_rpy[i] = state.base_rpy[i];
+    }
+
+    const std::array<float, 3> estimated_base_lin_vel = estimateBaseLinearVelocity(state);
+    for (size_t i = 0; i < 3; ++i)
+    {
+        robot->base_lin_vel[i] = estimated_base_lin_vel[i];
     }
 
     for (size_t i = 0; i < 4; ++i)

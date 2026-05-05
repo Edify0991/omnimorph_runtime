@@ -1,5 +1,5 @@
 engineai_stand:
-  policy_name: 2026-04-10_15-45-32v1
+  policy_name: 2026-04-09_15-00-05v2
   policy_family: velloco
   obs_stack_N: 15
   cycle_time: 1.0
@@ -52,18 +52,34 @@ engineai_stand:
   RL_control_f: 50
   solver_control_hz: 500
   installed_joint_run_modes:
-    left_hip_roll: cst
-    left_hip_yaw: cst
-    left_hip_pitch: cst
-    left_knee_pitch: cst
-    left_ankle_pitch: cst
-    left_ankle_roll: cst
     right_hip_roll: cst
     right_hip_yaw: cst
     right_hip_pitch: cst
     right_knee_pitch: cst
     right_ankle_pitch: cst
     right_ankle_roll: cst
+    left_hip_roll: cst
+    left_hip_yaw: cst
+    left_hip_pitch: cst
+    left_knee_pitch: cst
+    left_ankle_pitch: cst
+    left_ankle_roll: cst
+    waist_roll: csp
+    waist_yaw: csp
+    right_shoulder_pitch: csp
+    right_shoulder_roll: csp
+    right_shoulder_yaw: csp
+    right_elbow_pitch: csp
+    right_elbow_yaw: csp
+    right_wrist_pitch: csp
+    right_wrist_roll: csp
+    left_shoulder_pitch: csp
+    left_shoulder_roll: csp
+    left_shoulder_yaw: csp
+    left_elbow_pitch: csp
+    left_elbow_yaw: csp
+    left_wrist_pitch: csp
+    left_wrist_roll: csp
   realtime:
     enabled: true
     lock_memory: true
@@ -139,8 +155,8 @@ engineai_stand:
   state_telemetry_hz: 50.0
   startup_completion_action: hold
   zeroing_duration_s: 5.0
-  zeroing_position_tolerance: 100.0
-  zeroing_velocity_tolerance: 100.0
+  zeroing_position_tolerance: 0.1
+  zeroing_velocity_tolerance: 0.8
   control_mode: sim2real
   action_filter: 0.5
   robot:
@@ -157,6 +173,22 @@ engineai_stand:
       left_knee_pitch: 0.48
       left_ankle_pitch: -0.24
       left_ankle_roll: 0.0
+      waist_roll: 0.0
+      waist_yaw: 0.0
+      right_shoulder_pitch: 0.2
+      right_shoulder_roll: 0.2
+      right_shoulder_yaw: 0.0
+      right_elbow_pitch: 0.3
+      right_elbow_yaw: 0.0
+      right_wrist_pitch: 0.0
+      right_wrist_roll: 0.0
+      left_shoulder_pitch: 0.2
+      left_shoulder_roll: 0.2
+      left_shoulder_yaw: 0.0
+      left_elbow_pitch: 0.3
+      left_elbow_yaw: 0.0
+      left_wrist_pitch: 0.0
+      left_wrist_roll: 0.0
     zero_joint_angles:
       right_hip_roll: 0.0
       right_hip_yaw: 0.0
@@ -170,32 +202,80 @@ engineai_stand:
       left_knee_pitch: 0.48
       left_ankle_pitch: -0.24
       left_ankle_roll: 0.0
+      waist_roll: 0.0
+      waist_yaw: 0.0
+      right_shoulder_pitch: 0.2
+      right_shoulder_roll: 0.2
+      right_shoulder_yaw: 0.0
+      right_elbow_pitch: 0.3
+      right_elbow_yaw: 0.0
+      right_wrist_pitch: 0.0
+      right_wrist_roll: 0.0
+      left_shoulder_pitch: 0.2
+      left_shoulder_roll: 0.2
+      left_shoulder_yaw: 0.0
+      left_elbow_pitch: 0.3
+      left_elbow_yaw: 0.0
+      left_wrist_pitch: 0.0
+      left_wrist_roll: 0.0
     joint_limit_range:
-      right_hip_roll: [-0.2, 0.2]
-      right_hip_yaw: [-1.05, 1.05]
-      right_hip_pitch: [-0.45, 0.38]
-      right_knee_pitch: [0.0, 1.48]
-      right_ankle_pitch: [-0.64, 0.4]
-      right_ankle_roll: [-0.26, 0.26]
-      left_hip_roll: [-0.2, 0.2]
-      left_hip_yaw: [-1.05, 1.05]
-      left_hip_pitch: [-0.45, 0.38]
-      left_knee_pitch: [0.0, 1.48]
-      left_ankle_pitch: [-0.64, 0.4]
-      left_ankle_roll: [-0.26, 0.26]
+      right_hip_roll: [-0.1396, 0.5236]
+      right_hip_yaw: [-0.5236, 0.5236]
+      right_hip_pitch: [-1.2566, 0.7853]
+      right_knee_pitch: [-0.0872, 1.7453]
+      right_ankle_pitch: [-0.7853, 0.5236]
+      right_ankle_roll: [-0.2617, 0.2617]
+      left_hip_roll: [-0.1396, 0.5236]
+      left_hip_yaw: [-0.5236, 0.5236]
+      left_hip_pitch: [-1.2566, 0.7853]
+      left_knee_pitch: [-0.0872, 1.7453]
+      left_ankle_pitch: [-0.7853, 0.5236]
+      left_ankle_roll: [-0.2617, 0.2617]
+      waist_roll: [-0.2617, 0.2617]
+      waist_yaw: [-0.7853, 0.7853]
+      right_shoulder_pitch: [-1.0471, 3.1415]
+      right_shoulder_roll: [-0.0872, 2.2689]
+      right_shoulder_yaw: [-2.0943, 2.0943]
+      right_elbow_pitch: [0.0, 1.8325]
+      right_elbow_yaw: [-2.0943, 2.0943]
+      right_wrist_pitch: [-1.2217, 1.2217]
+      right_wrist_roll: [-1.2217, 1.2217]
+      left_shoulder_pitch: [-1.0471, 3.1415]
+      left_shoulder_roll: [-0.0872, 2.2689]
+      left_shoulder_yaw: [-2.0943, 2.0943]
+      left_elbow_pitch: [0.0, 1.8325]
+      left_elbow_yaw: [-2.0943, 2.0943]
+      left_wrist_pitch: [-1.2217, 1.2217]
+      left_wrist_roll: [-1.2217, 1.2217]
     motor_torque_limit:
-      right_hip_roll: 330
-      right_hip_yaw: 150
-      right_hip_pitch: 330
-      right_knee_pitch: 8000
-      right_ankle_pitch: 90
-      right_ankle_roll: 90
-      left_hip_roll: 330
-      left_hip_yaw: 150
-      left_hip_pitch: 330
-      left_knee_pitch: 8000
-      left_ankle_pitch: 90
-      left_ankle_roll: 90
+      right_hip_roll: 330.0
+      right_hip_yaw: 150.0
+      right_hip_pitch: 330.0
+      right_knee_pitch: 306.0
+      right_ankle_pitch: 90.0
+      right_ankle_roll: 90.0
+      left_hip_roll: 330.0
+      left_hip_yaw: 150.0
+      left_hip_pitch: 330.0
+      left_knee_pitch: 306.0
+      left_ankle_pitch: 90.0
+      left_ankle_roll: 90.0
+      waist_roll: 330.0
+      waist_yaw: 150.0
+      right_shoulder_pitch: 90.0
+      right_shoulder_roll: 90.0
+      right_shoulder_yaw: 60.0
+      right_elbow_pitch: 60.0
+      right_elbow_yaw: 36.0
+      right_wrist_pitch: 36.0
+      right_wrist_roll: 36.0
+      left_shoulder_pitch: 90.0
+      left_shoulder_roll: 90.0
+      left_shoulder_yaw: 60.0
+      left_elbow_pitch: 60.0
+      left_elbow_yaw: 36.0
+      left_wrist_pitch: 36.0
+      left_wrist_roll: 36.0
   scales:
     lin_vel: 2.0
     ang_vel: 1.0

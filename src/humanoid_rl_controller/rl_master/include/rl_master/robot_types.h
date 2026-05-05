@@ -19,10 +19,13 @@ struct RobotStateData
 
     std::array<float, 3> base_pos_w{};
     std::array<float, 3> base_lin_vel{};
+    std::array<float, 3> base_lin_acc{};
     std::array<float, 3> base_ang_vel{};
     // Quaternion layout: [x, y, z, w]
     std::array<float, 4> base_quat{0.0f, 0.0f, 0.0f, 1.0f};
     std::array<float, 3> base_rpy{};
+    bool base_lin_vel_valid = false;
+    bool base_lin_acc_valid = false;
 };
 
 struct TeleopCommand

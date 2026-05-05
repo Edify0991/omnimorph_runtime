@@ -61,6 +61,7 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(SharedMemory REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(SymEngine CONFIG REQUIRED)
@@ -155,6 +156,7 @@ add_library(rl_master_runtime SHARED
   dds_protocol.cpp
   deploy_state_machine.cpp
   external_observation_provider.cpp
+  filters/base_velocity_kalman_filter.cpp
   logging/mcap_writer.cpp
   logging/runtime_recorder.cpp
   mode_profile_registry.cpp
@@ -185,6 +187,7 @@ ament_target_dependencies(rl_master_runtime PUBLIC
   std_msgs
   sensor_msgs
   geometry_msgs
+  nav_msgs
 )
 target_link_libraries(rl_master_runtime PUBLIC
   pinocchio::pinocchio
@@ -255,6 +258,7 @@ ament_target_dependencies(RL_solver
   std_msgs
   sensor_msgs
   geometry_msgs
+  nav_msgs
   SharedMemory
 )
 target_link_libraries(RL_solver
@@ -302,7 +306,7 @@ install(EXPORT export_rl_master
 )
 
 ament_export_include_directories(include)
-ament_export_dependencies(rclcpp std_msgs sensor_msgs geometry_msgs SharedMemory pinocchio)
+ament_export_dependencies(rclcpp std_msgs sensor_msgs geometry_msgs nav_msgs SharedMemory pinocchio)
 ament_export_targets(export_rl_master HAS_LIBRARY_TARGET)
 
 ament_package()

@@ -13,6 +13,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/executors/single_threaded_executor.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
@@ -62,6 +63,7 @@ private:
     static std::array<float, 4> rpyToQuat(float roll, float pitch, float yaw);
     void executorLoop();
     void telemetryLoop();
+    void configureOdomSubscription();
 
     rclcpp::Node::SharedPtr node_;
     rclcpp::executors::SingleThreadedExecutor::SharedPtr executor_;
@@ -69,6 +71,7 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr teleop_sub_;
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_control_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
 
     std::mutex teleop_mutex_;
     rl_master::TeleopCommand latest_teleop_{};
@@ -80,8 +83,13 @@ private:
 
     std::mutex imu_mutex_;
     std::array<float, 3> imu_ang_vel_{0.0f, 0.0f, 0.0f};
+    std::array<float, 3> imu_lin_acc_{0.0f, 0.0f, 0.0f};
     std::array<float, 4> imu_quat_{0.0f, 0.0f, 0.0f, 1.0f};
     std::array<float, 3> imu_rpy_{0.0f, 0.0f, 0.0f};
+    bool has_imu_sample_ = false;
+    std::array<float, 3> odom_lin_vel_w_{0.0f, 0.0f, 0.0f};
+    bool has_odom_lin_vel_ = false;
+    std::string active_odom_topic_;
     SourceContract source_contract_{};
     std::function<void(
         const std::array<float, 3> &,

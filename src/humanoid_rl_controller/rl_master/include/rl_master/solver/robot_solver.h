@@ -69,7 +69,7 @@ private:
     void cacheInstalledMotorTorqueLimitsFromCfg();
     void initModeProfileMap();
     void initializeJointLayout();
-    rl_master::RobotStateData buildControllerStateData() const;
+    rl_master::RobotStateData buildControllerStateData();
     bool switchToModeConfig(int mode_id, bool allow_fallback_to_default);
     size_t installedJointCount() const;
     bool jointBuffersInitialized() const;

@@ -138,6 +138,7 @@ SUPPORTED_ONNX_INPUT_SOURCES = {
 SUPPORTED_IMU_PAYLOADS = {"euler_compat", "quaternion"}
 SUPPORTED_EULER_UNITS = {"rad", "deg"}
 SUPPORTED_QUAT_ORDERS = {"xyzw", "wxyz"}
+SUPPORTED_BASE_VELOCITY_FRAMES = {"body", "world"}
 SUPPORTED_REFERENCE_SOURCES = {"auto", "file", "policy_outputs"}
 SUPPORTED_LOGGING_BACKENDS = {"mcap"}
 SUPPORTED_SESSION_NAME_POLICIES = {"timestamp_policy", "timestamp_mode", "custom"}
@@ -1100,6 +1101,42 @@ def check_source_contract(
         quat_source_order = normalize_token(sim_base.get("quat_source_order", ""))
         if quat_source_order != "wxyz":
             issues.error(context, "source_contract.sim_base.quat_source_order must be 'wxyz' for MuJoCo qpos")
+
+    base_velocity_estimator = to_dict(source_contract.get("base_velocity_estimator"))
+    if base_velocity_estimator:
+        imu_accel_frame = normalize_token(base_velocity_estimator.get("imu_accel_frame", "body"))
+        if imu_accel_frame not in SUPPORTED_BASE_VELOCITY_FRAMES:
+            issues.error(
+                context,
+                "source_contract.base_velocity_estimator.imu_accel_frame must be 'body' or 'world'",
+            )
+        odom_velocity_frame = normalize_token(base_velocity_estimator.get("odom_velocity_frame", "world"))
+        if odom_velocity_frame not in SUPPORTED_BASE_VELOCITY_FRAMES:
+            issues.error(
+                context,
+                "source_contract.base_velocity_estimator.odom_velocity_frame must be 'body' or 'world'",
+            )
+        positive_fields = (
+            "gravity_mps2",
+            "input_velocity_measurement_noise",
+            "odom_velocity_measurement_noise",
+            "zero_velocity_measurement_noise",
+            "initial_variance",
+        )
+        for field_name in positive_fields:
+            value = float(base_velocity_estimator.get(field_name, 1.0) or 0.0)
+            if not math.isfinite(value) or value <= 0.0:
+                issues.error(
+                    context,
+                    f"source_contract.base_velocity_estimator.{field_name} must be > 0",
+                )
+        min_dt = float(base_velocity_estimator.get("min_dt", 0.0001) or 0.0)
+        max_dt = float(base_velocity_estimator.get("max_dt", 0.05) or 0.0)
+        if min_dt < 0.0 or max_dt < min_dt:
+            issues.error(
+                context,
+                "source_contract.base_velocity_estimator requires 0 <= min_dt <= max_dt",
+            )
 
     reference_file = to_dict(source_contract.get("reference_file"))
     if reference_enabled and required_reference_any and reference_source != "policy_outputs":

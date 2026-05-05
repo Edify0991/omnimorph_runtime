@@ -11,6 +11,7 @@ namespace
 constexpr size_t kPolicyCmdV2HeaderCount = 7;
 constexpr size_t kStateV2HeaderCount = 4;
 constexpr size_t kBaseStateTailCount = 3 + 4 + 3;
+constexpr size_t kBaseStateExtendedTailCount = kBaseStateTailCount + 3 + 3 + 2;
 
 inline int toIntField(float value)
 {
@@ -190,7 +191,7 @@ std_msgs::msg::Float32MultiArray encodeRobotState(const RobotStateData &state)
     std_msgs::msg::Float32MultiArray msg;
 
     const size_t joint_count = resolveStateJointCount(state);
-    msg.data.assign(kStateV2HeaderCount + joint_count * 3 + kBaseStateTailCount, 0.0f);
+    msg.data.assign(kStateV2HeaderCount + joint_count * 3 + kBaseStateExtendedTailCount, 0.0f);
     msg.data[0] = static_cast<float>(kProtocolV2Magic);
     msg.data[1] = static_cast<float>(kProtocolVersionDynamicJointsV2);
     msg.data[2] = static_cast<float>(kProtocolV2PayloadRobotState);
@@ -215,6 +216,16 @@ std_msgs::msg::Float32MultiArray encodeRobotState(const RobotStateData &state)
     {
         msg.data[cursor++] = state.base_rpy[i];
     }
+    for (size_t i = 0; i < 3; ++i)
+    {
+        msg.data[cursor++] = state.base_lin_vel[i];
+    }
+    for (size_t i = 0; i < 3; ++i)
+    {
+        msg.data[cursor++] = state.base_lin_acc[i];
+    }
+    msg.data[cursor++] = state.base_lin_vel_valid ? 1.0f : 0.0f;
+    msg.data[cursor++] = state.base_lin_acc_valid ? 1.0f : 0.0f;
     return msg;
 }
 
@@ -271,6 +282,34 @@ bool decodeRobotState(
         for (size_t i = 0; i < 3; ++i)
         {
             state->base_rpy[i] = msg.data[cursor++];
+        }
+        bool has_extended_lin_vel = false;
+        bool has_extended_lin_acc = false;
+        if (msg.data.size() >= cursor + 3)
+        {
+            for (size_t i = 0; i < 3; ++i)
+            {
+                state->base_lin_vel[i] = msg.data[cursor++];
+            }
+            has_extended_lin_vel = true;
+        }
+        if (msg.data.size() >= cursor + 3)
+        {
+            for (size_t i = 0; i < 3; ++i)
+            {
+                state->base_lin_acc[i] = msg.data[cursor++];
+            }
+            has_extended_lin_acc = true;
+        }
+        if (msg.data.size() >= cursor + 2)
+        {
+            state->base_lin_vel_valid = msg.data[cursor++] > 0.5f;
+            state->base_lin_acc_valid = msg.data[cursor++] > 0.5f;
+        }
+        else
+        {
+            state->base_lin_vel_valid = has_extended_lin_vel;
+            state->base_lin_acc_valid = has_extended_lin_acc;
         }
 
         return true;

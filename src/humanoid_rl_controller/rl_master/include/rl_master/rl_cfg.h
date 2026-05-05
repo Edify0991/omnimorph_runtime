@@ -477,6 +477,32 @@ struct SourceContractSimBase
     std::string velocity_source = "freejoint_qvel"; // freejoint_qvel / body_object_velocity_local / body_cvel
 };
 
+struct SourceContractBaseVelocityEstimator
+{
+    bool enabled = false;
+    bool use_imu_prediction = true;
+    std::string imu_accel_frame = "body"; // body / world
+    bool imu_accel_includes_gravity = true;
+    float gravity_mps2 = 9.80665f;
+    bool use_input_velocity_measurement = true;
+    float input_velocity_measurement_noise = 0.02f;
+    bool use_odom_velocity_measurement = false;
+    std::string odom_topic = "/glim/odom";
+    std::string odom_velocity_frame = "world"; // world / body
+    float odom_velocity_measurement_noise = 0.02f;
+    bool zero_velocity_update = true;
+    float zero_velocity_measurement_noise = 0.01f;
+    float stationary_joint_velocity_threshold = 0.03f;
+    float stationary_ang_vel_threshold = 0.12f;
+    float stationary_accel_norm_tolerance = 0.5f;
+    float initial_variance = 0.25f;
+    float process_noise = 0.05f;
+    float accel_noise = 0.2f;
+    float min_dt = 1.0e-4f;
+    float max_dt = 0.05f;
+    bool reset_on_mode_switch = true;
+};
+
 struct SourceContractReferenceFile
 {
     std::string reference_motion_key = "reference_motion";
@@ -518,6 +544,7 @@ struct SourceContract
 {
     SourceContractImuInput imu_input;
     SourceContractSimBase sim_base;
+    SourceContractBaseVelocityEstimator base_velocity_estimator;
     SourceContractReferenceFile reference_file;
     SourceContractPolicyExtraOutputs policy_extra_outputs;
 };
@@ -1312,6 +1339,52 @@ public:
             source_contract.sim_base.velocity_source = yamlReadOr<std::string>(
                 sim_base_contract_cfg, "velocity_source", source_contract.sim_base.velocity_source);
 
+            const YAML::Node base_velocity_estimator_cfg = source_contract_cfg["base_velocity_estimator"];
+            source_contract.base_velocity_estimator.enabled = yamlReadOr<bool>(
+                base_velocity_estimator_cfg, "enabled", source_contract.base_velocity_estimator.enabled);
+            source_contract.base_velocity_estimator.use_imu_prediction = yamlReadOr<bool>(
+                base_velocity_estimator_cfg, "use_imu_prediction", source_contract.base_velocity_estimator.use_imu_prediction);
+            source_contract.base_velocity_estimator.imu_accel_frame = yamlReadOr<std::string>(
+                base_velocity_estimator_cfg, "imu_accel_frame", source_contract.base_velocity_estimator.imu_accel_frame);
+            source_contract.base_velocity_estimator.imu_accel_includes_gravity = yamlReadOr<bool>(
+                base_velocity_estimator_cfg, "imu_accel_includes_gravity", source_contract.base_velocity_estimator.imu_accel_includes_gravity);
+            source_contract.base_velocity_estimator.gravity_mps2 = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "gravity_mps2", source_contract.base_velocity_estimator.gravity_mps2);
+            source_contract.base_velocity_estimator.use_input_velocity_measurement = yamlReadOr<bool>(
+                base_velocity_estimator_cfg, "use_input_velocity_measurement", source_contract.base_velocity_estimator.use_input_velocity_measurement);
+            source_contract.base_velocity_estimator.input_velocity_measurement_noise = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "input_velocity_measurement_noise", source_contract.base_velocity_estimator.input_velocity_measurement_noise);
+            source_contract.base_velocity_estimator.use_odom_velocity_measurement = yamlReadOr<bool>(
+                base_velocity_estimator_cfg, "use_odom_velocity_measurement", source_contract.base_velocity_estimator.use_odom_velocity_measurement);
+            source_contract.base_velocity_estimator.odom_topic = yamlReadOr<std::string>(
+                base_velocity_estimator_cfg, "odom_topic", source_contract.base_velocity_estimator.odom_topic);
+            source_contract.base_velocity_estimator.odom_velocity_frame = yamlReadOr<std::string>(
+                base_velocity_estimator_cfg, "odom_velocity_frame", source_contract.base_velocity_estimator.odom_velocity_frame);
+            source_contract.base_velocity_estimator.odom_velocity_measurement_noise = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "odom_velocity_measurement_noise", source_contract.base_velocity_estimator.odom_velocity_measurement_noise);
+            source_contract.base_velocity_estimator.zero_velocity_update = yamlReadOr<bool>(
+                base_velocity_estimator_cfg, "zero_velocity_update", source_contract.base_velocity_estimator.zero_velocity_update);
+            source_contract.base_velocity_estimator.zero_velocity_measurement_noise = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "zero_velocity_measurement_noise", source_contract.base_velocity_estimator.zero_velocity_measurement_noise);
+            source_contract.base_velocity_estimator.stationary_joint_velocity_threshold = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "stationary_joint_velocity_threshold", source_contract.base_velocity_estimator.stationary_joint_velocity_threshold);
+            source_contract.base_velocity_estimator.stationary_ang_vel_threshold = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "stationary_ang_vel_threshold", source_contract.base_velocity_estimator.stationary_ang_vel_threshold);
+            source_contract.base_velocity_estimator.stationary_accel_norm_tolerance = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "stationary_accel_norm_tolerance", source_contract.base_velocity_estimator.stationary_accel_norm_tolerance);
+            source_contract.base_velocity_estimator.initial_variance = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "initial_variance", source_contract.base_velocity_estimator.initial_variance);
+            source_contract.base_velocity_estimator.process_noise = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "process_noise", source_contract.base_velocity_estimator.process_noise);
+            source_contract.base_velocity_estimator.accel_noise = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "accel_noise", source_contract.base_velocity_estimator.accel_noise);
+            source_contract.base_velocity_estimator.min_dt = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "min_dt", source_contract.base_velocity_estimator.min_dt);
+            source_contract.base_velocity_estimator.max_dt = yamlReadOr<float>(
+                base_velocity_estimator_cfg, "max_dt", source_contract.base_velocity_estimator.max_dt);
+            source_contract.base_velocity_estimator.reset_on_mode_switch = yamlReadOr<bool>(
+                base_velocity_estimator_cfg, "reset_on_mode_switch", source_contract.base_velocity_estimator.reset_on_mode_switch);
+
             const YAML::Node reference_file_contract_cfg = source_contract_cfg["reference_file"];
             source_contract.reference_file.reference_motion_key = yamlReadOr<std::string>(
                 reference_file_contract_cfg,
@@ -1466,6 +1539,32 @@ public:
                 throw std::runtime_error(
                     "source_contract.sim_base.velocity_source must be "
                     "'freejoint_qvel', 'body_object_velocity_local', or 'body_cvel'");
+            }
+            if (source_contract.base_velocity_estimator.imu_accel_frame != "body" &&
+                source_contract.base_velocity_estimator.imu_accel_frame != "world")
+            {
+                throw std::runtime_error("source_contract.base_velocity_estimator.imu_accel_frame must be 'body' or 'world'");
+            }
+            if (source_contract.base_velocity_estimator.odom_velocity_frame != "body" &&
+                source_contract.base_velocity_estimator.odom_velocity_frame != "world")
+            {
+                throw std::runtime_error("source_contract.base_velocity_estimator.odom_velocity_frame must be 'body' or 'world'");
+            }
+            if (source_contract.base_velocity_estimator.gravity_mps2 <= 0.0f)
+            {
+                throw std::runtime_error("source_contract.base_velocity_estimator.gravity_mps2 must be > 0");
+            }
+            if (source_contract.base_velocity_estimator.input_velocity_measurement_noise <= 0.0f ||
+                source_contract.base_velocity_estimator.odom_velocity_measurement_noise <= 0.0f ||
+                source_contract.base_velocity_estimator.zero_velocity_measurement_noise <= 0.0f)
+            {
+                throw std::runtime_error("source_contract.base_velocity_estimator measurement noise values must be > 0");
+            }
+            if (source_contract.base_velocity_estimator.initial_variance <= 0.0f ||
+                source_contract.base_velocity_estimator.min_dt < 0.0f ||
+                source_contract.base_velocity_estimator.max_dt < source_contract.base_velocity_estimator.min_dt)
+            {
+                throw std::runtime_error("source_contract.base_velocity_estimator variance/dt settings are invalid");
             }
             auto normalizeLower = [](std::string text) {
                 std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
@@ -1748,6 +1847,8 @@ public:
                   << ", quat_order=" << source_contract.imu_input.quat_order
                   << ", sim_base_quat_source_order=" << source_contract.sim_base.quat_source_order
                   << ", sim_base_velocity_source=" << source_contract.sim_base.velocity_source
+                  << ", base_velocity_estimator=" << (source_contract.base_velocity_estimator.enabled ? "enabled" : "disabled")
+                  << ", base_velocity_odom_topic=" << source_contract.base_velocity_estimator.odom_topic
                   << ", canonical_quat_order=" << observation_canonical_contract.quat_order
                   << ", canonical_body_orientation_representation=" << observation_canonical_contract.body_orientation_representation
                   << std::endl;

@@ -843,21 +843,10 @@ void RobotSolver::applyRuntimeCommand(
     }
 }
 
-rl_master::RobotStateData RobotSolver::buildControllerStateData() const
+rl_master::RobotStateData RobotSolver::buildControllerStateData()
 {
     rl_master::RobotStateData state;
-    state.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
-    state.active_joint_count = static_cast<int>(installed_joint_names_.size());
-    state.joint_q.assign(installed_joint_names_.size(), 0.0f);
-    state.joint_dq.assign(installed_joint_names_.size(), 0.0f);
-    state.joint_tau.assign(installed_joint_names_.size(), 0.0f);
-    for (size_t i = 0; i < installed_joint_names_.size() && i < joint_state_.size(); ++i)
-    {
-        state.joint_q[i] = joint_state_[i].q;
-        state.joint_dq[i] = joint_state_[i].dq;
-        state.joint_tau[i] = joint_state_[i].tau;
-    }
-
+    dds_bridge_.buildRobotStateData(joint_state_, &state);
     return state;
 }
 

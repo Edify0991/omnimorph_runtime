@@ -4,6 +4,7 @@
 #include <onnxruntime_cxx_api.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <deque>
 #include <iostream>
@@ -17,6 +18,7 @@
 #include "cmd.h"
 #include "deploy_state_machine.h"
 #include "external_observation_provider.h"
+#include "filters/base_velocity_kalman_filter.h"
 #include "logging/runtime_log_types.h"
 #include "math_tool.h"
 #include "mode_profile_registry.h"
@@ -126,6 +128,8 @@ private:
         const std::string &event_type,
         const std::string &message,
         const std::map<std::string, std::string> &tags = {});
+    void configureBaseVelocityEstimator(const SourceContractBaseVelocityEstimator &cfg);
+    std::array<float, 3> estimateBaseLinearVelocity(const rl_master::RobotStateData &state);
     void updateStateFromIO(const rl_master::RobotStateData &state);
     void updateCommandFromIO(const rl_master::TeleopCommand &command);
     void initPolicyGroup(const Sim2realCfg &cfg, const std::string &tag, PolicyRuntimeGroup *group);
@@ -169,6 +173,9 @@ private:
     std::string pending_runtime_warning_type_;
     std::string pending_runtime_warning_message_;
     std::map<std::string, std::string> pending_runtime_warning_tags_;
+    rl_master::filters::BaseVelocityKalmanFilter base_velocity_filter_;
+    double base_velocity_filter_last_time_sec_ = 0.0;
+    bool base_velocity_filter_time_initialized_ = false;
 
     ExternalObservationProvider external_observation_provider_;
     rl_master::DeployStateMachine deploy_state_machine_;

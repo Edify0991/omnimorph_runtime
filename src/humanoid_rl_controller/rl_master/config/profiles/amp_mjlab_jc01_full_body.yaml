@@ -2,82 +2,8 @@ amp_mjlab_jc01_full_body:
   policy_name: Jingchu01-AMP-Flat_model_5200
   policy_family: amp_mjlab
   policy_file: policies/Jingchu01-AMP-Flat_model_5200.onnx
-  observation_manifest_file: observation_manifest_amp_mjlab_jc01_full_body.yaml
   obs_stack_N: 4
   cycle_time: 1.0
-  clip_observations: 100.0
-  clip_actions: 100.0
-  device_id: 0
-  obs_dim: 93
-  action_dim: 28
-  motor_N: 28
-  # AMP_mjlab training uses MuJoCo timestep=0.005 with decimation=4,
-  # so the actor policy updates at 50 Hz.
-  RL_control_f: 50
-  # This field is consumed by the fused real-robot solver path.
-  # MuJoCo sim2sim uses mujoco_sim_bridge.control_hz instead.
-  solver_control_hz: 500
-  prefill_observation_history_on_running_start: true
-
-  action_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
-    - left_hip_roll
-    - left_hip_yaw
-    - left_hip_pitch
-    - left_knee_pitch
-    - left_ankle_pitch
-    - left_ankle_roll
-    - waist_roll
-    - waist_yaw
-    - right_shoulder_pitch
-    - right_shoulder_roll
-    - right_shoulder_yaw
-    - right_elbow_pitch
-    - right_elbow_yaw
-    - right_wrist_pitch
-    - right_wrist_roll
-    - left_shoulder_pitch
-    - left_shoulder_roll
-    - left_shoulder_yaw
-    - left_elbow_pitch
-    - left_elbow_yaw
-    - left_wrist_pitch
-    - left_wrist_roll
-  obs_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
-    - left_hip_roll
-    - left_hip_yaw
-    - left_hip_pitch
-    - left_knee_pitch
-    - left_ankle_pitch
-    - left_ankle_roll
-    - waist_roll
-    - waist_yaw
-    - right_shoulder_pitch
-    - right_shoulder_roll
-    - right_shoulder_yaw
-    - right_elbow_pitch
-    - right_elbow_yaw
-    - right_wrist_pitch
-    - right_wrist_roll
-    - left_shoulder_pitch
-    - left_shoulder_roll
-    - left_shoulder_yaw
-    - left_elbow_pitch
-    - left_elbow_yaw
-    - left_wrist_pitch
-    - left_wrist_roll
-
   kps:
     right_hip_roll: 394.213
     right_hip_yaw: 99.511
@@ -165,6 +91,8 @@ amp_mjlab_jc01_full_body:
     right_elbow_yaw: 36.0
     right_wrist_pitch: 36.0
     right_wrist_roll: 36.0
+  clip_observations: 100.0
+  clip_actions: 100.0
   action_scales:
     right_hip_roll: 0.209277
     right_hip_yaw: 0.376844
@@ -194,7 +122,17 @@ amp_mjlab_jc01_full_body:
     right_elbow_yaw: 0.26143
     right_wrist_pitch: 0.26143
     right_wrist_roll: 0.26143
-
+  device_id: 0
+  obs_dim: 93
+  action_dim: 28
+  motor_N: 28
+  # AMP_mjlab training uses MuJoCo timestep=0.005 with decimation=4,
+  # so the actor policy updates at 50 Hz.
+  RL_control_f: 50
+  # This field is consumed by the fused real-robot solver path.
+  # MuJoCo sim2sim uses mujoco_sim_bridge.control_hz instead.
+  solver_control_hz: 500
+  prefill_observation_history_on_running_start: true
   installed_joint_run_modes:
     right_hip_roll: cst
     right_hip_yaw: cst
@@ -224,25 +162,73 @@ amp_mjlab_jc01_full_body:
     left_elbow_yaw: cst
     left_wrist_pitch: cst
     left_wrist_roll: cst
-
-  onnx_intra_threads: 1
-  onnx_inter_threads: 1
-  policy_io:
-    obs_input_name: obs
-    action_output_name: actions
-    enable_time_step_input: false
-    time_step_input_name: time_step
-    time_step_start: 0
-    strict_model_io: false
-    enable_metadata_check: false
-    metadata_check_strict: true
-    required_metadata_keys: []
-    expected_metadata: {}
-    reset_policy_on_mode_switch: true
-    extra_output_names: []
-
+  realtime:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
+  action_joint_order:
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+    - waist_roll
+    - waist_yaw
+    - right_shoulder_pitch
+    - right_shoulder_roll
+    - right_shoulder_yaw
+    - right_elbow_pitch
+    - right_elbow_yaw
+    - right_wrist_pitch
+    - right_wrist_roll
+    - left_shoulder_pitch
+    - left_shoulder_roll
+    - left_shoulder_yaw
+    - left_elbow_pitch
+    - left_elbow_yaw
+    - left_wrist_pitch
+    - left_wrist_roll
+  obs_joint_order:
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+    - waist_roll
+    - waist_yaw
+    - right_shoulder_pitch
+    - right_shoulder_roll
+    - right_shoulder_yaw
+    - right_elbow_pitch
+    - right_elbow_yaw
+    - right_wrist_pitch
+    - right_wrist_roll
+    - left_shoulder_pitch
+    - left_shoulder_roll
+    - left_shoulder_yaw
+    - left_elbow_pitch
+    - left_elbow_yaw
+    - left_wrist_pitch
+    - left_wrist_roll
+  observation_manifest_file: observation_manifest_amp_mjlab_jc01_full_body.yaml
   enable_reference_motion: false
-  
   source_contract:
     imu_input:
       payload: euler_compat
@@ -253,7 +239,30 @@ amp_mjlab_jc01_full_body:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-      # velocity_source: body_object_velocity_local
+      velocity_source: body_object_velocity_local
+    base_velocity_estimator:
+      enabled: true
+      use_imu_prediction: true
+      imu_accel_frame: body
+      imu_accel_includes_gravity: true
+      gravity_mps2: 9.80665
+      use_input_velocity_measurement: true
+      input_velocity_measurement_noise: 0.02
+      use_odom_velocity_measurement: true
+      odom_topic: /glim/odom
+      odom_velocity_frame: world
+      odom_velocity_measurement_noise: 0.03
+      zero_velocity_update: true
+      zero_velocity_measurement_noise: 0.01
+      stationary_joint_velocity_threshold: 0.03
+      stationary_ang_vel_threshold: 0.12
+      stationary_accel_norm_tolerance: 0.5
+      initial_variance: 0.25
+      process_noise: 0.05
+      accel_noise: 0.2
+      min_dt: 0.0001
+      max_dt: 0.05
+      reset_on_mode_switch: true
     policy_extra_outputs:
       reference_motion_key: reference_motion
       reference_joint_pos_key: joint_pos
@@ -272,19 +281,32 @@ amp_mjlab_jc01_full_body:
       body_quat_frame: world
       body_orientation_representation: rot6
   external_observations: []
-
+  onnx_intra_threads: 1
+  onnx_inter_threads: 1
+  policy_io:
+    obs_input_name: obs
+    action_output_name: actions
+    enable_time_step_input: false
+    time_step_input_name: time_step
+    time_step_start: 0
+    strict_model_io: false
+    enable_metadata_check: false
+    metadata_check_strict: true
+    required_metadata_keys: []
+    expected_metadata: {}
+    reset_policy_on_mode_switch: true
+    extra_output_names: []
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12
   loop_overrun_warn_us: 2000
   enable_state_telemetry: true
   state_telemetry_hz: 50.0
   startup_completion_action: hold
-  zeroing_duration_s: 2.0
+  zeroing_duration_s: 5.0
   zeroing_position_tolerance: 0.1
   zeroing_velocity_tolerance: 0.8
   control_mode: sim2real
   action_filter: 0.0
-
   robot:
     default_joint_angles:
       right_hip_roll: 0.0

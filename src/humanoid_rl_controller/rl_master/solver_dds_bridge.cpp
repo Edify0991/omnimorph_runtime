@@ -110,6 +110,15 @@ std::array<float, 4> parseQuaternionFromImuMsg(
         static_cast<float>(msg->orientation.z),
         static_cast<float>(msg->orientation.w)};
 }
+
+std::array<float, 4> parseQuaternionFromOdomMsg(const nav_msgs::msg::Odometry::SharedPtr &msg)
+{
+    return {
+        static_cast<float>(msg->pose.pose.orientation.x),
+        static_cast<float>(msg->pose.pose.orientation.y),
+        static_cast<float>(msg->pose.pose.orientation.z),
+        static_cast<float>(msg->pose.pose.orientation.w)};
+}
 }
 
 SolverDdsBridge::~SolverDdsBridge()
@@ -177,10 +186,15 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
                 static_cast<float>(msg->angular_velocity.x),
                 static_cast<float>(msg->angular_velocity.y),
                 static_cast<float>(msg->angular_velocity.z)};
+            std::array<float, 3> raw_lin_acc{
+                static_cast<float>(msg->linear_acceleration.x),
+                static_cast<float>(msg->linear_acceleration.y),
+                static_cast<float>(msg->linear_acceleration.z)};
             std::array<float, 3> canonical_ang_vel = reorderVector3(
                 raw_ang_vel,
                 imu_contract.ang_vel_order,
                 {"x", "y", "z"});
+            std::array<float, 3> canonical_lin_acc = raw_lin_acc;
 
             std::array<float, 4> canonical_quat{0.0f, 0.0f, 0.0f, 1.0f};
             const std::string payload = normalizeToken(imu_contract.payload);
@@ -215,6 +229,7 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
                 imu_contract.frame_alignment_rpy.size() > 2 ? imu_contract.frame_alignment_rpy[2] : 0.0f);
             canonical_quat = quatMultiply(canonical_quat, alignment_quat);
             canonical_ang_vel = rotateVectorByQuat(canonical_ang_vel, alignment_quat);
+            canonical_lin_acc = rotateVectorByQuat(canonical_lin_acc, alignment_quat);
 
             const std::vector<float> rpy_vec = quaternion_to_euler_array({
                 canonical_quat[0], canonical_quat[1], canonical_quat[2], canonical_quat[3]});
@@ -231,8 +246,10 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
             {
                 std::lock_guard<std::mutex> lock(imu_mutex_);
                 imu_ang_vel_ = canonical_ang_vel;
+                imu_lin_acc_ = canonical_lin_acc;
                 imu_quat_ = canonical_quat;
                 imu_rpy_ = canonical_rpy;
+                has_imu_sample_ = true;
                 callback = imu_sample_callback_;
             }
 
@@ -283,6 +300,7 @@ void SolverDdsBridge::disconnect()
     }
 
     imu_sub_.reset();
+    odom_sub_.reset();
     mode_control_sub_.reset();
     teleop_sub_.reset();
     state_pub_.reset();
@@ -301,8 +319,77 @@ void SolverDdsBridge::updateStateTelemetryConfig(const StateTelemetryConfig &tel
 
 void SolverDdsBridge::updateSourceContract(const SourceContract &source_contract)
 {
-    std::lock_guard<std::mutex> lock(imu_mutex_);
-    source_contract_ = source_contract;
+    {
+        std::lock_guard<std::mutex> lock(imu_mutex_);
+        source_contract_ = source_contract;
+    }
+    configureOdomSubscription();
+}
+
+void SolverDdsBridge::configureOdomSubscription()
+{
+    if (!node_)
+    {
+        return;
+    }
+
+    SourceContract contract_snapshot;
+    {
+        std::lock_guard<std::mutex> lock(imu_mutex_);
+        contract_snapshot = source_contract_;
+    }
+
+    const auto &cfg = contract_snapshot.base_velocity_estimator;
+    if (!cfg.enabled || !cfg.use_odom_velocity_measurement || cfg.odom_topic.empty())
+    {
+        odom_sub_.reset();
+        active_odom_topic_.clear();
+        std::lock_guard<std::mutex> lock(imu_mutex_);
+        has_odom_lin_vel_ = false;
+        return;
+    }
+    if (odom_sub_ && active_odom_topic_ == cfg.odom_topic)
+    {
+        return;
+    }
+
+    odom_sub_.reset();
+    active_odom_topic_ = cfg.odom_topic;
+    odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
+        cfg.odom_topic,
+        rclcpp::QoS(rclcpp::KeepLast(30)).best_effort(),
+        [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
+            SourceContract contract_snapshot;
+            std::array<float, 4> latest_imu_quat{0.0f, 0.0f, 0.0f, 1.0f};
+            {
+                std::lock_guard<std::mutex> lock(imu_mutex_);
+                contract_snapshot = source_contract_;
+                latest_imu_quat = imu_quat_;
+            }
+
+            std::array<float, 3> velocity{
+                static_cast<float>(msg->twist.twist.linear.x),
+                static_cast<float>(msg->twist.twist.linear.y),
+                static_cast<float>(msg->twist.twist.linear.z)};
+
+            const std::string frame = normalizeToken(contract_snapshot.base_velocity_estimator.odom_velocity_frame);
+            if (frame == "body")
+            {
+                std::array<float, 4> q = parseQuaternionFromOdomMsg(msg);
+                const float q_norm = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+                if (q_norm < 1.0e-4f)
+                {
+                    q = latest_imu_quat;
+                }
+                velocity = rotateVectorByQuat(velocity, q);
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(imu_mutex_);
+                odom_lin_vel_w_ = velocity;
+                has_odom_lin_vel_ = true;
+            }
+        });
 }
 
 void SolverDdsBridge::setImuSampleCallback(
@@ -431,8 +518,15 @@ void SolverDdsBridge::buildRobotStateData(
     {
         std::lock_guard<std::mutex> lock(imu_mutex_);
         state->base_ang_vel = imu_ang_vel_;
+        state->base_lin_acc = imu_lin_acc_;
         state->base_quat = imu_quat_;
         state->base_rpy = imu_rpy_;
+        state->base_lin_acc_valid = has_imu_sample_;
+        if (has_odom_lin_vel_)
+        {
+            state->base_lin_vel = odom_lin_vel_w_;
+            state->base_lin_vel_valid = true;
+        }
     }
 }
 
