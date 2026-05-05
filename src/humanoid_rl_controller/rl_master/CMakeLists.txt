@@ -68,7 +68,7 @@ find_package(SymEngine CONFIG REQUIRED)
 find_package(pinocchio CONFIG REQUIRED
   HINTS
     /opt/ros/humble
-    /opt/ros/humble/lib/x86_64-linux-gnu/cmake/pinocchio
+    /opt/ros/humble/lib/${CMAKE_LIBRARY_ARCHITECTURE}/cmake/pinocchio
 )
 find_package(Threads REQUIRED)
 find_library(ZSTD_LIBRARY NAMES zstd REQUIRED)
@@ -145,7 +145,10 @@ endif()
 if(DEFINED ENV{CONDA_ENGINEAI_PREFIX})
   list(APPEND _rl_master_runtime_rpath_dirs "$ENV{CONDA_ENGINEAI_PREFIX}/lib")
 endif()
-list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/humble/lib/x86_64-linux-gnu")
+list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/humble/lib")
+if(CMAKE_LIBRARY_ARCHITECTURE)
+  list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/humble/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+endif()
 list(REMOVE_DUPLICATES _rl_master_runtime_rpath_dirs)
 set(RL_MASTER_RPATH "")
 if(_rl_master_runtime_rpath_dirs)
