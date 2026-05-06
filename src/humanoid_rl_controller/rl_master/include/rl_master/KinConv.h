@@ -133,8 +133,8 @@ static constexpr std::array<int, WAIST_MOTOR_COUNT> WAIST_JOINT_DIR = {
 };
 
 static constexpr std::array<int, ARM_MOTOR_COUNT> ARM_JOINT_DIR = {
-    +1, -1, -1, +1, -1, +1, +1, // right arm
-    -1, +1, -1, -1, -1, +1, -1  // left arm
+    +1, -1, -1, +1, -1, -1, +1, // right arm
+    -1, +1, -1, -1, -1, -1, -1  // left arm
 };
 
 static constexpr std::array<float, LEG_MOTOR_COUNT> LEG_MOTOR_TORQUE_LIMIT = {

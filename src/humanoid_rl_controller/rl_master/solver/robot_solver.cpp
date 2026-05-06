@@ -151,6 +151,114 @@ bool RobotSolver::jointBuffersInitialized() const
            motor_state_.size() == motor_count;
 }
 
+int RobotSolver::prepareModeControlWordForTick(int raw_control_word)
+{
+    const rl_master::DecodedControlWord decoded =
+        rl_master::DeployStateMachine::decodeControlWord(
+            raw_control_word,
+            controller_state_initialized_ ? last_controller_mode_id_ : active_mode_id_);
+
+    if (decoded.request_estop)
+    {
+        zeroing_injection_pending_ = false;
+        hold_settle_ticks_remaining_ = 0;
+        return raw_control_word;
+    }
+
+    if (decoded.request_zero)
+    {
+        hold_settle_ticks_remaining_ = 0;
+        return raw_control_word;
+    }
+
+    if (zeroing_injection_pending_)
+    {
+        zeroing_injection_pending_ = false;
+        hold_settle_ticks_remaining_ = 0;
+        return rl_master::kCtrlWordZeroing;
+    }
+
+    if (!controller_state_initialized_)
+    {
+        return raw_control_word;
+    }
+
+    const bool active_mode_needs_zeroing =
+        last_completed_zeroing_mode_id_ !=
+        (decoded.request_start ? decoded.locomotion_mode : last_controller_mode_id_);
+    const bool current_state_is_hold =
+        last_controller_deploy_state_ == rl_master::DeployLifecycleState::kHold;
+    const bool current_state_is_zeroing =
+        last_controller_deploy_state_ == rl_master::DeployLifecycleState::kZeroing;
+
+    if (decoded.request_start &&
+        current_state_is_hold &&
+        active_mode_needs_zeroing)
+    {
+        zeroing_injection_pending_ = true;
+        hold_settle_ticks_remaining_ = 0;
+        return rl_master::kCtrlWordSetModeBase + decoded.locomotion_mode;
+    }
+
+    if (decoded.request_start &&
+        current_state_is_zeroing)
+    {
+        return rl_master::kCtrlWordStopPolicy;
+    }
+
+    if (decoded.request_start &&
+        hold_settle_ticks_remaining_ > 0)
+    {
+        return rl_master::kCtrlWordStopPolicy;
+    }
+
+    return raw_control_word;
+}
+
+void RobotSolver::updateModeControlPreprocessState(
+    const rl_master::logging::ControllerLogSnapshot &controller_snapshot)
+{
+    if (!controller_snapshot.valid)
+    {
+        return;
+    }
+
+    const auto controller_state =
+        static_cast<rl_master::DeployLifecycleState>(controller_snapshot.deploy_state);
+    const int controller_mode_id = controller_snapshot.active_mode_id;
+
+    if (controller_state_initialized_)
+    {
+        if (last_controller_deploy_state_ == rl_master::DeployLifecycleState::kZeroing &&
+            controller_state != rl_master::DeployLifecycleState::kZeroing)
+        {
+            last_completed_zeroing_mode_id_ = controller_mode_id;
+            if (controller_state == rl_master::DeployLifecycleState::kHold)
+            {
+                hold_settle_ticks_remaining_ = post_zeroing_hold_settle_ticks_;
+                hold_target_latched_ = false;
+            }
+        }
+
+        if (last_controller_deploy_state_ == rl_master::DeployLifecycleState::kRunning &&
+            controller_state == rl_master::DeployLifecycleState::kHold &&
+            controller_mode_id != last_controller_mode_id_)
+        {
+            zeroing_injection_pending_ = true;
+        }
+    }
+
+    if (controller_state != rl_master::DeployLifecycleState::kHold &&
+        hold_settle_ticks_remaining_ > 0)
+    {
+        hold_settle_ticks_remaining_ = 0;
+    }
+
+    last_controller_mode_id_ = controller_mode_id;
+    last_controller_deploy_state_ = controller_state;
+    controller_state_initialized_ = true;
+}
+
 std::unique_ptr<RobotSolver> RobotSolver::create(
     int startup_mode_id,
     std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry)
@@ -412,6 +520,13 @@ void RobotSolver::initializeController()
 {
     controller_runtime_.setModeProfileRegistry(mode_registry_);
     controller_runtime_.initialize(active_mode_id_);
+    mode_command_cache_ = rl_master::kCtrlWordSetModeBase + controller_runtime_.activeModeId();
+    zeroing_injection_pending_ = false;
+    hold_settle_ticks_remaining_ = 0;
+    last_completed_zeroing_mode_id_ = std::numeric_limits<int>::min();
+    last_controller_mode_id_ = std::numeric_limits<int>::min();
+    last_controller_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
+    controller_state_initialized_ = false;
     syncRuntimeCfgFromController(true);
 }
 
@@ -1421,12 +1536,13 @@ void RobotSolver::run()
         {
             const auto loop_begin = std::chrono::steady_clock::now();
 
-            int mode_control_word_value = 0;
-            std::optional<int> mode_control_word;
+            int mode_control_word_value = mode_command_cache_;
             if (dds_bridge_.readLatestModeControlWord(&mode_control_word_value))
             {
-                mode_control_word = mode_control_word_value;
+                mode_command_cache_ = mode_control_word_value;
             }
+            const int effective_mode_control_word =
+                prepareModeControlWordForTick(mode_command_cache_);
 
             rl_master::TeleopCommand teleop_command{};
             std::optional<rl_master::TeleopCommand> teleop_sample;
@@ -1439,11 +1555,12 @@ void RobotSolver::run()
 
             rl_master::RobotStateData io_state = buildControllerStateData();
             const rl_master::RobotCommandData controller_command =
-                controller_runtime_.step(io_state, teleop_sample, mode_control_word);
+                controller_runtime_.step(io_state, teleop_sample, effective_mode_control_word);
             syncRuntimeCfgFromController();
             const long control_period_ns = resolveControlPeriodNs(sim2real_cfg_);
             const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
             emitDerivedRuntimeEvents(controller_snapshot);
+            updateModeControlPreprocessState(controller_snapshot);
             applyRuntimeCommand(controller_command, true);
 
             const auto last_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(last_open_rl_));
@@ -1487,6 +1604,11 @@ void RobotSolver::run()
                 }
                 sendMotorCmd();
                 dds_bridge_.mirrorRobotState(io_state);
+            }
+
+            if (hold_settle_ticks_remaining_ > 0)
+            {
+                --hold_settle_ticks_remaining_;
             }
 
             const auto loop_end = std::chrono::steady_clock::now();

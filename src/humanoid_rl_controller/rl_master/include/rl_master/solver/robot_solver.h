@@ -47,6 +47,8 @@ private:
     void initializeController();
     void syncRuntimeCfgFromController(bool force = false);
     void applyRuntimeCommand(const rl_master::RobotCommandData &command, bool command_fresh);
+    int prepareModeControlWordForTick(int raw_control_word);
+    void updateModeControlPreprocessState(const rl_master::logging::ControllerLogSnapshot &controller_snapshot);
     void sendRLState();
 
     std::map<std::string, std::vector<float>> getRobotStateBag() const;
@@ -141,6 +143,14 @@ private:
     int last_logged_mode_id_ = std::numeric_limits<int>::min();
     int last_logged_deploy_state_ = std::numeric_limits<int>::min();
     uint64_t last_logged_runtime_warning_seq_ = 0;
+    int mode_command_cache_ = rl_master::kCtrlWordSetModeBase + rl_master::kModeCodeMin;
+    bool zeroing_injection_pending_ = false;
+    int post_zeroing_hold_settle_ticks_ = 0;
+    int hold_settle_ticks_remaining_ = 0;
+    int last_completed_zeroing_mode_id_ = std::numeric_limits<int>::min();
+    int last_controller_mode_id_ = std::numeric_limits<int>::min();
+    rl_master::DeployLifecycleState last_controller_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
+    bool controller_state_initialized_ = false;
 
     std::chrono::time_point<std::chrono::high_resolution_clock> start_time_;
 };

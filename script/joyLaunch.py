@@ -91,6 +91,12 @@ class RuntimeConfig:
     joystick_keywords: Tuple[str, ...]
     primary_mode_id: int
     secondary_mode_id: int
+    left_x_axis: str
+    left_y_axis: str
+    right_x_axis: str
+    right_y_axis: str
+    lt_axis: str
+    rt_axis: str
 
 
 def log(msg: str) -> None:
@@ -252,8 +258,9 @@ class ProcessManager:
 
 
 class JoystickStateTracker:
-    def __init__(self, device_path: str) -> None:
+    def __init__(self, device_path: str, axis_bindings: Dict[int, str]) -> None:
         self._device = evdev.InputDevice(device_path)
+        self._axis_bindings = dict(axis_bindings)
         self._state_lock = threading.Lock()
         self._running = True
         self._state = {
@@ -288,18 +295,9 @@ class JoystickStateTracker:
 
                 with self._state_lock:
                     if event.type == ecodes.EV_ABS:
-                        if event.code == ecodes.ABS_X:
-                            self._state["left_joystick_x"] = event.value
-                        elif event.code == ecodes.ABS_Y:
-                            self._state["left_joystick_y"] = event.value
-                        elif event.code == ecodes.ABS_RX:
-                            self._state["right_joystick_x"] = event.value
-                        elif event.code == ecodes.ABS_RY:
-                            self._state["right_joystick_y"] = event.value
-                        elif event.code == ecodes.ABS_Z:
-                            self._state["lt"] = event.value
-                        elif event.code == ecodes.ABS_RZ:
-                            self._state["rt"] = event.value
+                        mapped_axis = self._axis_bindings.get(event.code)
+                        if mapped_axis is not None:
+                            self._state[mapped_axis] = event.value
                         elif event.code == ecodes.ABS_HAT0X:
                             self._state["dpad_x"] = event.value
                         elif event.code == ecodes.ABS_HAT0Y:
@@ -349,6 +347,19 @@ def find_joystick_device(keywords: Sequence[str]) -> Optional[evdev.InputDevice]
     return None
 
 
+def resolve_abs_code(code_name: str) -> int:
+    if ecodes is None:
+        raise RuntimeError("evdev ecodes unavailable")
+
+    canonical = code_name.strip().upper()
+    if not canonical.startswith("ABS_"):
+        canonical = f"ABS_{canonical}"
+    code_value = getattr(ecodes, canonical, None)
+    if code_value is None:
+        raise ValueError(f"unknown ABS axis code: {code_name}")
+    return int(code_value)
+
+
 def apply_deadband(value: float, deadband: float) -> float:
     if abs(value) < deadband:
         return 0.0
@@ -374,6 +385,14 @@ class JoyLaunchApp:
         self.cfg = cfg
         self.process_mgr = ProcessManager(sudo_mode=cfg.sudo_mode)
         self.shared = DdsCommandWriter()
+        self.axis_bindings = {
+            resolve_abs_code(cfg.left_x_axis): "left_joystick_x",
+            resolve_abs_code(cfg.left_y_axis): "left_joystick_y",
+            resolve_abs_code(cfg.right_x_axis): "right_joystick_x",
+            resolve_abs_code(cfg.right_y_axis): "right_joystick_y",
+            resolve_abs_code(cfg.lt_axis): "lt",
+            resolve_abs_code(cfg.rt_axis): "rt",
+        }
 
         self.receiver: Optional[Receiver] = None
         self.tracker: Optional[JoystickStateTracker] = None
@@ -494,13 +513,13 @@ class JoyLaunchApp:
                 self.triggered_flags[key_tuple] = False
 
     def _compute_cmd(self, state: Dict[str, object]) -> Tuple[float, float, float]:
-        vx = -float(state["left_joystick_y"]) / 32767.0 * self.cfg.max_vx
-        vy = -float(state["left_joystick_x"]) / 32767.0 * self.cfg.max_vy
-        dyaw = -float(state["right_joystick_x"]) / 32767.0 * self.cfg.max_dyaw
+        norm_vx = apply_deadband(-float(state["left_joystick_y"]) / 32767.0, self.cfg.deadband)
+        norm_vy = apply_deadband(-float(state["left_joystick_x"]) / 32767.0, self.cfg.deadband)
+        norm_dyaw = apply_deadband(-float(state["right_joystick_x"]) / 32767.0, self.cfg.deadband)
 
-        vx = apply_deadband(vx, self.cfg.deadband)
-        vy = apply_deadband(vy, self.cfg.deadband)
-        dyaw = apply_deadband(dyaw, self.cfg.deadband)
+        vx = norm_vx * self.cfg.max_vx
+        vy = norm_vy * self.cfg.max_vy
+        dyaw = norm_dyaw * self.cfg.max_dyaw
         return vx, vy, dyaw
 
     def _ensure_tracker(self) -> bool:
@@ -516,8 +535,13 @@ class JoyLaunchApp:
             log("[JOY] joystick not found, retry later")
             return False
 
-        self.tracker = JoystickStateTracker(device.path)
-        log("[JOY] joystick connected")
+        self.tracker = JoystickStateTracker(device.path, self.axis_bindings)
+        log(
+            "[JOY] joystick connected with axes: "
+            f"left_x={self.cfg.left_x_axis}, left_y={self.cfg.left_y_axis}, "
+            f"right_x={self.cfg.right_x_axis}, right_y={self.cfg.right_y_axis}, "
+            f"lt={self.cfg.lt_axis}, rt={self.cfg.rt_axis}"
+        )
         return True
 
     def _cleanup(self) -> None:
@@ -601,6 +625,12 @@ def parse_args() -> RuntimeConfig:
     parser.add_argument("--joystick-keywords", default="X-Box,Xbox")
     parser.add_argument("--primary-mode-id", type=int, default=0)
     parser.add_argument("--secondary-mode-id", type=int, default=1)
+    parser.add_argument("--left-x-axis", default="ABS_X")
+    parser.add_argument("--left-y-axis", default="ABS_Y")
+    parser.add_argument("--right-x-axis", default="ABS_RX")
+    parser.add_argument("--right-y-axis", default="ABS_RY")
+    parser.add_argument("--lt-axis", default="ABS_Z")
+    parser.add_argument("--rt-axis", default="ABS_RZ")
 
     args = parser.parse_args()
 
@@ -634,6 +664,12 @@ def parse_args() -> RuntimeConfig:
         joystick_keywords=keywords,
         primary_mode_id=args.primary_mode_id,
         secondary_mode_id=args.secondary_mode_id,
+        left_x_axis=args.left_x_axis,
+        left_y_axis=args.left_y_axis,
+        right_x_axis=args.right_x_axis,
+        right_y_axis=args.right_y_axis,
+        lt_axis=args.lt_axis,
+        rt_axis=args.rt_axis,
     )
 
 
