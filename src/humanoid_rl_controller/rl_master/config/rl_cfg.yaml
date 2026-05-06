@@ -46,8 +46,8 @@ robot_global_motor_order:
 - left_knee_pitch
 - left_ankle_pitch
 - left_ankle_roll
-- waist_roll
 - waist_yaw
+- waist_roll
 - __ignore__right_gripper
 - right_wrist_roll
 - right_wrist_pitch

@@ -131,7 +131,7 @@ amp_mjlab_jc01_full_body:
   RL_control_f: 50
   # This field is consumed by the fused real-robot solver path.
   # MuJoCo sim2sim uses mujoco_sim_bridge.control_hz instead.
-  solver_control_hz: 1000
+  solver_control_hz: 200
   prefill_observation_history_on_running_start: true
   installed_joint_run_modes:
     right_hip_roll: cst
@@ -398,14 +398,14 @@ amp_mjlab_jc01_full_body:
     motor_torque_limit:
       right_hip_roll: 330.0
       right_hip_yaw: 150.0
-      right_hip_pitch: 2000.0
-      right_knee_pitch: 306.0
+      right_hip_pitch: 330.0
+      right_knee_pitch: 2000.0
       right_ankle_pitch: 90.0
       right_ankle_roll: 90.0
       left_hip_roll: 330.0
       left_hip_yaw: 150.0
-      left_hip_pitch: 2000.0
-      left_knee_pitch: 306.0
+      left_hip_pitch: 330.0
+      left_knee_pitch: 2000.0
       left_ankle_pitch: 90.0
       left_ankle_roll: 90.0
       waist_roll: 330.0

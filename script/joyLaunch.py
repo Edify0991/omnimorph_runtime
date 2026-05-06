@@ -606,9 +606,9 @@ def parse_args() -> RuntimeConfig:
     parser = argparse.ArgumentParser(description="Joystick launcher for humanoid RL deployment")
     parser.add_argument("--workspace", type=Path, default=default_workspace)
 
-    parser.add_argument("--max-vx", type=float, default=0.5)
+    parser.add_argument("--max-vx", type=float, default=2.0)
     parser.add_argument("--max-vy", type=float, default=0.02)
-    parser.add_argument("--max-dyaw", type=float, default=0.3)
+    parser.add_argument("--max-dyaw", type=float, default=0.6)
     parser.add_argument("--deadband", type=float, default=0.05)
     parser.add_argument("--poll-interval", type=float, default=0.1)
     parser.add_argument("--reconnect-interval", type=float, default=3.0)
