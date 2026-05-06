@@ -1,5 +1,5 @@
 engineai_walk:
-  policy_name: 2026-04-09_15-00-05v2
+  policy_name: 2026-04-10_15-45-32v1
   policy_family: velloco
   obs_stack_N: 15
   cycle_time: 1.0
@@ -155,7 +155,7 @@ engineai_walk:
   state_telemetry_hz: 50.0
   startup_completion_action: hold
   zeroing_duration_s: 5.0
-  zeroing_position_tolerance: 0.1
+  zeroing_position_tolerance: 0.8
   zeroing_velocity_tolerance: 0.8
   control_mode: sim2real
   action_filter: 0.5

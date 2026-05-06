@@ -336,6 +336,46 @@ inline std::vector<std::string> loadRobotGlobalJointOrderFromYAML(
     return out;
 }
 
+inline std::vector<std::string> loadRobotGlobalMotorOrderFromYAML(
+    const std::string &yaml_file)
+{
+    const RootConfigDocument doc = loadRootConfigDocument(yaml_file);
+    const YAML::Node joint_order = doc.root["robot_global_joint_order"];
+    if (!joint_order || !joint_order.IsSequence())
+    {
+        throw std::runtime_error("robot_global_joint_order is required and must be a sequence");
+    }
+
+    const YAML::Node motor_order = doc.root["robot_global_motor_order"];
+    if (!motor_order)
+    {
+        return loadRobotGlobalJointOrderFromYAML(yaml_file);
+    }
+    if (!motor_order.IsSequence())
+    {
+        throw std::runtime_error("robot_global_motor_order must be a sequence");
+    }
+
+    std::vector<std::string> out;
+    std::unordered_set<std::string> seen;
+    out.reserve(motor_order.size());
+    seen.reserve(motor_order.size());
+    for (size_t i = 0; i < motor_order.size(); ++i)
+    {
+        const std::string name = motor_order[i].as<std::string>();
+        if (name.empty())
+        {
+            throw std::runtime_error("robot_global_motor_order contains empty joint name");
+        }
+        if (!seen.insert(name).second)
+        {
+            throw std::runtime_error("robot_global_motor_order contains duplicate joint: " + name);
+        }
+        out.push_back(name);
+    }
+    return out;
+}
+
 inline std::vector<std::string> loadJointGroupNamesFromRoot(
     const YAML::Node &joint_groups,
     const char *group_name,

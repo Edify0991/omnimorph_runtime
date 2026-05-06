@@ -9,6 +9,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <unordered_set>
 
 #include <time.h>
 #include <unistd.h>
@@ -85,6 +86,45 @@ bool jointNameInSet(
     return false;
 }
 
+bool isIgnoredMotorSlotName(const std::string &name)
+{
+    return name.rfind("__ignore__", 0) == 0;
+}
+
+void validateOrderCompatibility(
+    const std::vector<std::string> &joint_order,
+    const std::vector<std::string> &motor_order)
+{
+    if (motor_order.size() < joint_order.size())
+    {
+        throw std::runtime_error(
+            "robot_global_motor_order size is smaller than robot_global_joint_order: " +
+            std::to_string(motor_order.size()) + " vs robot_global_joint_order " +
+            std::to_string(joint_order.size()));
+    }
+
+    std::unordered_set<std::string> joint_names(joint_order.begin(), joint_order.end());
+    for (const auto &motor_name : motor_order)
+    {
+        if (isIgnoredMotorSlotName(motor_name))
+        {
+            continue;
+        }
+        if (joint_names.erase(motor_name) == 0)
+        {
+            throw std::runtime_error(
+                "robot_global_motor_order contains unknown or duplicate joint: " + motor_name +
+                " (use '__ignore__...' for slots that should be skipped)");
+        }
+    }
+    if (!joint_names.empty())
+    {
+        throw std::runtime_error(
+            "robot_global_motor_order must be a permutation of robot_global_joint_order; missing joint: " +
+            *joint_names.begin());
+    }
+}
+
 } // namespace
 
 RobotSolver::~RobotSolver() = default;
@@ -94,12 +134,21 @@ size_t RobotSolver::installedJointCount() const
     return installed_joint_names_.size();
 }
 
+size_t RobotSolver::motorSlotCount() const
+{
+    return installed_motor_names_.size();
+}
+
 bool RobotSolver::jointBuffersInitialized() const
 {
-    const size_t installed_count = installedJointCount();
-    return installed_count > 0 &&
-           joint_cmd_.size() == installed_count &&
-           joint_state_.size() == installed_count;
+    const size_t joint_count = installedJointCount();
+    const size_t motor_count = motorSlotCount();
+    return joint_count > 0 &&
+           motor_count > 0 &&
+           joint_cmd_.size() == joint_count &&
+           joint_state_.size() == joint_count &&
+           motor_cmd_.size() == motor_count &&
+           motor_state_.size() == motor_count;
 }
 
 std::unique_ptr<RobotSolver> RobotSolver::create(
@@ -157,25 +206,36 @@ void RobotSolver::initializeJointLayout()
 {
     installed_joint_names_.clear();
     installed_joint_index_.clear();
+    installed_motor_names_.clear();
+    installed_motor_index_.clear();
+    leg_motor_indices_.clear();
+    arm_motor_indices_.clear();
+    waist_motor_indices_.clear();
     if (mode_registry_)
     {
         installed_joint_names_ = mode_registry_->jointOrder();
+        installed_motor_names_ = loadRobotGlobalMotorOrderFromYAML(mode_registry_->yamlPath());
     }
     if (installed_joint_names_.empty())
     {
         throw std::runtime_error("robot_global_joint_order must not be empty for RobotSolver");
     }
-    if (installed_joint_names_.size() > kMotorShmSlotCount)
+    if (installed_motor_names_.empty())
+    {
+        installed_motor_names_ = installed_joint_names_;
+    }
+    validateOrderCompatibility(installed_joint_names_, installed_motor_names_);
+    if (installed_motor_names_.size() > kMotorShmSlotCount)
     {
         throw std::runtime_error(
-            "robot_global_joint_order size exceeds SHM slot count: " +
-            std::to_string(installed_joint_names_.size()) + " > " +
+            "robot_global_motor_order size exceeds SHM slot count: " +
+            std::to_string(installed_motor_names_.size()) + " > " +
             std::to_string(kMotorShmSlotCount));
     }
 
     installed_zero_joint_q_.assign(installed_joint_names_.size(), 0.0f);
     installed_joint_tau_limits_.assign(installed_joint_names_.size(), 0.0f);
-    installed_motor_torque_limits_.assign(installed_joint_names_.size(), 0.0f);
+    installed_motor_torque_limits_.assign(installed_motor_names_.size(), 0.0f);
     installed_joint_configured_run_modes_.assign(installed_joint_names_.size(), RUN_MODE_CSP);
 
     installed_joint_index_.reserve(installed_joint_names_.size());
@@ -183,10 +243,37 @@ void RobotSolver::initializeJointLayout()
     {
         installed_joint_index_[installed_joint_names_[i]] = i;
     }
+    installed_motor_index_.reserve(installed_motor_names_.size());
+    for (size_t i = 0; i < installed_motor_names_.size(); ++i)
+    {
+        installed_motor_index_[installed_motor_names_[i]] = i;
+    }
 
     if (mode_registry_)
     {
-        kin_conv_.configureJointGroups(installed_joint_names_, mode_registry_->jointGroups());
+        const auto &joint_groups = mode_registry_->jointGroups();
+        kin_conv_.configureJointGroups(installed_joint_names_, joint_groups);
+
+        auto resolveMotorGroup = [this](const std::vector<std::string> &group_names, const char *group_name) {
+            std::vector<int> indices;
+            indices.reserve(group_names.size());
+            for (const auto &joint_name : group_names)
+            {
+                const auto it = installed_motor_index_.find(joint_name);
+                if (it == installed_motor_index_.end())
+                {
+                    throw std::runtime_error(
+                        std::string("motor order missing joint from group '") + group_name +
+                        "': " + joint_name);
+                }
+                indices.push_back(static_cast<int>(it->second));
+            }
+            return indices;
+        };
+
+        leg_motor_indices_ = resolveMotorGroup(joint_groups.leg, "leg");
+        arm_motor_indices_ = resolveMotorGroup(joint_groups.arm, "arm");
+        waist_motor_indices_ = resolveMotorGroup(joint_groups.waist, "waist");
     }
 }
 
@@ -284,35 +371,40 @@ void RobotSolver::requestStop()
 
 void RobotSolver::initializeBuffers()
 {
-    const size_t installed_count = installedJointCount();
-    if (installed_count == 0)
+    const size_t joint_count = installedJointCount();
+    const size_t motor_count = motorSlotCount();
+    if (joint_count == 0)
     {
         throw std::runtime_error("RobotSolver::initializeBuffers requires installed joints to be initialized first.");
     }
+    if (motor_count == 0)
+    {
+        throw std::runtime_error("RobotSolver::initializeBuffers requires motor slot order to be initialized first.");
+    }
 
-    joint_state_ = std::vector<JointData>(installed_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
-    joint_cmd_ = std::vector<JointData>(installed_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
-    motor_state_ = std::vector<JointData>(installed_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
-    motor_cmd_ = std::vector<JointData>(installed_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
+    joint_state_ = std::vector<JointData>(joint_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
+    joint_cmd_ = std::vector<JointData>(joint_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
+    motor_state_ = std::vector<JointData>(motor_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
+    motor_cmd_ = std::vector<JointData>(motor_count, {0, 0, 0, RUN_MODE_CSP, 0, 0});
 
     open_rl_ = 0;
     last_open_rl_ = 0;
 
-    joint_cmd_q_ = std::vector<float>(installed_count, 0.0f);
-    joint_cmd_dq_ = std::vector<float>(installed_count, 0.0f);
-    joint_cmd_tau_ = std::vector<float>(installed_count, 0.0f);
-    joint_state_q_ = std::vector<float>(installed_count, 0.0f);
-    joint_state_dq_ = std::vector<float>(installed_count, 0.0f);
-    joint_state_tau_ = std::vector<float>(installed_count, 0.0f);
-    motor_cmd_q_ = std::vector<float>(installed_count, 0.0f);
-    motor_cmd_dq_ = std::vector<float>(installed_count, 0.0f);
-    motor_cmd_tau_ = std::vector<float>(installed_count, 0.0f);
-    motor_state_q_ = std::vector<float>(installed_count, 0.0f);
-    motor_state_dq_ = std::vector<float>(installed_count, 0.0f);
-    motor_state_tau_ = std::vector<float>(installed_count, 0.0f);
-    motor_cmd_mode_ = std::vector<float>(installed_count, 0.0f);
-    hold_target_q_ = std::vector<float>(installed_count, 0.0f);
-    velocity_filters_.assign(installed_count, rl_master::filters::MovingAverageFilter(5));
+    joint_cmd_q_ = std::vector<float>(joint_count, 0.0f);
+    joint_cmd_dq_ = std::vector<float>(joint_count, 0.0f);
+    joint_cmd_tau_ = std::vector<float>(joint_count, 0.0f);
+    joint_state_q_ = std::vector<float>(joint_count, 0.0f);
+    joint_state_dq_ = std::vector<float>(joint_count, 0.0f);
+    joint_state_tau_ = std::vector<float>(joint_count, 0.0f);
+    motor_cmd_q_ = std::vector<float>(motor_count, 0.0f);
+    motor_cmd_dq_ = std::vector<float>(motor_count, 0.0f);
+    motor_cmd_tau_ = std::vector<float>(motor_count, 0.0f);
+    motor_state_q_ = std::vector<float>(motor_count, 0.0f);
+    motor_state_dq_ = std::vector<float>(motor_count, 0.0f);
+    motor_state_tau_ = std::vector<float>(motor_count, 0.0f);
+    motor_cmd_mode_ = std::vector<float>(motor_count, 0.0f);
+    hold_target_q_ = std::vector<float>(joint_count, 0.0f);
+    velocity_filters_.assign(joint_count, rl_master::filters::MovingAverageFilter(5));
     hold_target_latched_ = false;
 }
 
@@ -482,11 +574,15 @@ void RobotSolver::cacheInstalledJointTauLimitsFromCfg()
 
 void RobotSolver::cacheInstalledMotorTorqueLimitsFromCfg()
 {
-    installed_motor_torque_limits_.assign(installed_joint_names_.size(), 0.0f);
+    installed_motor_torque_limits_.assign(motorSlotCount(), 0.0f);
 
-    for (size_t i = 0; i < installed_joint_names_.size(); ++i)
+    for (size_t i = 0; i < motorSlotCount(); ++i)
     {
-        const std::string &joint_name = installed_joint_names_[i];
+        const std::string &joint_name = installed_motor_names_[i];
+        if (isIgnoredMotorSlotName(joint_name))
+        {
+            continue;
+        }
         const auto it = sim2real_cfg_.robotCfg.motor_torque_limit.find(joint_name);
         if (it == sim2real_cfg_.robotCfg.motor_torque_limit.end())
         {
@@ -499,10 +595,15 @@ void RobotSolver::cacheInstalledMotorTorqueLimitsFromCfg()
 void RobotSolver::initMotorTypes()
 {
     motor_types_.fill(0);
-    const size_t installed_count = installedJointCount();
-    for (size_t i = 0; i < installed_count; ++i)
+    const size_t motor_count = motorSlotCount();
+    for (size_t i = 0; i < motor_count; ++i)
     {
-        if (jointNameInSet(installed_joint_names_[i], {"right_knee_pitch", "left_knee_pitch"}))
+        if (isIgnoredMotorSlotName(installed_motor_names_[i]))
+        {
+            motor_types_[i] = 0;
+            continue;
+        }
+        if (jointNameInSet(installed_motor_names_[i], {"right_knee_pitch", "left_knee_pitch"}))
         {
             motor_types_[i] = 1; // linear motor
         }
@@ -517,8 +618,8 @@ void RobotSolver::getMotorState()
 {
     motor_shm_io_.readFeedback(&motor_feedback_all_);
 
-    const size_t installed_count = installedJointCount();
-    for (size_t i = 0; i < installed_count; ++i)
+    const size_t motor_count = motorSlotCount();
+    for (size_t i = 0; i < motor_count; ++i)
     {
         motor_state_[i].q = motor_feedback_all_[i].io.feedback.feedback_pos;
         motor_state_[i].dq = motor_feedback_all_[i].io.feedback.feedback_speed;
@@ -528,7 +629,12 @@ void RobotSolver::getMotorState()
         motor_state_dq_[i] = motor_state_[i].dq;
         motor_state_tau_[i] = motor_state_[i].tau;
 
-        if (jointNameInSet(installed_joint_names_[i], {"right_hip_pitch", "left_hip_pitch"}))
+        if (isIgnoredMotorSlotName(installed_motor_names_[i]))
+        {
+            continue;
+        }
+
+        if (jointNameInSet(installed_motor_names_[i], {"right_hip_pitch", "left_hip_pitch"}))
         {
             constexpr float kSpeedLimit = 2.7f;
             const float current_speed = std::fabs(motor_state_[i].dq);
@@ -539,7 +645,7 @@ void RobotSolver::getMotorState()
             }
         }
 
-        if (jointNameInSet(installed_joint_names_[i], {"right_knee_pitch", "left_knee_pitch"}))
+        if (jointNameInSet(installed_motor_names_[i], {"right_knee_pitch", "left_knee_pitch"}))
         {
             constexpr float kQMinMm = -0.1f;
             constexpr float kQMaxMm = 60.0f;
@@ -552,12 +658,31 @@ void RobotSolver::getMotorState()
         }
     }
 
-    joint_state_ = motor_state_;
+    std::vector<JointData> raw_joint_state(
+        installedJointCount(),
+        {0.0f, 0.0f, 0.0f, RUN_MODE_CSP, 0.0f, 0.0f});
+    for (size_t motor_idx = 0; motor_idx < motor_count; ++motor_idx)
+    {
+        if (isIgnoredMotorSlotName(installed_motor_names_[motor_idx]))
+        {
+            continue;
+        }
+        const auto joint_it = installed_joint_index_.find(installed_motor_names_[motor_idx]);
+        if (joint_it == installed_joint_index_.end())
+        {
+            throw std::runtime_error(
+                "failed to resolve joint index for motor slot joint name: " +
+                installed_motor_names_[motor_idx]);
+        }
+        raw_joint_state[joint_it->second] = motor_state_[motor_idx];
+    }
+    joint_state_ = raw_joint_state;
+
     const auto &leg_indices = kin_conv_.legGlobalIndices();
     if (!leg_indices.empty())
     {
         scatterJointGroup(
-            kin_conv_.legMotorToJoint(extractJointGroup(motor_state_, leg_indices)),
+            kin_conv_.legMotorToJoint(extractJointGroup(motor_state_, leg_motor_indices_)),
             leg_indices,
             &joint_state_);
     }
@@ -565,7 +690,7 @@ void RobotSolver::getMotorState()
     if (!arm_indices.empty())
     {
         scatterJointGroup(
-            kin_conv_.armMotorToJoint(extractJointGroup(motor_state_, arm_indices)),
+            kin_conv_.armMotorToJoint(extractJointGroup(motor_state_, arm_motor_indices_)),
             arm_indices,
             &joint_state_);
     }
@@ -573,11 +698,11 @@ void RobotSolver::getMotorState()
     if (!waist_indices.empty())
     {
         scatterJointGroup(
-            kin_conv_.waistMotorToJoint(extractJointGroup(motor_state_, waist_indices)),
+            kin_conv_.waistMotorToJoint(extractJointGroup(motor_state_, waist_motor_indices_)),
             waist_indices,
             &joint_state_);
     }
-    for (size_t i = 0; i < installed_count; ++i)
+    for (size_t i = 0; i < installedJointCount(); ++i)
     {
         joint_state_q_[i] = joint_state_[i].q;
         joint_state_dq_[i] = joint_state_[i].dq;
@@ -589,15 +714,33 @@ void RobotSolver::sendMotorCmd()
 {
     motor_target_all_.fill(MotorHandle{});
 
-    const size_t installed_count = installedJointCount();
-    for (size_t i = 0; i < installed_count; ++i)
+    const size_t joint_count = installedJointCount();
+    const size_t motor_count = motorSlotCount();
+    for (size_t i = 0; i < joint_count; ++i)
     {
         joint_cmd_q_[i] = joint_cmd_[i].q;
         joint_cmd_dq_[i] = joint_cmd_[i].dq;
         joint_cmd_tau_[i] = joint_cmd_[i].tau;
     }
 
-    motor_cmd_ = joint_cmd_;
+    motor_cmd_.assign(
+        motor_count,
+        {0.0f, 0.0f, 0.0f, RUN_MODE_CSP, 0.0f, 0.0f});
+    for (size_t motor_idx = 0; motor_idx < motor_count; ++motor_idx)
+    {
+        if (isIgnoredMotorSlotName(installed_motor_names_[motor_idx]))
+        {
+            continue;
+        }
+        const auto joint_it = installed_joint_index_.find(installed_motor_names_[motor_idx]);
+        if (joint_it == installed_joint_index_.end())
+        {
+            throw std::runtime_error(
+                "failed to resolve command joint index for motor slot joint name: " +
+                installed_motor_names_[motor_idx]);
+        }
+        motor_cmd_[motor_idx] = joint_cmd_[joint_it->second];
+    }
     const auto &leg_indices = kin_conv_.legGlobalIndices();
     if (!leg_indices.empty())
     {
@@ -605,7 +748,7 @@ void RobotSolver::sendMotorCmd()
             kin_conv_.legJointToMotor(
                 extractJointGroup(joint_state_, leg_indices),
                 extractJointGroup(joint_cmd_, leg_indices)),
-            leg_indices,
+            leg_motor_indices_,
             &motor_cmd_);
     }
     const auto &arm_indices = kin_conv_.armGlobalIndices();
@@ -615,7 +758,7 @@ void RobotSolver::sendMotorCmd()
             kin_conv_.armJointToMotor(
                 extractJointGroup(joint_state_, arm_indices),
                 extractJointGroup(joint_cmd_, arm_indices)),
-            arm_indices,
+            arm_motor_indices_,
             &motor_cmd_);
     }
     const auto &waist_indices = kin_conv_.waistGlobalIndices();
@@ -625,11 +768,11 @@ void RobotSolver::sendMotorCmd()
             kin_conv_.waistJointToMotor(
                 extractJointGroup(joint_state_, waist_indices),
                 extractJointGroup(joint_cmd_, waist_indices)),
-            waist_indices,
+            waist_motor_indices_,
             &motor_cmd_);
     }
 
-    for (size_t i = 0; i < installed_count; ++i)
+    for (size_t i = 0; i < motor_count; ++i)
     {
         if (i >= installed_motor_torque_limits_.size())
         {
@@ -642,17 +785,30 @@ void RobotSolver::sendMotorCmd()
         }
     }
 
-    for (size_t i = 0; i < installed_count; ++i)
+    for (size_t i = 0; i < motor_count; ++i)
     {
+        if (isIgnoredMotorSlotName(installed_motor_names_[i]))
+        {
+            motor_cmd_mode_[i] = 0.0f;
+            continue;
+        }
+        const auto joint_it = installed_joint_index_.find(installed_motor_names_[i]);
+        if (joint_it == installed_joint_index_.end())
+        {
+            throw std::runtime_error(
+                "failed to resolve joint mode for motor slot joint name: " +
+                installed_motor_names_[i]);
+        }
+        const JointData &joint_cmd = joint_cmd_[joint_it->second];
         motor_target_all_[i].motor_type = motor_types_[i];
         motor_target_all_[i].io.target.target_speed = motor_cmd_[i].dq;
         motor_target_all_[i].io.target.target_pos = motor_cmd_[i].q;
         motor_target_all_[i].io.target.target_torque = motor_cmd_[i].tau;
-        motor_target_all_[i].run_mode = static_cast<uint8_t>(joint_cmd_[i].mode);
-        if (joint_cmd_[i].mode == RUN_MODE_R1)
+        motor_target_all_[i].run_mode = static_cast<uint8_t>(joint_cmd.mode);
+        if (joint_cmd.mode == RUN_MODE_R1)
         {
-            motor_target_all_[i].pd[0] = static_cast<uint8_t>(joint_cmd_[i].kp);
-            motor_target_all_[i].pd[1] = static_cast<uint8_t>(joint_cmd_[i].kd);
+            motor_target_all_[i].pd[0] = static_cast<uint8_t>(joint_cmd.kp);
+            motor_target_all_[i].pd[1] = static_cast<uint8_t>(joint_cmd.kd);
         }
         else
         {
@@ -663,7 +819,7 @@ void RobotSolver::sendMotorCmd()
         motor_cmd_q_[i] = motor_cmd_[i].q;
         motor_cmd_dq_[i] = motor_cmd_[i].dq;
         motor_cmd_tau_[i] = motor_cmd_[i].tau;
-        motor_cmd_mode_[i] = static_cast<float>(joint_cmd_[i].mode);
+        motor_cmd_mode_[i] = static_cast<float>(joint_cmd.mode);
     }
 
     motor_shm_io_.writeTarget(motor_target_all_);
@@ -966,6 +1122,8 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
     appendStringVector(oss, installed_joint_names_);
     oss << ",\"installed_joint_names\":";
     appendStringVector(oss, installed_joint_names_);
+    oss << ",\"installed_motor_order\":";
+    appendStringVector(oss, installed_motor_names_);
     oss << ",\"profiles\":[";
     for (size_t i = 0; i < mode_profile_specs_.size(); ++i)
     {

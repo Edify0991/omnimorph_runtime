@@ -72,6 +72,7 @@ private:
     rl_master::RobotStateData buildControllerStateData();
     bool switchToModeConfig(int mode_id, bool allow_fallback_to_default);
     size_t installedJointCount() const;
+    size_t motorSlotCount() const;
     bool jointBuffersInitialized() const;
 
     std::atomic<bool> run_flag_{true};
@@ -121,6 +122,11 @@ private:
     std::vector<DeployModeProfileSpec> mode_profile_specs_;
     std::vector<std::string> installed_joint_names_;
     std::unordered_map<std::string, size_t> installed_joint_index_;
+    std::vector<std::string> installed_motor_names_;
+    std::unordered_map<std::string, size_t> installed_motor_index_;
+    std::vector<int> leg_motor_indices_;
+    std::vector<int> arm_motor_indices_;
+    std::vector<int> waist_motor_indices_;
     std::vector<float> installed_zero_joint_q_;
     std::vector<float> installed_joint_tau_limits_;
     std::vector<float> installed_motor_torque_limits_;
