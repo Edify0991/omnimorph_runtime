@@ -6,9 +6,10 @@
 #include "rl_master/Knee_Kinematics.h"
 #include "rl_master/rl_cfg.h"
 
-#define LEG_MOTOR_COUNT (12) // 下肢有12个电机
-#define WAIST_MOTOR_COUNT (2) // 腰有2个电机
-#define ARM_MOTOR_COUNT (14) // 上肢有14个电机
+#define LEG_MOTOR_COUNT (12)   // 下肢有12个电机
+#define WAIST_MOTOR_COUNT (2)  // 腰有2个电机
+#define ARM_MOTOR_COUNT (14)   // 上肢有14个电机
+#define TOTAL_MOTOR_COUNT (28) // 全身共28个电机
 
 typedef enum
 {
@@ -88,7 +89,23 @@ enum MotorName
     hip_motor_l_pitch = 8,
     knee_motor_l = 9,
     ankle_motor_ll = 10,
-    ankle_motor_lr = 11
+    ankle_motor_lr = 11,
+    waist_motor_roll = 12,
+    waist_motor_yaw = 13,
+    right_shoulder_motor_pitch = 14,
+    right_shoulder_motor_roll = 15,
+    right_shoulder_motor_yaw = 16,
+    right_elbow_motor_pitch = 17,
+    right_elbow_motor_yaw = 18,
+    right_wrist_motor_pitch = 19,
+    right_wrist_motor_roll = 20,
+    left_shoulder_motor_pitch = 21,
+    left_shoulder_motor_roll = 22,
+    left_shoulder_motor_yaw = 23,
+    left_elbow_motor_pitch = 24,
+    left_elbow_motor_yaw = 25,
+    left_wrist_motor_pitch = 26,
+    left_wrist_motor_roll = 27,
 };
 
 enum AppMode
@@ -99,39 +116,62 @@ enum AppMode
     APP_MODE_POS_TOR,
 };
 
-// 运动学的方向和电机的方向已经保证一致，这里是urdf方向相对于运动学方向的关系
-static constexpr std::array<int, LEG_MOTOR_COUNT> JOINT_DIR = {
+// URDF 方向相对于电机/运动学方向的关系
+static constexpr std::array<int, LEG_MOTOR_COUNT> LEG_JOINT_DIR = {
     -1, +1, -1, +1, +1, -1, // right leg
     +1, -1, +1, +1, +1, +1  // left leg
 };
-// // 运动学的方向和电机的方向已经保证一致，这里是urdf方向相对于运动学方向的关系
-// static constexpr std::array<int, LEG_MOTOR_COUNT> JOINT_DIR = {
-//     -1, +1, +1, +1, +1, -1,   // right leg
-//     +1, -1, -1, +1, +1, +1    // left leg
-// };
 
-static constexpr std::array<float, LEG_MOTOR_COUNT> MOTOR_TORQUE_LIMIT = {
-    150,
-    150,
-    150,
-    2500,
-    100,
-    100,
-    150,
-    150,
-    150,
-    2500,
-    100,
-    100,
+static constexpr std::array<int, WAIST_MOTOR_COUNT> WAIST_JOINT_DIR = {
+    +1, +1
 };
 
-static constexpr std::array<float, LEG_MOTOR_COUNT> MOTOR_POS_LIMIT = {
-    0.25, 1.2, 1.2, 50, 0.64, 0.64,
-    0.25, 1.2, 1.2, 50, 0.64, 0.64};
+static constexpr std::array<int, ARM_MOTOR_COUNT> ARM_JOINT_DIR = {
+    +1, -1, -1, +1, -1, +1, +1, // right arm
+    -1, +1, -1, -1, -1, +1, -1  // left arm
+};
 
-static constexpr std::array<float, LEG_MOTOR_COUNT> MOTOR_MIXED_LIMIT = {
-    0.15, 0.2, 0.55, 50, 0.64, 0.64,
-    0.15, 0.2, 0.55, 50, 0.64, 0.64};
+static constexpr std::array<float, LEG_MOTOR_COUNT> LEG_MOTOR_TORQUE_LIMIT = {
+    150, 150, 150, 2500, 100, 100, // right leg motors
+    150, 150, 150, 2500, 100, 100  // left leg motors
+};
+
+static constexpr std::array<float, WAIST_MOTOR_COUNT> WAIST_MOTOR_TORQUE_LIMIT = {
+    150, 100
+};
+
+static constexpr std::array<float, ARM_MOTOR_COUNT> ARM_MOTOR_TORQUE_LIMIT = {
+    90, 90, 60, 60, 36, 36, 36,  // right arm
+    90, 90, 60, 60, 36, 36, 36   // left arm
+};
+
+static constexpr std::array<float, LEG_MOTOR_COUNT> LEG_MOTOR_POS_LIMIT = {
+    0.25, 1.2, 1.2, 50, 0.64, 0.64, // right leg motors
+    0.25, 1.2, 1.2, 50, 0.64, 0.64  // left leg motors
+};
+
+static constexpr std::array<float, WAIST_MOTOR_COUNT> WAIST_MOTOR_POS_LIMIT = {
+    0.2617, 0.7853
+};
+
+static constexpr std::array<float, ARM_MOTOR_COUNT> ARM_MOTOR_POS_LIMIT = {
+    1.0467, 2.2689, 2.0943, 1.8325, 2.0943, 1.2217, 1.2217, // right arm
+    1.0467, 2.2689, 2.0943, 1.8325, 2.0943, 1.2217, 1.2217  // left arm
+};
+
+static constexpr std::array<float, LEG_MOTOR_COUNT> LEG_MOTOR_MIXED_LIMIT = {
+    0.15, 0.2, 0.55, 50, 0.64, 0.64, // right leg motors
+    0.15, 0.2, 0.55, 50, 0.64, 0.64  // left leg motors
+};
+
+static constexpr std::array<float, WAIST_MOTOR_COUNT> WAIST_MOTOR_MIXED_LIMIT = {
+    0.2617, 0.7853
+};
+
+static constexpr std::array<float, ARM_MOTOR_COUNT> ARM_MOTOR_MIXED_LIMIT = {
+    3.1415, 2.2689, 2.0943, 1.8325, 2.0943, 1.2217, 1.2217, // right arm
+    3.1415, 2.2689, 2.0943, 1.8325, 2.0943, 1.2217, 1.2217  // left arm
+};
 
 class KinConv
 {

@@ -109,29 +109,29 @@ std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& jo
             if (JointName(i) == right_hip_roll || JointName(i) == right_hip_yaw || JointName(i) == right_hip_pitch ||
                 JointName(i) == left_hip_roll || JointName(i) == left_hip_yaw || JointName(i) == left_hip_pitch)
             {
-                motor_cmd[i].q = std::clamp<float>(JOINT_DIR[i] * joint_cmd[i].q, -MOTOR_POS_LIMIT[i], MOTOR_POS_LIMIT[i]);
+                motor_cmd[i].q = std::clamp<float>(LEG_JOINT_DIR[i] * joint_cmd[i].q, -LEG_MOTOR_POS_LIMIT[i], LEG_MOTOR_POS_LIMIT[i]);
             }
-            else if (JointName(i) == right_knee || JointName(i) == left_knee)
+            else if (JointName(i) == right_knee_pitch || JointName(i) == left_knee_pitch)
             {
                 // 位置
                 auto [dLineMotorLen, _] = knee_kinematics.Knee_Inverse_Kinematics(joint_cmd[i].q); //单位mm
-                motor_cmd[i].q = std::clamp<float>(JOINT_DIR[i] * dLineMotorLen, 5.0, MOTOR_POS_LIMIT[i]); // 单位mm
+                motor_cmd[i].q = std::clamp<float>(LEG_JOINT_DIR[i] * dLineMotorLen, 5.0, LEG_MOTOR_POS_LIMIT[i]); // 单位mm
             }
             else if (JointName(i) == right_ankle_pitch)
             {
                 // 位置
-                InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(JOINT_DIR[i] * joint_cmd[i].q, JOINT_DIR[i+1] * joint_cmd[i+1].q, false);
+                InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_JOINT_DIR[i+1] * joint_cmd[i+1].q, false);
                 Eigen::Vector2f motorAngles = inverseResult.THETA; // Motor angles (theta)
-                motor_cmd[i].q = std::clamp<float>(motorAngles[0], -MOTOR_POS_LIMIT[i], MOTOR_POS_LIMIT[i]);
-                motor_cmd[i+1].q = std::clamp<float>(-motorAngles[1], -MOTOR_POS_LIMIT[i+1], MOTOR_POS_LIMIT[i+1]);
+                motor_cmd[i].q = std::clamp<float>(motorAngles[0], -LEG_MOTOR_POS_LIMIT[i], LEG_MOTOR_POS_LIMIT[i]);
+                motor_cmd[i+1].q = std::clamp<float>(-motorAngles[1], -LEG_MOTOR_POS_LIMIT[i+1], LEG_MOTOR_POS_LIMIT[i+1]);
             }
             else if (JointName(i) == left_ankle_pitch)
             {
                 // 位置
-                InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(JOINT_DIR[i] * joint_cmd[i].q, JOINT_DIR[i+1] * joint_cmd[i+1].q, true);
+                InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_JOINT_DIR[i+1] * joint_cmd[i+1].q, true);
                 Eigen::Vector2f motorAngles = inverseResult.THETA; // Motor angles (theta)
-                motor_cmd[i].q = std::clamp<float>(-motorAngles[0], -MOTOR_POS_LIMIT[i], MOTOR_POS_LIMIT[i]);
-                motor_cmd[i+1].q = std::clamp<float>(motorAngles[1], -MOTOR_POS_LIMIT[i+1], MOTOR_POS_LIMIT[i+1]);
+                motor_cmd[i].q = std::clamp<float>(-motorAngles[0], -LEG_MOTOR_POS_LIMIT[i], LEG_MOTOR_POS_LIMIT[i]);
+                motor_cmd[i+1].q = std::clamp<float>(motorAngles[1], -LEG_MOTOR_POS_LIMIT[i+1], LEG_MOTOR_POS_LIMIT[i+1]);
                 // std::cout << joint_cmd[i].q <<  "  legJointToMotor left ankle motor_cmd[" << i << "]: q:" << motor_cmd[i].q << ", motor_cmd[" << i+1 << "]: q:" << motor_cmd[i+1].q << std::endl;
             }
         }
@@ -141,18 +141,18 @@ std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& jo
             if (JointName(i) == right_hip_roll || JointName(i) == right_hip_yaw || JointName(i) == right_hip_pitch ||
                 JointName(i) == left_hip_roll || JointName(i) == left_hip_yaw || JointName(i) == left_hip_pitch)
             {
-                motor_cmd[i].q = std::clamp<float>(JOINT_DIR[i] * joint_cmd[i].q, -MOTOR_MIXED_LIMIT[i], MOTOR_MIXED_LIMIT[i]);
+                motor_cmd[i].q = std::clamp<float>(LEG_JOINT_DIR[i] * joint_cmd[i].q, -LEG_MOTOR_MIXED_LIMIT[i], LEG_MOTOR_MIXED_LIMIT[i]);
             }
-            else if (JointName(i) == right_knee || JointName(i) == left_knee)
+            else if (JointName(i) == right_knee_pitch || JointName(i) == left_knee_pitch)
             {
                 // 位置
                 auto [dLineMotorLen, _] = knee_kinematics.Knee_Inverse_Kinematics(joint_cmd[i].q); //单位mm
-                motor_cmd[i].q = JOINT_DIR[i] * dLineMotorLen; // 单位mm
+                motor_cmd[i].q = LEG_JOINT_DIR[i] * dLineMotorLen; // 单位mm
             }
             else if (JointName(i) == right_ankle_pitch)
             {
                 // 位置
-                InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(JOINT_DIR[i] * joint_cmd[i].q, JOINT_DIR[i+1] * joint_cmd[i+1].q, false);
+                InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_JOINT_DIR[i+1] * joint_cmd[i+1].q, false);
                 Eigen::Vector2f motorAngles = inverseResult.THETA; // Motor angles (theta)
                 motor_cmd[i].q = motorAngles[0];
                 motor_cmd[i+1].q = -motorAngles[1];
@@ -160,7 +160,7 @@ std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& jo
             else if (JointName(i) == left_ankle_pitch)
             {
                 // 位置
-                InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(JOINT_DIR[i] * joint_cmd[i].q, JOINT_DIR[i+1] * joint_cmd[i+1].q, true);
+                InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_JOINT_DIR[i+1] * joint_cmd[i+1].q, true);
                 Eigen::Vector2f motorAngles = inverseResult.THETA; // Motor angles (theta)
                 motor_cmd[i].q = -motorAngles[0];
                 motor_cmd[i+1].q = motorAngles[1];
@@ -174,47 +174,47 @@ std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& jo
                 JointName(i) == left_hip_roll || JointName(i) == left_hip_yaw || JointName(i) == left_hip_pitch)
             {
                 // std::cout << "joint_cmd[i].tau:" << joint_cmd[i].tau << std::endl;
-                motor_cmd[i].tau = std::clamp(JOINT_DIR[i] * joint_cmd[i].tau, -MOTOR_TORQUE_LIMIT[i], MOTOR_TORQUE_LIMIT[i]); 
+                motor_cmd[i].tau = std::clamp(LEG_JOINT_DIR[i] * joint_cmd[i].tau, -LEG_MOTOR_TORQUE_LIMIT[i], LEG_MOTOR_TORQUE_LIMIT[i]); 
             }
-            else if (JointName(i) == right_knee || JointName(i) == left_knee)
+            else if (JointName(i) == right_knee_pitch || JointName(i) == left_knee_pitch)
             {
                 // auto [J_joint2motor, J_motor2joint] = knee_kinematics.Knee_Velocity_Jacobi(joint_state[i].q); //单位mm/rad 和 rad/mm
                 auto [dLineMotorLen, lineMotor_len] = knee_kinematics.Knee_Inverse_Kinematics(joint_state[i].q);     
                 auto [J_joint2motor, J_motor2joint] = knee_kinematics.Knee_Velocity_Jacobi_Analytical(dLineMotorLen);
-                motor_cmd[i].tau = std::clamp(JOINT_DIR[i] * joint_cmd[i].tau / J_joint2motor * 1000, -MOTOR_TORQUE_LIMIT[i], MOTOR_TORQUE_LIMIT[i]); // 转换为 N
+                motor_cmd[i].tau = std::clamp(LEG_JOINT_DIR[i] * joint_cmd[i].tau / J_joint2motor * 1000, -LEG_MOTOR_TORQUE_LIMIT[i], LEG_MOTOR_TORQUE_LIMIT[i]); // 转换为 N
             }
             else if (JointName(i) == right_ankle_pitch)
             {
                 std::pair<float, float> ankle_joint_q_left_pair = {
-                    JOINT_DIR[i+6] * joint_state[i+6].q, 
-                    JOINT_DIR[i+7] * joint_state[i+7].q
+                    LEG_JOINT_DIR[i+6] * joint_state[i+6].q, 
+                    LEG_JOINT_DIR[i+7] * joint_state[i+7].q
                 };
                 std::pair<float, float> ankle_joint_dq_left_pair = {
-                    JOINT_DIR[i+6] * joint_state[i+6].dq, 
-                    JOINT_DIR[i+7] * joint_state[i+7].dq
+                    LEG_JOINT_DIR[i+6] * joint_state[i+6].dq, 
+                    LEG_JOINT_DIR[i+7] * joint_state[i+7].dq
                 };
                 std::pair<float, float> ankle_joint_tau_left_pair = {
-                    JOINT_DIR[i+6] * joint_cmd[i+6].tau, 
-                    JOINT_DIR[i+7] * joint_cmd[i+7].tau
+                    LEG_JOINT_DIR[i+6] * joint_cmd[i+6].tau, 
+                    LEG_JOINT_DIR[i+7] * joint_cmd[i+7].tau
                 };
                 std::pair<float, float> ankle_joint_q_right_pair = {
-                    JOINT_DIR[i] * joint_state[i].q, 
-                    JOINT_DIR[i+1] * joint_state[i+1].q
+                    LEG_JOINT_DIR[i] * joint_state[i].q, 
+                    LEG_JOINT_DIR[i+1] * joint_state[i+1].q
                 };
                 std::pair<float, float> ankle_joint_dq_right_pair = {
-                    JOINT_DIR[i] * joint_state[i].dq, 
-                    JOINT_DIR[i+1] * joint_state[i+1].dq
+                    LEG_JOINT_DIR[i] * joint_state[i].dq, 
+                    LEG_JOINT_DIR[i+1] * joint_state[i+1].dq
                 };
                 std::pair<float, float> ankle_joint_tau_right_pair = {
-                    JOINT_DIR[i] * joint_cmd[i].tau, 
-                    JOINT_DIR[i+1] * joint_cmd[i+1].tau
+                    LEG_JOINT_DIR[i] * joint_cmd[i].tau, 
+                    LEG_JOINT_DIR[i+1] * joint_cmd[i+1].tau
                 };
                 auto [left_motor_q, right_motor_q, left_motor_dq, right_motor_dq, left_motor_tau, right_motor_tau] = ankle_kinematics.getDecoupleQVT(ankle_joint_q_left_pair, ankle_joint_dq_left_pair, ankle_joint_tau_left_pair,
                                                 ankle_joint_q_right_pair, ankle_joint_dq_right_pair, ankle_joint_tau_right_pair);
-                motor_cmd[i].tau = std::clamp<float>(right_motor_tau[0], -MOTOR_TORQUE_LIMIT[i], MOTOR_TORQUE_LIMIT[i]);
-                motor_cmd[i+1].tau = std::clamp<float>(-right_motor_tau[1], -MOTOR_TORQUE_LIMIT[i+1], MOTOR_TORQUE_LIMIT[i+1]);
-                motor_cmd[i+6].tau = std::clamp<float>(-left_motor_tau[0], -MOTOR_TORQUE_LIMIT[i+6], MOTOR_TORQUE_LIMIT[i+6]);
-                motor_cmd[i+7].tau = std::clamp<float>(left_motor_tau[1], -MOTOR_TORQUE_LIMIT[i+7], MOTOR_TORQUE_LIMIT[i+7]);
+                motor_cmd[i].tau = std::clamp<float>(right_motor_tau[0], -LEG_MOTOR_TORQUE_LIMIT[i], LEG_MOTOR_TORQUE_LIMIT[i]);
+                motor_cmd[i+1].tau = std::clamp<float>(-right_motor_tau[1], -LEG_MOTOR_TORQUE_LIMIT[i+1], LEG_MOTOR_TORQUE_LIMIT[i+1]);
+                motor_cmd[i+6].tau = std::clamp<float>(-left_motor_tau[0], -LEG_MOTOR_TORQUE_LIMIT[i+6], LEG_MOTOR_TORQUE_LIMIT[i+6]);
+                motor_cmd[i+7].tau = std::clamp<float>(left_motor_tau[1], -LEG_MOTOR_TORQUE_LIMIT[i+7], LEG_MOTOR_TORQUE_LIMIT[i+7]);
             }
         }
     }
@@ -235,22 +235,22 @@ std::vector<JointData> KinConv::legMotorToJoint(const std::vector<JointData>& mo
         if (MotorName(i) == hip_motor_r_roll || MotorName(i) == hip_motor_r_yaw || MotorName(i) == hip_motor_r_pitch ||
             MotorName(i) == hip_motor_l_roll || MotorName(i) == hip_motor_l_yaw || MotorName(i) == hip_motor_l_pitch)
         {
-            joint_state[i].q   = JOINT_DIR[i] * motor_state[i].q;
-            joint_state[i].dq  = JOINT_DIR[i] * motor_state[i].dq;
-            joint_state[i].tau = JOINT_DIR[i] * motor_state[i].tau;
+            joint_state[i].q   = LEG_JOINT_DIR[i] * motor_state[i].q;
+            joint_state[i].dq  = LEG_JOINT_DIR[i] * motor_state[i].dq;
+            joint_state[i].tau = LEG_JOINT_DIR[i] * motor_state[i].tau;
         }
         else if (MotorName(i) == knee_motor_r || MotorName(i) == knee_motor_l)
         {
             // 位置
             auto [dAlpha_rad, dAlpha_angle, _ ] = knee_kinematics.Knee_Forward_Kinematics(motor_state[i].q); //单位rad
-            joint_state[i].q = JOINT_DIR[i] * dAlpha_rad;
+            joint_state[i].q = LEG_JOINT_DIR[i] * dAlpha_rad;
             // 速度
             // auto [J_joint2motor, J_motor2joint] = knee_kinematics.Knee_Velocity_Jacobi(joint_state[i].q); //单位mm/rad 和 rad/mm
             auto [dLineMotorLen, lineMotor_len] = knee_kinematics.Knee_Inverse_Kinematics(joint_state[i].q);     
             auto [J_joint2motor, J_motor2joint] = knee_kinematics.Knee_Velocity_Jacobi_Analytical(dLineMotorLen);
-            joint_state[i].dq  = JOINT_DIR[i] * motor_state[i].dq * J_motor2joint; // rad/s
+            joint_state[i].dq  = LEG_JOINT_DIR[i] * motor_state[i].dq * J_motor2joint; // rad/s
             // 力矩
-            joint_state[i].tau = JOINT_DIR[i] * motor_state[i].tau / J_motor2joint / 1000; // N
+            joint_state[i].tau = LEG_JOINT_DIR[i] * motor_state[i].tau / J_motor2joint / 1000; // N
         }
         else if (MotorName(i) == ankle_motor_rl)
         {
@@ -281,18 +281,18 @@ std::vector<JointData> KinConv::legMotorToJoint(const std::vector<JointData>& mo
 
             auto [ankle_joint_q_left, ankle_joint_q_right, ankle_joint_dq_left, ankle_joint_dq_right, ankle_joint_tau_left, ankle_joint_tau_right] = ankle_kinematics.getForwardQVT(ankle_motor_q_left_pair, ankle_motor_dq_left_pair, ankle_motor_tau_left_pair,
                                             ankle_motor_q_right_pair, ankle_motor_dq_right_pair, ankle_motor_tau_right_pair);
-            joint_state[i].q   = JOINT_DIR[i] * ankle_joint_q_right[0];
-            joint_state[i+1].q = JOINT_DIR[i+1] * ankle_joint_q_right[1];
-            joint_state[i].dq  = JOINT_DIR[i] * ankle_joint_dq_right[0];
-            joint_state[i+1].dq = JOINT_DIR[i+1] * ankle_joint_dq_right[1];
-            joint_state[i].tau = JOINT_DIR[i] * ankle_joint_tau_right[0];
-            joint_state[i+1].tau = JOINT_DIR[i+1] * ankle_joint_tau_right[1];
-            joint_state[i+6].q = JOINT_DIR[i+6] * ankle_joint_q_left[0];
-            joint_state[i+7].q = JOINT_DIR[i+7] * ankle_joint_q_left[1];
-            joint_state[i+6].dq  = JOINT_DIR[i+6] * ankle_joint_dq_left[0];
-            joint_state[i+7].dq = JOINT_DIR[i+7] * ankle_joint_dq_left[1];
-            joint_state[i+6].tau = JOINT_DIR[i+6] * ankle_joint_tau_left[0];
-            joint_state[i+7].tau = JOINT_DIR[i+7] * ankle_joint_tau_left[1];
+            joint_state[i].q   = LEG_JOINT_DIR[i] * ankle_joint_q_right[0];
+            joint_state[i+1].q = LEG_JOINT_DIR[i+1] * ankle_joint_q_right[1];
+            joint_state[i].dq  = LEG_JOINT_DIR[i] * ankle_joint_dq_right[0];
+            joint_state[i+1].dq = LEG_JOINT_DIR[i+1] * ankle_joint_dq_right[1];
+            joint_state[i].tau = LEG_JOINT_DIR[i] * ankle_joint_tau_right[0];
+            joint_state[i+1].tau = LEG_JOINT_DIR[i+1] * ankle_joint_tau_right[1];
+            joint_state[i+6].q = LEG_JOINT_DIR[i+6] * ankle_joint_q_left[0];
+            joint_state[i+7].q = LEG_JOINT_DIR[i+7] * ankle_joint_q_left[1];
+            joint_state[i+6].dq  = LEG_JOINT_DIR[i+6] * ankle_joint_dq_left[0];
+            joint_state[i+7].dq = LEG_JOINT_DIR[i+7] * ankle_joint_dq_left[1];
+            joint_state[i+6].tau = LEG_JOINT_DIR[i+6] * ankle_joint_tau_left[0];
+            joint_state[i+7].tau = LEG_JOINT_DIR[i+7] * ankle_joint_tau_left[1];
         }
     }
 
