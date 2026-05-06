@@ -304,6 +304,15 @@ install(DIRECTORY config docs
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  scripts/humanoid_ops_gui.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY scripts/humanoid_ops_console
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(EXPORT export_rl_master
   DESTINATION share/${PROJECT_NAME}/cmake
 )
