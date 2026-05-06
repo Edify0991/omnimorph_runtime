@@ -42,6 +42,12 @@ struct MotorPD
     int Kd;
 };
 
+struct MotorLimitRange
+{
+    float min;
+    float max;
+};
+
 // joint name and number: the order is consistent with the observed order of reinforcement learning
 enum JointName
 {
@@ -145,33 +151,33 @@ static constexpr std::array<float, ARM_MOTOR_COUNT> ARM_MOTOR_TORQUE_LIMIT = {
     90, 90, 60, 60, 36, 36, 36   // left arm
 };
 
-static constexpr std::array<float, LEG_MOTOR_COUNT> LEG_MOTOR_POS_LIMIT = {
-    0.25, 1.2, 1.2, 50, 0.64, 0.64, // right leg motors
-    0.25, 1.2, 1.2, 50, 0.64, 0.64  // left leg motors
-};
+static constexpr std::array<MotorLimitRange, LEG_MOTOR_COUNT> LEG_MOTOR_POS_LIMIT = {{
+    {-0.5233f, 0.1396f}, {-0.5233f, 0.5233f}, {-0.7850f, 1.256f}, {5.0f, 50.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}, // right leg motors
+    {-0.1396f, 0.5233f}, {-0.5233f, 0.5233f}, {-1.256f, 0.7850f}, {5.0f, 50.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}  // left leg motors
+}};
 
-static constexpr std::array<float, WAIST_MOTOR_COUNT> WAIST_MOTOR_POS_LIMIT = {
-    0.2617, 0.7853
-};
+static constexpr std::array<MotorLimitRange, WAIST_MOTOR_COUNT> WAIST_MOTOR_POS_LIMIT = {{
+    {-0.2617f, 0.2617f}, {-0.7853f, 0.7853f}
+}};
 
-static constexpr std::array<float, ARM_MOTOR_COUNT> ARM_MOTOR_POS_LIMIT = {
-    1.0467, 2.2689, 2.0943, 1.8325, 2.0943, 1.2217, 1.2217, // right arm
-    1.0467, 2.2689, 2.0943, 1.8325, 2.0943, 1.2217, 1.2217  // left arm
-};
+static constexpr std::array<MotorLimitRange, ARM_MOTOR_COUNT> ARM_MOTOR_POS_LIMIT = {{
+    {-1.0467f, 3.1415f}, {-2.2689f, 0.0872f}, {-2.0943f, 2.0943f}, {0.0f, 1.8325f}, {-2.0943f, 2.0943f}, {-1.2217f, 1.2217f}, {-1.2217f, 1.2217f}, // right arm
+    {-3.1415f, 1.0467f}, {-0.0872f, 2.2689f}, {-2.0943f, 2.0943f}, {-1.8325f, 0.0f}, {-2.0943f, 2.0943f}, {-1.2217f, 1.2217f}, {-1.2217f, 1.2217f}  // left arm
+}};
 
-static constexpr std::array<float, LEG_MOTOR_COUNT> LEG_MOTOR_MIXED_LIMIT = {
-    0.15, 0.2, 0.55, 50, 0.64, 0.64, // right leg motors
-    0.15, 0.2, 0.55, 50, 0.64, 0.64  // left leg motors
-};
+static constexpr std::array<MotorLimitRange, LEG_MOTOR_COUNT> LEG_MOTOR_MIXED_LIMIT = {{
+    {-0.5233f, 0.1396f}, {-0.5233f, 0.5233f}, {-0.7850f, 1.256f}, {5.0f, 50.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}, // right leg motors
+    {-0.1396f, 0.5233f}, {-0.5233f, 0.5233f}, {-1.256f, 0.7850f}, {5.0f, 50.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}  // left leg motors
+}};
 
-static constexpr std::array<float, WAIST_MOTOR_COUNT> WAIST_MOTOR_MIXED_LIMIT = {
-    0.2617, 0.7853
-};
+static constexpr std::array<MotorLimitRange, WAIST_MOTOR_COUNT> WAIST_MOTOR_MIXED_LIMIT = {{
+    {-0.2617f, 0.2617f}, {-0.7853f, 0.7853f}
+}};
 
-static constexpr std::array<float, ARM_MOTOR_COUNT> ARM_MOTOR_MIXED_LIMIT = {
-    3.1415, 2.2689, 2.0943, 1.8325, 2.0943, 1.2217, 1.2217, // right arm
-    3.1415, 2.2689, 2.0943, 1.8325, 2.0943, 1.2217, 1.2217  // left arm
-};
+static constexpr std::array<MotorLimitRange, ARM_MOTOR_COUNT> ARM_MOTOR_MIXED_LIMIT = {{
+    {-1.0467f, 3.1415f}, {-2.2689f, 0.0872f}, {-2.0943f, 2.0943f}, {0.0f, 1.8325f}, {-2.0943f, 2.0943f}, {-1.2217f, 1.2217f}, {-1.2217f, 1.2217f}, // right arm
+    {-3.1415f, 1.0467f}, {-0.0872f, 2.2689f}, {-2.0943f, 2.0943f}, {-1.8325f, 0.0f}, {-2.0943f, 2.0943f}, {-1.2217f, 1.2217f}, {-1.2217f, 1.2217f}  // left arm
+}};
 
 class KinConv
 {

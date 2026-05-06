@@ -2,6 +2,14 @@
 
 #include <unordered_map>
 
+namespace
+{
+float clampToRange(float value, const MotorLimitRange &limit)
+{
+    return std::clamp(value, limit.min, limit.max);
+}
+}
+
 KinConv::KinConv() {}
 
 KinConv::~KinConv() {}
@@ -109,29 +117,29 @@ std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& jo
             if (JointName(i) == right_hip_roll || JointName(i) == right_hip_yaw || JointName(i) == right_hip_pitch ||
                 JointName(i) == left_hip_roll || JointName(i) == left_hip_yaw || JointName(i) == left_hip_pitch)
             {
-                motor_cmd[i].q = std::clamp<float>(LEG_JOINT_DIR[i] * joint_cmd[i].q, -LEG_MOTOR_POS_LIMIT[i], LEG_MOTOR_POS_LIMIT[i]);
+                motor_cmd[i].q = clampToRange(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_MOTOR_POS_LIMIT[i]);
             }
             else if (JointName(i) == right_knee_pitch || JointName(i) == left_knee_pitch)
             {
                 // 位置
                 auto [dLineMotorLen, _] = knee_kinematics.Knee_Inverse_Kinematics(joint_cmd[i].q); //单位mm
-                motor_cmd[i].q = std::clamp<float>(LEG_JOINT_DIR[i] * dLineMotorLen, 5.0, LEG_MOTOR_POS_LIMIT[i]); // 单位mm
+                motor_cmd[i].q = clampToRange(LEG_JOINT_DIR[i] * dLineMotorLen, LEG_MOTOR_POS_LIMIT[i]); // 单位mm
             }
             else if (JointName(i) == right_ankle_pitch)
             {
                 // 位置
                 InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_JOINT_DIR[i+1] * joint_cmd[i+1].q, false);
                 Eigen::Vector2f motorAngles = inverseResult.THETA; // Motor angles (theta)
-                motor_cmd[i].q = std::clamp<float>(motorAngles[0], -LEG_MOTOR_POS_LIMIT[i], LEG_MOTOR_POS_LIMIT[i]);
-                motor_cmd[i+1].q = std::clamp<float>(-motorAngles[1], -LEG_MOTOR_POS_LIMIT[i+1], LEG_MOTOR_POS_LIMIT[i+1]);
+                motor_cmd[i].q = clampToRange(motorAngles[0], LEG_MOTOR_POS_LIMIT[i]);
+                motor_cmd[i+1].q = clampToRange(-motorAngles[1], LEG_MOTOR_POS_LIMIT[i+1]);
             }
             else if (JointName(i) == left_ankle_pitch)
             {
                 // 位置
                 InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_JOINT_DIR[i+1] * joint_cmd[i+1].q, true);
                 Eigen::Vector2f motorAngles = inverseResult.THETA; // Motor angles (theta)
-                motor_cmd[i].q = std::clamp<float>(-motorAngles[0], -LEG_MOTOR_POS_LIMIT[i], LEG_MOTOR_POS_LIMIT[i]);
-                motor_cmd[i+1].q = std::clamp<float>(motorAngles[1], -LEG_MOTOR_POS_LIMIT[i+1], LEG_MOTOR_POS_LIMIT[i+1]);
+                motor_cmd[i].q = clampToRange(-motorAngles[0], LEG_MOTOR_POS_LIMIT[i]);
+                motor_cmd[i+1].q = clampToRange(motorAngles[1], LEG_MOTOR_POS_LIMIT[i+1]);
                 // std::cout << joint_cmd[i].q <<  "  legJointToMotor left ankle motor_cmd[" << i << "]: q:" << motor_cmd[i].q << ", motor_cmd[" << i+1 << "]: q:" << motor_cmd[i+1].q << std::endl;
             }
         }
@@ -141,29 +149,29 @@ std::vector<JointData> KinConv::legJointToMotor(const std::vector<JointData>& jo
             if (JointName(i) == right_hip_roll || JointName(i) == right_hip_yaw || JointName(i) == right_hip_pitch ||
                 JointName(i) == left_hip_roll || JointName(i) == left_hip_yaw || JointName(i) == left_hip_pitch)
             {
-                motor_cmd[i].q = std::clamp<float>(LEG_JOINT_DIR[i] * joint_cmd[i].q, -LEG_MOTOR_MIXED_LIMIT[i], LEG_MOTOR_MIXED_LIMIT[i]);
+                motor_cmd[i].q = clampToRange(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_MOTOR_MIXED_LIMIT[i]);
             }
             else if (JointName(i) == right_knee_pitch || JointName(i) == left_knee_pitch)
             {
                 // 位置
                 auto [dLineMotorLen, _] = knee_kinematics.Knee_Inverse_Kinematics(joint_cmd[i].q); //单位mm
-                motor_cmd[i].q = LEG_JOINT_DIR[i] * dLineMotorLen; // 单位mm
+                motor_cmd[i].q = clampToRange(LEG_JOINT_DIR[i] * dLineMotorLen, LEG_MOTOR_MIXED_LIMIT[i]); // 单位mm
             }
             else if (JointName(i) == right_ankle_pitch)
             {
                 // 位置
                 InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_JOINT_DIR[i+1] * joint_cmd[i+1].q, false);
                 Eigen::Vector2f motorAngles = inverseResult.THETA; // Motor angles (theta)
-                motor_cmd[i].q = motorAngles[0];
-                motor_cmd[i+1].q = -motorAngles[1];
+                motor_cmd[i].q = clampToRange(motorAngles[0], LEG_MOTOR_MIXED_LIMIT[i]);
+                motor_cmd[i+1].q = clampToRange(-motorAngles[1], LEG_MOTOR_MIXED_LIMIT[i+1]);
             }
             else if (JointName(i) == left_ankle_pitch)
             {
                 // 位置
                 InsKinematicsResult inverseResult = ankle_kinematics.Ankle_inverse_Kinematics(LEG_JOINT_DIR[i] * joint_cmd[i].q, LEG_JOINT_DIR[i+1] * joint_cmd[i+1].q, true);
                 Eigen::Vector2f motorAngles = inverseResult.THETA; // Motor angles (theta)
-                motor_cmd[i].q = -motorAngles[0];
-                motor_cmd[i+1].q = motorAngles[1];
+                motor_cmd[i].q = clampToRange(-motorAngles[0], LEG_MOTOR_MIXED_LIMIT[i]);
+                motor_cmd[i+1].q = clampToRange(motorAngles[1], LEG_MOTOR_MIXED_LIMIT[i+1]);
                 // std::cout << joint_cmd[i].q <<  "  legJointToMotor left ankle motor_cmd[" << i << "]: q:" << motor_cmd[i].q << ", motor_cmd[" << i+1 << "]: q:" << motor_cmd[i+1].q << std::endl;
             }
         }
