@@ -303,8 +303,8 @@ amp_mjlab_jc01_full_body:
   state_telemetry_hz: 50.0
   startup_completion_action: hold
   zeroing_duration_s: 5.0
-  zeroing_position_tolerance: 0.1
-  zeroing_velocity_tolerance: 0.8
+  zeroing_position_tolerance: 100
+  zeroing_velocity_tolerance: 100
   control_mode: sim2real
   action_filter: 0.0
   robot:

@@ -132,7 +132,7 @@ elseif(TARGET SymEngine::symengine)
 endif()
 message(STATUS "rl_master: SymEngine target='${RL_MASTER_SYMENGINE_TARGET}'")
 
-set(_rl_master_runtime_rpath_dirs "")
+set(_rl_master_runtime_rpath_dirs "$ORIGIN")
 if(ONNXRUNTIME_LIBRARY)
   get_filename_component(_onnxruntime_lib_dir "${ONNXRUNTIME_LIBRARY}" DIRECTORY)
   if(_onnxruntime_lib_dir)

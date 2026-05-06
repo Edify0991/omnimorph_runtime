@@ -7,6 +7,8 @@
 #include "rl_master/rl_cfg.h"
 
 #define LEG_MOTOR_COUNT (12) // 下肢有12个电机
+#define WAIST_MOTOR_COUNT (2) // 腰有2个电机
+#define ARM_MOTOR_COUNT (14) // 上肢有14个电机
 
 typedef enum
 {
@@ -45,15 +47,31 @@ enum JointName
     right_hip_roll = 0,
     right_hip_yaw = 1,
     right_hip_pitch = 2,
-    right_knee = 3,
+    right_knee_pitch = 3,
     right_ankle_pitch = 4,
     right_ankle_roll = 5,
     left_hip_roll = 6,
     left_hip_yaw = 7,
     left_hip_pitch = 8,
-    left_knee = 9,
+    left_knee_pitch = 9,
     left_ankle_pitch = 10,
-    left_ankle_roll = 11
+    left_ankle_roll = 11,
+    waist_roll = 12,
+    waist_yaw = 13,
+    right_shoulder_pitch = 14,
+    right_shoulder_roll = 15,
+    right_shoulder_yaw = 16,
+    right_elbow_pitch = 17,
+    right_elbow_yaw = 18,
+    right_wrist_pitch = 19,
+    right_wrist_roll = 20,
+    left_shoulder_pitch = 21,
+    left_shoulder_roll = 22,
+    left_shoulder_yaw = 23,
+    left_elbow_pitch = 24,
+    left_elbow_yaw = 25,
+    left_wrist_pitch = 26,
+    left_wrist_roll = 27,
 };
 
 // motor name and number: the order is consistent with the actual ID of the motor

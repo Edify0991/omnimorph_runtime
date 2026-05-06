@@ -2,7 +2,7 @@
 # Keep the default rl_cfg.yaml on the current 12-DoF leg setup; use this root
 # when the full-body MuJoCo/real joint interface is ready.
 
-humanoid_rl_root_dir: /home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master
+humanoid_rl_root_dir: /home/nvidia/Documents/jc01_deploy/src/humanoid_rl_controller/rl_master
 legged_gym_root_dir: /path/to/legged_gym_root_dir
 robot_global_joint_order:
 - right_hip_roll

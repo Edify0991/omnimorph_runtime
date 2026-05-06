@@ -6,3 +6,19 @@ ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}
 
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/opt/ros/humble/lib:$LD_LIBRARY_PATH
+
+sudo bash -c '
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export ROS_DOMAIN_ID=0
+./install/rl_master/lib/rl_master/RL_solver --mode-id 0
+'
+
+sudo bash -c '
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export ROS_DOMAIN_ID=0
+./install/imu_communication_yesense/lib/imu_communication_yesense/imu_communication_yesense
+'
