@@ -306,6 +306,7 @@ install(DIRECTORY config docs
 
 install(PROGRAMS
   scripts/humanoid_ops_gui.py
+  scripts/realsense_camera_bridge.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

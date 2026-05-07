@@ -47,7 +47,7 @@ amp_mjlab_jc01_full_body:
     left_ankle_pitch: 8.055
     left_ankle_roll: 8.055
     waist_roll: 23.005
-    waist_yaw: 5.807
+    waist_yaw: 10.807
     left_shoulder_pitch: 4.027
     left_shoulder_roll: 4.027
     left_shoulder_yaw: 3.285
@@ -280,7 +280,15 @@ amp_mjlab_jc01_full_body:
       quat_representation: quat
       body_quat_frame: world
       body_orientation_representation: rot6
-  external_observations: []
+  # This feature already enters the runtime external observation cache.
+  # It only becomes part of the ONNX input when the observation manifest or
+  # policy_io.onnx_inputs explicitly consumes "camera_features".
+  external_observations:
+    - name: camera_features
+      dim: 8
+      required: false
+      topic: /humanoid/camera/features
+      message_type: float32_multi_array
   onnx_intra_threads: 1
   onnx_inter_threads: 1
   policy_io:
@@ -295,6 +303,7 @@ amp_mjlab_jc01_full_body:
     required_metadata_keys: []
     expected_metadata: {}
     reset_policy_on_mode_switch: true
+    onnx_inputs: []
     extra_output_names: []
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12

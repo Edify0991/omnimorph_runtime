@@ -1,0 +1,36 @@
+observation_manifest:
+  schema_version: 3
+  profile: "amp_mjlab_jc01_full_body_28dof_camera"
+  # Camera-augmented variant of the AMP full-body observation.
+  # One policy frame:
+  #   base_ang_vel(3) + projected_gravity(3) + command(3)
+  #   + joint_pos(28) + joint_vel(28) + last_action(28)
+  #   + camera_features(8) = 101
+  # With obs_stack_N=4 the stacked actor input becomes 404.
+  #
+  # Do not point the current 93-dim AMP ONNX at this manifest.
+  # This manifest is for a camera-conditioned policy that was trained/exported
+  # with the extra 8-dim camera feature tail.
+  terms:
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+    - name: projected_gravity
+      enabled: true
+      count: 3
+    - name: command
+      enabled: true
+      components: [vx, vy, dyaw]
+    - name: joint_pos
+      enabled: true
+      count: 28
+    - name: joint_vel
+      enabled: true
+      count: 28
+    - name: last_action
+      enabled: true
+      count: 28
+    - name: feature
+      enabled: true
+      source: camera_features
+      count: 8

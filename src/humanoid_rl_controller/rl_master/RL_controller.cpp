@@ -913,7 +913,9 @@ bool RL_controller::canHotSwitch(int from_mode, int to_mode) const
         const auto &to_spec = to_cfg.external_observations[i];
         if (from_spec.name != to_spec.name ||
             from_spec.dim != to_spec.dim ||
-            from_spec.required != to_spec.required)
+            from_spec.required != to_spec.required ||
+            from_spec.topic != to_spec.topic ||
+            from_spec.message_type != to_spec.message_type)
         {
             return reject("external_observations contract mismatch");
         }

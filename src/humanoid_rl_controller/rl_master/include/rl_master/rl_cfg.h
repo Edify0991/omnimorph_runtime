@@ -490,6 +490,8 @@ struct ExternalObservationSpec
     std::string name;
     int dim = 0;
     bool required = false;
+    std::string topic;
+    std::string message_type = "float32_multi_array";
 };
 
 struct OnnxInputSpec
@@ -1678,9 +1680,15 @@ public:
                     spec.name = yamlReadOr<std::string>(node, "name", "");
                     spec.dim = yamlReadOr<int>(node, "dim", 0);
                     spec.required = yamlReadOr<bool>(node, "required", false);
+                    spec.topic = yamlReadOr<std::string>(node, "topic", "");
+                    spec.message_type = yamlReadOr<std::string>(node, "message_type", "float32_multi_array");
                     if (spec.name.empty())
                     {
                         continue;
+                    }
+                    if (spec.topic.empty())
+                    {
+                        spec.topic = "/humanoid/external/" + spec.name;
                     }
                     external_observations.push_back(spec);
                 }

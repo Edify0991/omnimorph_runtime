@@ -459,6 +459,15 @@ bool RobotSolver::initialize()
                 this->emitBaseImuSourceSample(ang_vel, quat, rpy, monotonic_time_sec);
             });
         initializeController();
+        dds_bridge_.setExternalObservationFeatureCallback(
+            [this](const std::string &name, const std::vector<float> &values, double monotonic_time_sec) {
+                if (!controller_runtime_.initialized())
+                {
+                    return;
+                }
+                controller_runtime_.controller().setExternalObservationFeature(name, values, monotonic_time_sec);
+            });
+        dds_bridge_.updateExternalObservationSpecs(sim2real_cfg_.external_observations);
     }
     catch (const std::exception &e)
     {
@@ -560,6 +569,7 @@ void RobotSolver::syncRuntimeCfgFromController(bool force)
         sim2real_cfg_.state_telemetry_hz,
     });
     dds_bridge_.updateSourceContract(sim2real_cfg_.source_contract);
+    dds_bridge_.updateExternalObservationSpecs(sim2real_cfg_.external_observations);
 
     std::cout << "[RL_solver] controller runtime synced: mode_id=" << active_mode_id_
               << ", section=" << active_config_section_

@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <unordered_set>
 
 #include "rl_master/KinConv.h"
 #include "rl_master/runtime/realtime_utils.h"
@@ -268,9 +269,14 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
         telemetry_config_ = telemetry_config;
         has_mirrored_state_ = false;
     }
+    {
+        std::lock_guard<std::mutex> lock(external_observation_mutex_);
+        external_observation_subs_.clear();
+    }
     stop_requested_.store(false);
 
     executor_->add_node(node_);
+    configureExternalObservationSubscriptions();
     executor_thread_ = std::thread([this]() { executorLoop(); });
     telemetry_thread_ = std::thread([this]() { telemetryLoop(); });
 }
@@ -301,6 +307,7 @@ void SolverDdsBridge::disconnect()
 
     imu_sub_.reset();
     odom_sub_.reset();
+    external_observation_subs_.clear();
     mode_control_sub_.reset();
     teleop_sub_.reset();
     state_pub_.reset();
@@ -324,6 +331,15 @@ void SolverDdsBridge::updateSourceContract(const SourceContract &source_contract
         source_contract_ = source_contract;
     }
     configureOdomSubscription();
+}
+
+void SolverDdsBridge::updateExternalObservationSpecs(const std::vector<ExternalObservationSpec> &specs)
+{
+    {
+        std::lock_guard<std::mutex> lock(external_observation_mutex_);
+        external_observation_specs_ = specs;
+    }
+    configureExternalObservationSubscriptions();
 }
 
 void SolverDdsBridge::configureOdomSubscription()
@@ -392,6 +408,74 @@ void SolverDdsBridge::configureOdomSubscription()
         });
 }
 
+void SolverDdsBridge::configureExternalObservationSubscriptions()
+{
+    if (!node_)
+    {
+        return;
+    }
+
+    std::vector<ExternalObservationSpec> specs;
+    {
+        std::lock_guard<std::mutex> lock(external_observation_mutex_);
+        specs = external_observation_specs_;
+        external_observation_subs_.clear();
+    }
+
+    std::unordered_set<std::string> seen_names;
+    std::unordered_set<std::string> seen_topics;
+    std::vector<rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr> subs;
+    subs.reserve(specs.size());
+
+    for (const auto &spec : specs)
+    {
+        if (spec.name.empty() || spec.topic.empty())
+        {
+            continue;
+        }
+        if (!seen_names.insert(spec.name).second)
+        {
+            std::cerr << "[SolverDdsBridge] duplicate external observation name ignored: "
+                      << spec.name << std::endl;
+            continue;
+        }
+        if (!seen_topics.insert(spec.topic).second)
+        {
+            std::cerr << "[SolverDdsBridge] duplicate external observation topic ignored: "
+                      << spec.topic << std::endl;
+            continue;
+        }
+        if (normalizeToken(spec.message_type) != "float32_multi_array")
+        {
+            std::cerr << "[SolverDdsBridge] unsupported external observation message_type for "
+                      << spec.name << ": " << spec.message_type << std::endl;
+            continue;
+        }
+
+        const std::string feature_name = spec.name;
+        subs.push_back(node_->create_subscription<std_msgs::msg::Float32MultiArray>(
+            spec.topic,
+            rclcpp::QoS(rclcpp::KeepLast(5)).best_effort(),
+            [this, feature_name](const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
+                std::function<void(const std::string &, const std::vector<float> &, double)> callback;
+                {
+                    std::lock_guard<std::mutex> lock(external_observation_mutex_);
+                    callback = external_observation_callback_;
+                }
+                if (!callback)
+                {
+                    return;
+                }
+                callback(feature_name, msg->data, rl_master::monotonicTimeSec());
+            }));
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(external_observation_mutex_);
+        external_observation_subs_ = std::move(subs);
+    }
+}
+
 void SolverDdsBridge::setImuSampleCallback(
     std::function<void(
         const std::array<float, 3> &ang_vel,
@@ -401,6 +485,16 @@ void SolverDdsBridge::setImuSampleCallback(
 {
     std::lock_guard<std::mutex> lock(imu_mutex_);
     imu_sample_callback_ = std::move(callback);
+}
+
+void SolverDdsBridge::setExternalObservationFeatureCallback(
+    std::function<void(
+        const std::string &name,
+        const std::vector<float> &values,
+        double monotonic_time_sec)> callback)
+{
+    std::lock_guard<std::mutex> lock(external_observation_mutex_);
+    external_observation_callback_ = std::move(callback);
 }
 
 void SolverDdsBridge::executorLoop()

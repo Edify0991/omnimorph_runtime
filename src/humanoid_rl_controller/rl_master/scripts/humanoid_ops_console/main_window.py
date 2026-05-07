@@ -4,11 +4,12 @@ import math
 import time
 
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QImage, QPixmap
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QHBoxLayout,
     QGridLayout,
     QGroupBox,
     QLabel,
@@ -23,6 +24,8 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import numpy as np
+from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray
 
 from .constants import (
@@ -47,6 +50,13 @@ class MainWindow(QMainWindow):
         self.config = config
         self.latest_snapshot = RobotStateSnapshot()
         self.state_message_count = 0
+        self.last_camera_image: QImage | None = None
+        self.last_depth_image: QImage | None = None
+        self.last_camera_rx_time = 0.0
+        self.last_depth_rx_time = 0.0
+        self.last_camera_feature_rx_time = 0.0
+        self.last_camera_interval_s: float | None = None
+        self.last_depth_interval_s: float | None = None
 
         self.setWindowTitle("JC01 Humanoid Ops Console")
         self.resize(1240, 760)
@@ -175,10 +185,18 @@ class MainWindow(QMainWindow):
 
         sensor_page = QWidget()
         sensor_layout = QVBoxLayout(sensor_page)
-        self.camera_placeholder = self._make_placeholder("Camera")
-        self.lidar_placeholder = self._make_placeholder("LiDAR / 3D")
-        sensor_layout.addWidget(self.camera_placeholder)
-        sensor_layout.addWidget(self.lidar_placeholder)
+        preview_row = QHBoxLayout()
+        self.camera_label = self._make_placeholder("Camera")
+        self.depth_label = self._make_placeholder("Depth")
+        preview_row.addWidget(self.camera_label, 1)
+        preview_row.addWidget(self.depth_label, 1)
+        sensor_layout.addLayout(preview_row)
+        self.camera_status = QLabel("camera: waiting")
+        self.depth_status = QLabel("depth: waiting")
+        sensor_layout.addWidget(self.camera_status)
+        sensor_layout.addWidget(self.depth_status)
+        self.camera_feature_status = QLabel("camera_features: waiting")
+        sensor_layout.addWidget(self.camera_feature_status)
         tabs.addTab(sensor_page, "Sensors")
         return tabs
 
@@ -197,8 +215,80 @@ class MainWindow(QMainWindow):
         label.setAlignment(Qt.AlignCenter)
         label.setMinimumHeight(180)
         label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        label.setScaledContents(False)
         label.setStyleSheet("QLabel { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 4px; }")
         return label
+
+    def _set_image_label(self, label: QLabel, image: QImage) -> None:
+        pixmap = QPixmap.fromImage(image)
+        scaled = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        label.setPixmap(scaled)
+
+    def _format_stream_status(self, prefix: str, msg: Image, rx_time: float, interval_s: float | None) -> str:
+        parts = [f"{prefix}: {msg.width}x{msg.height} {msg.encoding}"]
+        if interval_s is not None and interval_s > 1.0e-6:
+            parts.append(f"{(1.0 / interval_s):.1f} Hz")
+        if rx_time > 0.0:
+            parts.append(f"age {max(0.0, time.monotonic() - rx_time):.2f}s")
+        return ", ".join(parts)
+
+    def _refresh_sensor_previews(self) -> None:
+        if self.last_camera_image is not None:
+            self._set_image_label(self.camera_label, self.last_camera_image)
+        if self.last_depth_image is not None:
+            self._set_image_label(self.depth_label, self.last_depth_image)
+
+    def _decode_image_msg(self, msg: Image) -> QImage | None:
+        width = int(msg.width)
+        height = int(msg.height)
+        if width <= 0 or height <= 0:
+            return None
+
+        encoding = msg.encoding.lower()
+        if encoding in {"rgb8", "bgr8"}:
+            arr = np.frombuffer(msg.data, dtype=np.uint8)
+            expected = height * width * 3
+            if arr.size < expected:
+                return None
+            arr = arr[:expected].reshape((height, width, 3))
+            image = QImage(arr.data, width, height, width * 3, QImage.Format_RGB888)
+            if encoding == "bgr8":
+                image = image.rgbSwapped()
+            return image.copy()
+
+        if encoding in {"rgba8", "bgra8"}:
+            arr = np.frombuffer(msg.data, dtype=np.uint8)
+            expected = height * width * 4
+            if arr.size < expected:
+                return None
+            arr = arr[:expected].reshape((height, width, 4))
+            image = QImage(arr.data, width, height, width * 4, QImage.Format_RGBA8888)
+            if encoding == "bgra8":
+                image = image.rgbSwapped()
+            return image.copy()
+
+        if encoding in {"mono8", "8uc1"}:
+            arr = np.frombuffer(msg.data, dtype=np.uint8)
+            expected = height * width
+            if arr.size < expected:
+                return None
+            arr = arr[:expected].reshape((height, width))
+            return QImage(arr.data, width, height, width, QImage.Format_Grayscale8).copy()
+
+        if encoding in {"mono16", "16uc1", "16sc1"}:
+            arr = np.frombuffer(msg.data, dtype=np.uint16)
+            expected = height * width
+            if arr.size < expected:
+                return None
+            arr = arr[:expected].reshape((height, width))
+            max_value = int(arr.max()) if arr.size > 0 else 0
+            if max_value <= 0:
+                scaled = np.zeros((height, width), dtype=np.uint8)
+            else:
+                scaled = np.clip((arr.astype(np.float32) / float(max_value)) * 255.0, 0.0, 255.0).astype(np.uint8)
+            return QImage(scaled.data, width, height, width, QImage.Format_Grayscale8).copy()
+
+        return None
 
     def _make_spin(self, minimum: float, maximum: float, step: float) -> QDoubleSpinBox:
         spin = QDoubleSpinBox()
@@ -253,6 +343,36 @@ class MainWindow(QMainWindow):
         self.plot.push(snapshot, self.joint_selector.currentData() or 0)
         self.twin.set_snapshot(snapshot)
 
+    def on_camera_msg(self, msg: Image) -> None:
+        image = self._decode_image_msg(msg)
+        if image is None:
+            self.camera_status.setText(f"camera: unsupported encoding {msg.encoding}")
+            return
+        now = time.monotonic()
+        self.last_camera_interval_s = now - self.last_camera_rx_time if self.last_camera_rx_time > 0.0 else None
+        self.last_camera_rx_time = now
+        self.last_camera_image = image
+        self._set_image_label(self.camera_label, image)
+        self.camera_status.setText(self._format_stream_status("camera", msg, now, self.last_camera_interval_s))
+
+    def on_depth_msg(self, msg: Image) -> None:
+        image = self._decode_image_msg(msg)
+        if image is None:
+            self.depth_status.setText(f"depth: unsupported encoding {msg.encoding}")
+            return
+        now = time.monotonic()
+        self.last_depth_interval_s = now - self.last_depth_rx_time if self.last_depth_rx_time > 0.0 else None
+        self.last_depth_rx_time = now
+        self.last_depth_image = image
+        self._set_image_label(self.depth_label, image)
+        self.depth_status.setText(self._format_stream_status("depth", msg, now, self.last_depth_interval_s))
+
+    def on_camera_features_msg(self, msg: Float32MultiArray) -> None:
+        self.last_camera_feature_rx_time = time.monotonic()
+        values = list(msg.data)
+        formatted = fmt_vec(values, 3)
+        self.camera_feature_status.setText(f"camera_features[{len(values)}]: {formatted}")
+
     def _refresh_state_labels(self) -> None:
         snapshot = self.latest_snapshot
         self.state_count_label.setText(f"messages: {self.state_message_count}")
@@ -289,3 +409,6 @@ class MainWindow(QMainWindow):
         self.node.publish_teleop(0.0, 0.0, 0.0)
         super().closeEvent(event)
 
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._refresh_sensor_previews()

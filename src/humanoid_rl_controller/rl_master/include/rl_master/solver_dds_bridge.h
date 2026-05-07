@@ -7,7 +7,9 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
@@ -43,11 +45,17 @@ public:
     void disconnect();
     void updateStateTelemetryConfig(const StateTelemetryConfig &telemetry_config);
     void updateSourceContract(const SourceContract &source_contract);
+    void updateExternalObservationSpecs(const std::vector<ExternalObservationSpec> &specs);
     void setImuSampleCallback(
         std::function<void(
             const std::array<float, 3> &ang_vel,
             const std::array<float, 4> &quat,
             const std::array<float, 3> &rpy,
+            double monotonic_time_sec)> callback);
+    void setExternalObservationFeatureCallback(
+        std::function<void(
+            const std::string &name,
+            const std::vector<float> &values,
             double monotonic_time_sec)> callback);
 
     bool readLatestTeleopCommand(rl_master::TeleopCommand *command);
@@ -64,6 +72,7 @@ private:
     void executorLoop();
     void telemetryLoop();
     void configureOdomSubscription();
+    void configureExternalObservationSubscriptions();
 
     rclcpp::Node::SharedPtr node_;
     rclcpp::executors::SingleThreadedExecutor::SharedPtr executor_;
@@ -72,6 +81,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_control_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+    std::vector<rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr> external_observation_subs_;
 
     std::mutex teleop_mutex_;
     rl_master::TeleopCommand latest_teleop_{};
@@ -91,11 +101,17 @@ private:
     bool has_odom_lin_vel_ = false;
     std::string active_odom_topic_;
     SourceContract source_contract_{};
+    std::mutex external_observation_mutex_;
+    std::vector<ExternalObservationSpec> external_observation_specs_;
     std::function<void(
         const std::array<float, 3> &,
         const std::array<float, 4> &,
         const std::array<float, 3> &,
         double)> imu_sample_callback_;
+    std::function<void(
+        const std::string &,
+        const std::vector<float> &,
+        double)> external_observation_callback_;
 
     std::atomic<bool> stop_requested_{false};
     std::thread executor_thread_;
