@@ -1,8 +1,8 @@
 beyondmimic_leg12_strict_walk2:
-  policy_name: beyondmimic_walk1
+  policy_name: beyondmimic_dance
   policy_family: beyondmimic
   policy_adapter: onnx
-  policy_file: policies/beyondmimic_walk1.onnx
+  policy_file: policies/beyondmimic_dance.onnx
   inference_strategy: sync_step
   # For chunked/generative policies, switch to:
   # inference_strategy: chunked_receding
@@ -270,7 +270,7 @@ beyondmimic_leg12_strict_walk2:
     - left_elbow_yaw
     - left_wrist_pitch
     - left_wrist_roll
-  pinocchio_urdf_path: /home/nvidia/Documents/jc01-model/JC01-URDF.urdf
+  pinocchio_urdf_path: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF.urdf
   reference_joint_order:
     - right_hip_roll
     - right_hip_yaw
@@ -337,7 +337,7 @@ beyondmimic_leg12_strict_walk2:
     policy_extra_outputs:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
-      reference_joint_order_metadata_key: joint_names
+      reference_joint_order_metadata_key: command_joint_names
       preserve_reference_joint_order: false
       reference_body_pos_w_key: body_pos_w
       reference_body_quat_w_key: body_quat_w

@@ -526,6 +526,63 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           2,
           true,
           false}},
+        {"gait_phase_sin",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double phase_t, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const int phase_count = std::min(term.count, 2);
+              const double cycle = std::max(1e-6, cfg.gait.gait_cycle > 1.0e-6 ? cfg.gait.gait_cycle : cfg.cycle_time);
+              const double normalized_phase = std::fmod(std::max(0.0, phase_t), cycle) / cycle;
+              const double left_phase =
+                  std::fmod(normalized_phase + static_cast<double>(cfg.gait.gait_phase_offset_l), 1.0);
+              const double right_phase =
+                  std::fmod(normalized_phase + static_cast<double>(cfg.gait.gait_phase_offset_r), 1.0);
+              if (phase_count >= 1)
+              {
+                  out->push_back(static_cast<float>(std::sin(2.0 * M_PI * left_phase)));
+              }
+              if (phase_count >= 2)
+              {
+                  out->push_back(static_cast<float>(std::sin(2.0 * M_PI * right_phase)));
+              }
+          },
+          2,
+          true,
+          false}},
+        {"gait_phase_cos",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double phase_t, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const int phase_count = std::min(term.count, 2);
+              const double cycle = std::max(1e-6, cfg.gait.gait_cycle > 1.0e-6 ? cfg.gait.gait_cycle : cfg.cycle_time);
+              const double normalized_phase = std::fmod(std::max(0.0, phase_t), cycle) / cycle;
+              const double left_phase =
+                  std::fmod(normalized_phase + static_cast<double>(cfg.gait.gait_phase_offset_l), 1.0);
+              const double right_phase =
+                  std::fmod(normalized_phase + static_cast<double>(cfg.gait.gait_phase_offset_r), 1.0);
+              if (phase_count >= 1)
+              {
+                  out->push_back(static_cast<float>(std::cos(2.0 * M_PI * left_phase)));
+              }
+              if (phase_count >= 2)
+              {
+                  out->push_back(static_cast<float>(std::cos(2.0 * M_PI * right_phase)));
+              }
+          },
+          2,
+          true,
+          false}},
+        {"gait_phase_ratio",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const int ratio_count = std::min(term.count, 2);
+              if (ratio_count >= 1)
+              {
+                  out->push_back(cfg.gait.gait_air_ratio_l);
+              }
+              if (ratio_count >= 2)
+              {
+                  out->push_back(cfg.gait.gait_air_ratio_r);
+              }
+          },
+          2,
+          true,
+          false}},
         {"command",
          {[](const ObservationTermConfig &term, const RobotState &, const Cmd &cmd, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               if (term.components.empty())
@@ -533,15 +590,15 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
                   const int count = term.count <= 0 ? 3 : term.count;
                   if (count >= 1)
                   {
-                      out->push_back(cmd.vx * cfg.scales.lin_vel);
+                      out->push_back(cmd.vx * cfg.scales.command_lin_vel);
                   }
                   if (count >= 2)
                   {
-                      out->push_back(cmd.vy * cfg.scales.lin_vel);
+                      out->push_back(cmd.vy * cfg.scales.command_lin_vel);
                   }
                   if (count >= 3)
                   {
-                      out->push_back(cmd.dyaw * cfg.scales.ang_vel);
+                      out->push_back(cmd.dyaw * cfg.scales.command_ang_vel);
                   }
                   return;
               }
@@ -549,15 +606,15 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
               {
                   if (component == "vx")
                   {
-                      out->push_back(cmd.vx * cfg.scales.lin_vel);
+                      out->push_back(cmd.vx * cfg.scales.command_lin_vel);
                   }
                   else if (component == "vy")
                   {
-                      out->push_back(cmd.vy * cfg.scales.lin_vel);
+                      out->push_back(cmd.vy * cfg.scales.command_lin_vel);
                   }
                   else if (component == "dyaw")
                   {
-                      out->push_back(cmd.dyaw * cfg.scales.ang_vel);
+                      out->push_back(cmd.dyaw * cfg.scales.command_ang_vel);
                   }
                   else
                   {
@@ -885,6 +942,13 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
         if (term.name == "phase" && term.count > 2)
         {
             throw std::runtime_error("phase term count cannot exceed 2");
+        }
+        if ((term.name == "gait_phase_sin" ||
+             term.name == "gait_phase_cos" ||
+             term.name == "gait_phase_ratio") &&
+            term.count > 2)
+        {
+            throw std::runtime_error(term.name + " term count cannot exceed 2");
         }
         if (term.name == "command")
         {

@@ -519,6 +519,15 @@ struct SourceContractSimBase
     std::string velocity_source = "freejoint_qvel"; // freejoint_qvel / body_object_velocity_local / body_cvel
 };
 
+struct GaitConfig
+{
+    float gait_air_ratio_l = 0.0f;
+    float gait_air_ratio_r = 0.0f;
+    float gait_phase_offset_l = 0.0f;
+    float gait_phase_offset_r = 0.0f;
+    double gait_cycle = 1.0;
+};
+
 struct SourceContractBaseVelocityEstimator
 {
     bool enabled = false;
@@ -747,6 +756,7 @@ public:
     std::vector<ExternalObservationSpec> external_observations;
     SourceContract source_contract;
     ObservationCanonicalContract observation_canonical_contract;
+    GaitConfig gait;
 
     std::string startup_completion_action = "hold";
     int policy_startup_warmup_steps = 0;
@@ -781,6 +791,8 @@ public:
     public:
         float lin_vel = 1.0f;
         float ang_vel = 1.0f;
+        float command_lin_vel = 1.0f;
+        float command_ang_vel = 1.0f;
         float dof_pos = 1.0f;
         float dof_vel = 1.0f;
         float quat = 1.0f;
@@ -811,6 +823,7 @@ public:
             named_tau_limit.clear();
             source_contract = SourceContract{};
             observation_canonical_contract = ObservationCanonicalContract{};
+            gait = GaitConfig{};
             logging = RuntimeLoggingConfig{};
 
             const std::string configured_root_raw = yamlReadOr<std::string>(config, "humanoid_rl_root_dir", "");
@@ -1849,10 +1862,19 @@ public:
             const YAML::Node scale = cfg["scales"];
             scales.lin_vel = scale["lin_vel"].as<float>();
             scales.ang_vel = scale["ang_vel"].as<float>();
+            scales.command_lin_vel = yamlReadOr<float>(scale, "command_lin_vel", scales.lin_vel);
+            scales.command_ang_vel = yamlReadOr<float>(scale, "command_ang_vel", scales.ang_vel);
             scales.dof_pos = scale["dof_pos"].as<float>();
             scales.dof_vel = scale["dof_vel"].as<float>();
             scales.quat = scale["quat"].as<float>();
             scales.height_measurements = scale["height_measurements"].as<float>();
+
+            const YAML::Node gait_cfg = cfg["gait"];
+            gait.gait_air_ratio_l = yamlReadOr<float>(gait_cfg, "gait_air_ratio_l", gait.gait_air_ratio_l);
+            gait.gait_air_ratio_r = yamlReadOr<float>(gait_cfg, "gait_air_ratio_r", gait.gait_air_ratio_r);
+            gait.gait_phase_offset_l = yamlReadOr<float>(gait_cfg, "gait_phase_offset_l", gait.gait_phase_offset_l);
+            gait.gait_phase_offset_r = yamlReadOr<float>(gait_cfg, "gait_phase_offset_r", gait.gait_phase_offset_r);
+            gait.gait_cycle = yamlReadOr<double>(gait_cfg, "gait_cycle", gait.gait_cycle);
 
             return true;
         }

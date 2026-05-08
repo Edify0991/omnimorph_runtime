@@ -2,6 +2,22 @@
 
 ## Standard Entry Points
 
+### New Terminal Setup
+
+After opening a new terminal, initialize the workspace runtime environment with:
+
+```bash
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+```
+
+This prepares the shell by:
+
+- sourcing ROS2 and this workspace
+- exporting `JC01_DEPLOY_ROOT`
+- exporting `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` by default
+- exporting a writable `ROS_LOG_DIR`
+- preferring system/ROS runtime libraries before Conda copies in `LD_LIBRARY_PATH`
+
 ### Real Robot
 
 Use the fused single-process runtime:

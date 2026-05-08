@@ -57,6 +57,9 @@ CANONICAL_JOINT_ORDER: List[str] = [
 
 SUPPORTED_MANIFEST_TERMS = {
     "phase",
+    "gait_phase_sin",
+    "gait_phase_cos",
+    "gait_phase_ratio",
     "command",
     "joint_pos",
     "joint_vel",
@@ -84,6 +87,9 @@ SUPPORTED_MANIFEST_TERMS = {
 
 DEFAULT_TERM_DIM = {
     "phase": 2,
+    "gait_phase_sin": 2,
+    "gait_phase_cos": 2,
+    "gait_phase_ratio": 2,
     "command": 3,
     "joint_pos": 12,
     "joint_vel": 12,
@@ -691,6 +697,8 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
 
         if name == "phase":
             default_count = 2
+        elif name in {"gait_phase_sin", "gait_phase_cos", "gait_phase_ratio"}:
+            default_count = 2
         elif name == "command":
             default_count = len(components) if components else 3
         elif name in {"joint_pos", "joint_vel", "last_action"}:
@@ -712,6 +720,9 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
 
         if name == "phase" and count > 2:
             issues.error(term_context, "phase count cannot exceed 2")
+            continue
+        if name in {"gait_phase_sin", "gait_phase_cos", "gait_phase_ratio"} and count > 2:
+            issues.error(term_context, f"{name} count cannot exceed 2")
             continue
         if name == "command":
             if components and count != len(components):

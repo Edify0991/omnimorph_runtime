@@ -2,7 +2,7 @@
 # Keep the default rl_cfg.yaml on the current 12-DoF leg setup; use this root
 # when the full-body MuJoCo/real joint interface is ready.
 
-humanoid_rl_root_dir: /home/nvidia/Documents/jc01_deploy/src/humanoid_rl_controller/rl_master
+humanoid_rl_root_dir: /home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master
 legged_gym_root_dir: /path/to/legged_gym_root_dir
 robot_global_joint_order:
 - right_hip_roll
@@ -110,12 +110,16 @@ deploy_mode_profiles:
 - mode_id: 3
   config_section: beyondmimic_leg12_strict_walk2
   tag: beyondmimic_walk
+- mode_id: 4
+  config_section: tienkun_amp_jc01_full_body
+  tag: tienkun_amp
 config_files:
   amp_mjlab_jc01_full_body: profiles/amp_mjlab_jc01_full_body.yaml
   beyondmimic_leg12_strict_walk2: profiles/beyondmimic_leg12_strict_walk2.yaml
   engineai_walk: profiles/engineai_walk.yaml
   engineai_full_body_example: profiles/engineai_full_body_example.yaml
   engineai_stand: profiles/stand_sim2real.yaml
+  tienkun_amp_jc01_full_body: profiles/tienkun_amp_jc01_full_body.yaml
 runtime_process:
   controller:
     enabled: true
