@@ -1,8 +1,8 @@
 beyondmimic_leg12_strict_walk2:
-  policy_name: beyondmimic_dance
+  policy_name: policy
   policy_family: beyondmimic
   policy_adapter: onnx
-  policy_file: policies/beyondmimic_dance.onnx
+  policy_file: policies/policy.onnx
   inference_strategy: sync_step
   # For chunked/generative policies, switch to:
   # inference_strategy: chunked_receding
@@ -272,34 +272,34 @@ beyondmimic_leg12_strict_walk2:
     - left_wrist_roll
   pinocchio_urdf_path: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF.urdf
   reference_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
     - left_hip_roll
-    - left_hip_yaw
-    - left_hip_pitch
-    - left_knee_pitch
-    - left_ankle_pitch
-    - left_ankle_roll
+    - right_hip_roll
     - waist_roll
+    - left_hip_yaw
+    - right_hip_yaw
     - waist_yaw
-    - right_shoulder_pitch
-    - right_shoulder_roll
-    - right_shoulder_yaw
-    - right_elbow_pitch
-    - right_elbow_yaw
-    - right_wrist_pitch
-    - right_wrist_roll
+    - left_hip_pitch
+    - right_hip_pitch
     - left_shoulder_pitch
+    - right_shoulder_pitch
+    - left_knee_pitch
+    - right_knee_pitch
     - left_shoulder_roll
+    - right_shoulder_roll
+    - left_ankle_pitch
+    - right_ankle_pitch
     - left_shoulder_yaw
+    - right_shoulder_yaw
+    - left_ankle_roll
+    - right_ankle_roll
     - left_elbow_pitch
+    - right_elbow_pitch
     - left_elbow_yaw
+    - right_elbow_yaw
     - left_wrist_pitch
+    - right_wrist_pitch
     - left_wrist_roll
+    - right_wrist_roll
   source_contract:
     imu_input:
       payload: euler_compat
@@ -310,30 +310,30 @@ beyondmimic_leg12_strict_walk2:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-      velocity_source: body_object_velocity_local
-    # base_velocity_estimator:
-    #   enabled: true
-    #   use_imu_prediction: true
-    #   imu_accel_frame: body
-    #   imu_accel_includes_gravity: true
-    #   gravity_mps2: 9.80665
-    #   use_input_velocity_measurement: true
-    #   input_velocity_measurement_noise: 0.02
-    #   use_odom_velocity_measurement: true
-    #   odom_topic: /glim/odom
-    #   odom_velocity_frame: world
-    #   odom_velocity_measurement_noise: 0.03
-    #   zero_velocity_update: true
-    #   zero_velocity_measurement_noise: 0.01
-    #   stationary_joint_velocity_threshold: 0.03
-    #   stationary_ang_vel_threshold: 0.12
-    #   stationary_accel_norm_tolerance: 0.5
-    #   initial_variance: 0.25
-    #   process_noise: 0.05
-    #   accel_noise: 0.2
-    #   min_dt: 0.0001
-    #   max_dt: 0.05
-    #   reset_on_mode_switch: true
+      # velocity_source: body_object_velocity_local
+    base_velocity_estimator:
+      enabled: false
+      use_imu_prediction: true
+      imu_accel_frame: body
+      imu_accel_includes_gravity: true
+      gravity_mps2: 9.80665
+      use_input_velocity_measurement: true
+      input_velocity_measurement_noise: 0.02
+      use_odom_velocity_measurement: true
+      odom_topic: /glim/odom
+      odom_velocity_frame: world
+      odom_velocity_measurement_noise: 0.03
+      zero_velocity_update: true
+      zero_velocity_measurement_noise: 0.01
+      stationary_joint_velocity_threshold: 0.03
+      stationary_ang_vel_threshold: 0.12
+      stationary_accel_norm_tolerance: 0.5
+      initial_variance: 0.25
+      process_noise: 0.05
+      accel_noise: 0.2
+      min_dt: 0.0001
+      max_dt: 0.05
+      reset_on_mode_switch: true
     policy_extra_outputs:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
@@ -360,7 +360,7 @@ beyondmimic_leg12_strict_walk2:
     action_output_name: actions
     enable_time_step_input: true
     time_step_input_name: time_step
-    time_step_start: 50
+    time_step_start: 0
     advance_time_step_on_reference_prefetch: false
     strict_model_io: true
     enable_metadata_check: true
@@ -425,34 +425,34 @@ beyondmimic_leg12_strict_walk2:
       left_wrist_pitch: 0.0
       left_wrist_roll: 0.0
     zero_joint_angles:
-      right_hip_roll: 0.0
-      right_hip_yaw: 0.0
-      right_hip_pitch: -0.24
-      right_knee_pitch: 0.48
-      right_ankle_pitch: -0.24
-      right_ankle_roll: 0.0
-      left_hip_roll: 0.0
-      left_hip_yaw: 0.0
-      left_hip_pitch: -0.24
-      left_knee_pitch: 0.48
-      left_ankle_pitch: -0.24
-      left_ankle_roll: 0.0
-      waist_roll: 0.0
-      waist_yaw: 0.0
-      right_shoulder_pitch: 0.2
-      right_shoulder_roll: 0.0
-      right_shoulder_yaw: 0.0
-      right_elbow_pitch: 0.5
-      right_elbow_yaw: 0.0
-      right_wrist_pitch: 0.0
-      right_wrist_roll: 0.0
-      left_shoulder_pitch: 0.2
-      left_shoulder_roll: 0.0
-      left_shoulder_yaw: 0.0
-      left_elbow_pitch: 0.5
-      left_elbow_yaw: 0.0
-      left_wrist_pitch: 0.0
-      left_wrist_roll: 0.0
+      right_hip_roll: -0.1087519825
+      right_hip_yaw: 0.2787474096
+      right_hip_pitch: -0.2517824769
+      right_knee_pitch: 0.5254632235
+      right_ankle_pitch: -0.4126733541
+      right_ankle_roll: 0.05400279164
+      left_hip_roll: 0.2397964448
+      left_hip_yaw: 0.4124141634
+      left_hip_pitch: -0.2389967144
+      left_knee_pitch: 0.5823168755
+      left_ankle_pitch: -0.2537587881
+      left_ankle_roll: -0.175591737
+      waist_roll: 0.02697837353
+      waist_yaw: -0.03419401124
+      right_shoulder_pitch: -0.1128983945
+      right_shoulder_roll: 0.5367380977
+      right_shoulder_yaw: 0.1102330834
+      right_elbow_pitch: 0.8825820684
+      right_elbow_yaw: 0.1815589666
+      right_wrist_pitch: -0.03154714033
+      right_wrist_roll: 0.153576538
+      left_shoulder_pitch: -0.2987746298
+      left_shoulder_roll: 0.5540620685
+      left_shoulder_yaw: -0.4139012098
+      left_elbow_pitch: 0.881279707
+      left_elbow_yaw: -0.08896737546
+      left_wrist_pitch: 0.2313020676
+      left_wrist_roll: 0.4455571473
     joint_limit_range:
       right_hip_roll: [-0.1396, 0.5236]
       right_hip_yaw: [-0.5236, 0.5236]

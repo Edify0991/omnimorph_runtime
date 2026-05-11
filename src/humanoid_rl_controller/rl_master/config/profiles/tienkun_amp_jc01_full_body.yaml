@@ -1,7 +1,7 @@
 tienkun_amp_jc01_full_body:
   policy_name: tienkun_amp
   policy_family: amp
-  policy_file: policies/temp/tienkun_amp.onnx
+  policy_file: policies/tienkun_amp.onnx
   obs_stack_N: 10
   cycle_time: 0.85
   kps:
@@ -246,7 +246,7 @@ tienkun_amp_jc01_full_body:
       body_quat_frame: world
       body_orientation_representation: rot6
   startup_completion_action: hold
-  prefill_observation_history_on_running_start: false
+  prefill_observation_history_on_running_start: true
   zeroing_duration_s: 5.0
   zeroing_position_tolerance: 100.0
   zeroing_velocity_tolerance: 100.0

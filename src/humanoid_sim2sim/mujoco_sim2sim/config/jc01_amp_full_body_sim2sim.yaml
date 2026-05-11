@@ -163,7 +163,7 @@ mujoco_sim_bridge:
     # With RL_control_f=50, control_hz=500 means the policy still refreshes once
     # every 10 bridge ticks (= 20 ms), while physics/contact integration stays
     # much better behaved than the 5 ms fused step.
-    control_hz: 500.0
+    control_hz: 200.0
     sim_dt: 0.001
     command_timeout_sec: 0.1
     open_rl_enable_threshold: 1.0

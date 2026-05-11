@@ -483,12 +483,12 @@ const std::vector<float> *findPolicyOutputByName(
     const std::string &preferred_prefix,
     const std::string &output_name)
 {
-    if (const auto *latest =
-            findExtraOutputByName(latest_extra_outputs, preferred_prefix, output_name))
+    if (const auto *prefetched =
+            findExtraOutputByName(prefetched_extra_outputs, preferred_prefix, output_name))
     {
-        return latest;
+        return prefetched;
     }
-    return findExtraOutputByName(prefetched_extra_outputs, preferred_prefix, output_name);
+    return findExtraOutputByName(latest_extra_outputs, preferred_prefix, output_name);
 }
 
 std::vector<float> convertQuatVectorToCanonical(
@@ -1331,7 +1331,7 @@ RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(
     return output;
 }
 
-void RL_controller::prefetchCurrentPolicyReferenceOutputs()
+void RL_controller::prefetchCurrentPolicyReferenceOutputs(bool advance_time_step)
 {
     prefetched_policy_extra_outputs_.clear();
 
@@ -1456,7 +1456,7 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs()
         &current_observation,
         &action,
         &latest_observation_feature_context_.named_features,
-        cfg.advance_time_step_on_reference_prefetch,
+        advance_time_step,
         static_cast<uint64_t>(policy_step_counter_)};
     const auto prefetched =
         profile.policy_group.strategy->prefetchPrimaryExtraOutputs(
@@ -1958,7 +1958,8 @@ rl_master::RobotCommandData RL_controller::step(
             }
             if (latest_policy_extra_outputs_.empty())
             {
-                prefetchCurrentPolicyReferenceOutputs();
+                prefetchCurrentPolicyReferenceOutputs(
+                    activePolicyCfg().advance_time_step_on_reference_prefetch);
             }
             std::vector<float> current_obs = get_robot_observation(local_phase_t);
             const bool should_prefill_observation_history =
@@ -1985,6 +1986,11 @@ rl_master::RobotCommandData RL_controller::step(
             last_policy_sample_phase_t_ = local_phase_t;
             policy_ran_this_tick = true;
             ++policy_step_counter_;
+
+            // The policy forward above has already consumed the current
+            // time_step. Prefetch the next reference frame immediately so the
+            // next observation does not reuse the same reference twice.
+            prefetchCurrentPolicyReferenceOutputs(false);
 
             if (!policy_schedule_initialized_)
             {

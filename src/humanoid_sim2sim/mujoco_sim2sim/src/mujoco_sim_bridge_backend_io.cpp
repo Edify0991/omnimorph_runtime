@@ -71,12 +71,10 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
              base_body_id_ >= 0 && base_body_id_ < model_->nbody)
     {
         mjtNum vel6_local[6] = {0, 0, 0, 0, 0, 0};
-        mjtNum vel6_global[6] = {0, 0, 0, 0, 0, 0};
         mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_local, 1);
-        mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_global, 0);
-        state.base_ang_vel[0] = static_cast<float>(vel6_global[0]);
-        state.base_ang_vel[1] = static_cast<float>(vel6_global[1]);
-        state.base_ang_vel[2] = static_cast<float>(vel6_global[2]);
+        state.base_ang_vel[0] = static_cast<float>(vel6_local[0]);
+        state.base_ang_vel[1] = static_cast<float>(vel6_local[1]);
+        state.base_ang_vel[2] = static_cast<float>(vel6_local[2]);
         state.base_lin_vel[0] = static_cast<float>(vel6_local[3]);
         state.base_lin_vel[1] = static_cast<float>(vel6_local[4]);
         state.base_lin_vel[2] = static_cast<float>(vel6_local[5]);
@@ -86,12 +84,12 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
              base_body_id_ >= 0 && base_body_id_ < model_->nbody && data_->cvel)
     {
         const mjtNum *cvel = data_->cvel + 6 * base_body_id_;
-        state.base_ang_vel[0] = static_cast<float>(cvel[3]);
-        state.base_ang_vel[1] = static_cast<float>(cvel[4]);
-        state.base_ang_vel[2] = static_cast<float>(cvel[5]);
-        state.base_lin_vel[0] = static_cast<float>(cvel[0]);
-        state.base_lin_vel[1] = static_cast<float>(cvel[1]);
-        state.base_lin_vel[2] = static_cast<float>(cvel[2]);
+        state.base_ang_vel[0] = static_cast<float>(cvel[0]);
+        state.base_ang_vel[1] = static_cast<float>(cvel[1]);
+        state.base_ang_vel[2] = static_cast<float>(cvel[2]);
+        state.base_lin_vel[0] = static_cast<float>(cvel[3]);
+        state.base_lin_vel[1] = static_cast<float>(cvel[4]);
+        state.base_lin_vel[2] = static_cast<float>(cvel[5]);
         base_velocity_valid = true;
     }
     else if (base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
@@ -108,23 +106,23 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
     {
         mjtNum vel6_local[6] = {0, 0, 0, 0, 0, 0};
         mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_local, 1);
-        state.base_ang_vel[0] = static_cast<float>(vel6_local[3]);
-        state.base_ang_vel[1] = static_cast<float>(vel6_local[4]);
-        state.base_ang_vel[2] = static_cast<float>(vel6_local[5]);
-        state.base_lin_vel[0] = static_cast<float>(vel6_local[0]);
-        state.base_lin_vel[1] = static_cast<float>(vel6_local[1]);
-        state.base_lin_vel[2] = static_cast<float>(vel6_local[2]);
+        state.base_ang_vel[0] = static_cast<float>(vel6_local[0]);
+        state.base_ang_vel[1] = static_cast<float>(vel6_local[1]);
+        state.base_ang_vel[2] = static_cast<float>(vel6_local[2]);
+        state.base_lin_vel[0] = static_cast<float>(vel6_local[3]);
+        state.base_lin_vel[1] = static_cast<float>(vel6_local[4]);
+        state.base_lin_vel[2] = static_cast<float>(vel6_local[5]);
         base_velocity_valid = true;
     }
     else if (base_body_id_ >= 0 && base_body_id_ < model_->nbody && data_->cvel)
     {
         const mjtNum *cvel = data_->cvel + 6 * base_body_id_;
-        state.base_ang_vel[0] = static_cast<float>(cvel[3]);
-        state.base_ang_vel[1] = static_cast<float>(cvel[4]);
-        state.base_ang_vel[2] = static_cast<float>(cvel[5]);
-        state.base_lin_vel[0] = static_cast<float>(cvel[0]);
-        state.base_lin_vel[1] = static_cast<float>(cvel[1]);
-        state.base_lin_vel[2] = static_cast<float>(cvel[2]);
+        state.base_ang_vel[0] = static_cast<float>(cvel[0]);
+        state.base_ang_vel[1] = static_cast<float>(cvel[1]);
+        state.base_ang_vel[2] = static_cast<float>(cvel[2]);
+        state.base_lin_vel[0] = static_cast<float>(cvel[3]);
+        state.base_lin_vel[1] = static_cast<float>(cvel[4]);
+        state.base_lin_vel[2] = static_cast<float>(cvel[5]);
         base_velocity_valid = true;
     }
 

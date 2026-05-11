@@ -133,7 +133,7 @@ private:
     void updateStateFromIO(const rl_master::RobotStateData &state);
     void updateCommandFromIO(const rl_master::TeleopCommand &command);
     void initPolicyGroup(const Sim2realCfg &cfg, const std::string &tag, PolicyRuntimeGroup *group);
-    void prefetchCurrentPolicyReferenceOutputs();
+    void prefetchCurrentPolicyReferenceOutputs(bool advance_time_step);
     void warmStartPolicyState(double phase_t);
     void resetPolicyScheduler();
     PolicyRunOutput runPolicyGroup(
