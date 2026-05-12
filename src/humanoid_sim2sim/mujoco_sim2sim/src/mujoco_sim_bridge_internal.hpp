@@ -114,6 +114,8 @@ private:
     void applyPreposeSnap();
     bool maybeApplyRunningStartReferenceSync(
         const rl_master::logging::ControllerLogSnapshot &controller_snapshot);
+    bool applyReferencePoseReplayFrame(
+        const rl_master::logging::ControllerLogSnapshot &controller_snapshot);
 
     // ROS IO, telemetry, and runtime logging.
     void startInputExecutor();
@@ -191,6 +193,8 @@ private:
     int post_release_settle_ticks_ = 0;
     bool enable_prepose_snap_ = false;
     bool sim_sync_running_start_to_reference_ = false;
+    bool sim_seed_running_start_reference_dynamics_ = false;
+    bool enable_reference_pose_replay_test_ = false;
     std::vector<double> prepose_joint_q_;
     bool sim_only_force_policy_csp_ = false;
     std::vector<std::string> joint_runtime_mode_override_entries_;
@@ -252,6 +256,7 @@ private:
     rl_master::DeployLifecycleState last_controller_deploy_state_ = rl_master::DeployLifecycleState::kInitializing;
     bool controller_state_initialized_ = false;
     bool running_start_reference_sync_pending_ = false;
+    bool reference_pose_replay_test_logged_ = false;
 
     // MuJoCo runtime handles and base addresses.
     int base_body_id_ = -1;

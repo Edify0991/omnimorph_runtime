@@ -192,7 +192,9 @@ void MujocoSimBridge::controlLoopTick()
         if (last_controller_deploy_state_ != rl_master::DeployLifecycleState::kRunning &&
             controller_state == rl_master::DeployLifecycleState::kRunning)
         {
-            running_start_reference_sync_pending_ = sim_sync_running_start_to_reference_;
+            running_start_reference_sync_pending_ =
+                sim_sync_running_start_to_reference_ ||
+                sim_seed_running_start_reference_dynamics_;
         }
     }
     if (controller_state != rl_master::DeployLifecycleState::kRunning)
@@ -227,15 +229,23 @@ void MujocoSimBridge::controlLoopTick()
         hold_target_latched_ = false;
     }
 
-    (void)maybeApplyRunningStartReferenceSync(controller_snapshot);
-    enforceBaseLock();
-    updateControlInput(command, control_active, now);
+    const bool reference_pose_replay_applied = applyReferencePoseReplayFrame(controller_snapshot);
+    if (!reference_pose_replay_applied)
+    {
+        (void)maybeApplyRunningStartReferenceSync(controller_snapshot);
+        enforceBaseLock();
+        updateControlInput(command, control_active, now);
+    }
 
     const bool allow_inactive_step_for_release = (release_settle_ticks_remaining_ > 0);
     const bool allow_inactive_step_for_hold_settle = (hold_settle_ticks_remaining_ > 0);
-    if (should_step &&
-        (control_active || !pause_when_no_command_ || allow_inactive_step_for_release ||
-         allow_inactive_step_for_hold_settle))
+    if (reference_pose_replay_applied)
+    {
+        viewer_step_once_ = false;
+    }
+    else if (should_step &&
+             (control_active || !pause_when_no_command_ || allow_inactive_step_for_release ||
+              allow_inactive_step_for_hold_settle))
     {
         for (int i = 0; i < speed_substeps; ++i)
         {

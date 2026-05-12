@@ -34,6 +34,8 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<int>("post_zeroing_hold_settle_ticks", 0);
     this->declare_parameter<bool>("enable_prepose_snap", false);
     this->declare_parameter<bool>("sim_sync_running_start_to_reference", false);
+    this->declare_parameter<bool>("sim_seed_running_start_reference_dynamics", false);
+    this->declare_parameter<bool>("enable_reference_pose_replay_test", false);
     this->declare_parameter<std::vector<double>>("prepose_joint_q", std::vector<double>{});
     this->declare_parameter<bool>("sim_only_force_policy_csp", false);
     this->declare_parameter<std::vector<std::string>>("joint_runtime_mode_overrides", std::vector<std::string>{});
@@ -70,6 +72,9 @@ void MujocoSimBridge::loadParameters()
         static_cast<int>(this->get_parameter("post_zeroing_hold_settle_ticks").as_int()));
     enable_prepose_snap_ = this->get_parameter("enable_prepose_snap").as_bool();
     sim_sync_running_start_to_reference_ = this->get_parameter("sim_sync_running_start_to_reference").as_bool();
+    sim_seed_running_start_reference_dynamics_ =
+        this->get_parameter("sim_seed_running_start_reference_dynamics").as_bool();
+    enable_reference_pose_replay_test_ = this->get_parameter("enable_reference_pose_replay_test").as_bool();
     prepose_joint_q_ = this->get_parameter("prepose_joint_q").as_double_array();
     sim_only_force_policy_csp_ = this->get_parameter("sim_only_force_policy_csp").as_bool();
     joint_runtime_mode_override_entries_ = this->get_parameter("joint_runtime_mode_overrides").as_string_array();

@@ -116,6 +116,7 @@ bool PinocchioMotionFeatures::buildMotionLocalFeatures(
     const RobotState &robot,
     const std::vector<std::string> &body_names,
     const std::string &anchor_body,
+    const std::string &reference_alignment_mode,
     const std::vector<float> &reference_body_pos_w,
     const std::vector<float> &reference_body_quat_w_xyzw,
     std::vector<float> *motion_anchor_pos_b,
@@ -148,7 +149,14 @@ bool PinocchioMotionFeatures::buildMotionLocalFeatures(
     pinocchio::FrameIndex anchor_frame_id = 0;
     size_t anchor_index = 0;
     if (!resolveFrameIds(body_names, &frame_ids) ||
-        !resolveAnchorFrameId(anchor_body, &anchor_frame_id, &anchor_index, body_names, frame_ids) ||
+        !resolveAnchorFrameId(anchor_body, &anchor_frame_id, &anchor_index, body_names, frame_ids))
+    {
+        return false;
+    }
+
+    const bool use_startup_anchor_pos_yaw_alignment =
+        reference_alignment_mode == "startup_anchor_pos_yaw";
+    if (use_startup_anchor_pos_yaw_alignment &&
         !initializeAlignmentIfNeeded(
             anchor_frame_id,
             anchor_index,
@@ -185,7 +193,10 @@ bool PinocchioMotionFeatures::buildMotionLocalFeatures(
         const Eigen::Vector3d ref_pos_world = vector3FromSlice(reference_body_pos_w, i);
         const Eigen::Quaterniond ref_quat_world = quaternionFromSliceXyzw(reference_body_quat_w_xyzw, i);
         const pinocchio::SE3 ref_pose_world(ref_quat_world.toRotationMatrix(), ref_pos_world);
-        const pinocchio::SE3 ref_pose_local = anchor_pose_real.actInv(world_to_init_.act(ref_pose_world));
+        const pinocchio::SE3 ref_pose_local =
+            use_startup_anchor_pos_yaw_alignment
+                ? anchor_pose_real.actInv(world_to_init_.act(ref_pose_world))
+                : anchor_pose_real.actInv(ref_pose_world);
 
         if (i == anchor_index)
         {

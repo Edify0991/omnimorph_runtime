@@ -1,9 +1,11 @@
 #!/usr/bin/python3
 from __future__ import annotations
 
+import os
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Optional
 
 import rclpy
@@ -26,6 +28,16 @@ try:
 except Exception as exc:
     mujoco = None  # type: ignore[assignment]
     _MUJOCO_IMPORT_ERROR = exc
+
+_IMAGEIO_IMPORT_ERROR = None
+try:
+    import imageio.v2 as imageio
+except Exception as exc:
+    try:
+        import imageio  # type: ignore[no-redef]
+    except Exception:
+        imageio = None  # type: ignore[assignment]
+        _IMAGEIO_IMPORT_ERROR = exc
 
 K_VIEWER_FRAME_TOPIC = "/humanoid/sim2sim/mujoco_viewer_frame"
 K_VIEWER_FRAME_MAGIC = 260413.0
@@ -53,6 +65,17 @@ class MujocoViewerFrontend(Node):
         self.declare_parameter("viewer_inspector_topic", K_VIEWER_INSPECTOR_TOPIC)
         self.declare_parameter("stale_frame_warn_sec", 1.0)
         self.declare_parameter("inspector_log_hz", 2.0)
+        self.declare_parameter("follow_robot", False)
+        self.declare_parameter("follow_body_name", "Body")
+        self.declare_parameter("follow_distance", 3.0)
+        self.declare_parameter("follow_azimuth", 90.0)
+        self.declare_parameter("follow_elevation", -20.0)
+        self.declare_parameter("follow_lookat_offset", [0.0, 0.0, 0.8])
+        self.declare_parameter("enable_video_recording", False)
+        self.declare_parameter("video_output_path", "")
+        self.declare_parameter("video_fps", 60.0)
+        self.declare_parameter("video_width", 1280)
+        self.declare_parameter("video_height", 720)
 
         self.model_path = self.get_parameter("model_path").get_parameter_value().string_value
         self.enable_viewer = self.get_parameter("enable_viewer").get_parameter_value().bool_value
@@ -64,9 +87,22 @@ class MujocoViewerFrontend(Node):
         self.viewer_inspector_topic = self.get_parameter("viewer_inspector_topic").get_parameter_value().string_value or K_VIEWER_INSPECTOR_TOPIC
         self.stale_frame_warn_sec = max(0.1, self.get_parameter("stale_frame_warn_sec").get_parameter_value().double_value)
         self.inspector_log_hz = max(0.2, self.get_parameter("inspector_log_hz").get_parameter_value().double_value)
+        self.follow_robot = self.get_parameter("follow_robot").get_parameter_value().bool_value
+        self.follow_body_name = self.get_parameter("follow_body_name").get_parameter_value().string_value or "Body"
+        self.follow_distance = max(0.1, self.get_parameter("follow_distance").get_parameter_value().double_value)
+        self.follow_azimuth = self.get_parameter("follow_azimuth").get_parameter_value().double_value
+        self.follow_elevation = self.get_parameter("follow_elevation").get_parameter_value().double_value
+        self.follow_lookat_offset = self._read_vec3_parameter("follow_lookat_offset", [0.0, 0.0, 0.8])
+        self.enable_video_recording = self.get_parameter("enable_video_recording").get_parameter_value().bool_value
+        self.video_output_path = self.get_parameter("video_output_path").get_parameter_value().string_value
+        self.video_fps = max(1.0, self.get_parameter("video_fps").get_parameter_value().double_value)
+        self.video_width = max(64, int(self.get_parameter("video_width").value))
+        self.video_height = max(64, int(self.get_parameter("video_height").value))
 
         if not self.model_path:
             raise RuntimeError("parameter 'model_path' is empty")
+        if self.enable_video_recording and imageio is None:
+            raise RuntimeError(f"imageio import failed: {_IMAGEIO_IMPORT_ERROR}")
 
         self.model = self._load_model(self.model_path)
         self.data = mujoco.MjData(self.model)
@@ -83,6 +119,10 @@ class MujocoViewerFrontend(Node):
         self.latest_inspector_line: str = ""
         self.last_inspector_wall_sec: float = 0.0
         self.last_inspector_log_wall_sec: float = 0.0
+        self.follow_body_id = self._resolve_body_id(self.follow_body_name) if self.follow_robot else -1
+        self.video_writer = None
+        self.video_renderer = None
+        self.video_output_resolved = self._resolve_video_output_path()
 
         qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -95,11 +135,24 @@ class MujocoViewerFrontend(Node):
         self.get_logger().info(
             "python viewer frontend ready: "
             f"model={self.model_path} frame_topic={self.viewer_frame_topic} inspector_topic={self.viewer_inspector_topic} "
-            f"viewer={'on' if self.enable_viewer else 'off'} fps={self.viewer_fps:.1f}"
+            f"viewer={'on' if self.enable_viewer else 'off'} fps={self.viewer_fps:.1f} "
+            f"follow_robot={'on' if self.follow_robot else 'off'} "
+            f"video_recording={'on' if self.enable_video_recording else 'off'}"
         )
         if self.viewer_title:
             self.get_logger().info(
                 f"viewer_title='{self.viewer_title}' is informational only; mujoco.viewer.launch_passive controls the actual window title."
+            )
+        if self.follow_robot:
+            self.get_logger().info(
+                f"follow camera target body='{self.follow_body_name}' "
+                f"distance={self.follow_distance:.2f} azimuth={self.follow_azimuth:.1f} "
+                f"elevation={self.follow_elevation:.1f} offset={self.follow_lookat_offset.tolist()}"
+            )
+        if self.enable_video_recording:
+            self.get_logger().info(
+                f"video recording armed: path={self.video_output_resolved} "
+                f"size={self.video_width}x{self.video_height} fps={self.video_fps:.1f}"
             )
 
     def _load_model(self, model_path: str):
@@ -108,6 +161,35 @@ class MujocoViewerFrontend(Node):
         else:
             model = mujoco.MjModel.from_xml_path(model_path)
         return model
+
+    def _read_vec3_parameter(self, name: str, default: list[float]) -> np.ndarray:
+        raw = self.get_parameter(name).value
+        values = list(default)
+        if isinstance(raw, (list, tuple)) and len(raw) >= 3:
+            try:
+                values = [float(raw[0]), float(raw[1]), float(raw[2])]
+            except Exception:
+                values = list(default)
+        return np.asarray(values, dtype=np.float64)
+
+    def _resolve_body_id(self, body_name: str) -> int:
+        body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, body_name)
+        if body_id < 0:
+            raise RuntimeError(f"follow_body_name '{body_name}' does not exist in model '{self.model_path}'")
+        return int(body_id)
+
+    def _resolve_video_output_path(self) -> str:
+        if not self.enable_video_recording:
+            return ""
+        raw = self.video_output_path.strip()
+        if not raw:
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            raw = f"/tmp/mujoco_sim2sim_{stamp}.mp4"
+        path = Path(os.path.expanduser(raw))
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return str(path)
 
     def _on_frame(self, msg: Float32MultiArray) -> None:
         data = msg.data
@@ -175,6 +257,63 @@ class MujocoViewerFrontend(Node):
         mujoco.mj_forward(self.model, self.data)
         return True
 
+    def _apply_follow_camera(self, camera) -> None:
+        if not self.follow_robot or self.follow_body_id < 0:
+            return
+        lookat = np.asarray(self.data.xpos[self.follow_body_id], dtype=np.float64) + self.follow_lookat_offset
+        camera.type = mujoco.mjtCamera.mjCAMERA_FREE
+        camera.lookat[:] = lookat
+        camera.distance = self.follow_distance
+        camera.azimuth = self.follow_azimuth
+        camera.elevation = self.follow_elevation
+
+    def _ensure_video_recording_started(self) -> None:
+        if not self.enable_video_recording:
+            return
+        if self.video_renderer is None:
+            self.video_renderer = mujoco.Renderer(self.model, height=self.video_height, width=self.video_width)
+        if self.video_writer is None:
+            self.video_writer = imageio.get_writer(self.video_output_resolved, fps=self.video_fps)
+            self.get_logger().info(f"video recording started: {self.video_output_resolved}")
+
+    def _make_recording_camera(self, viewer=None):
+        camera = mujoco.MjvCamera()
+        mujoco.mjv_defaultCamera(camera)
+        if viewer is not None:
+            try:
+                camera.type = viewer.cam.type
+                camera.fixedcamid = viewer.cam.fixedcamid
+                camera.trackbodyid = viewer.cam.trackbodyid
+                camera.lookat[:] = np.asarray(viewer.cam.lookat, dtype=np.float64)
+                camera.distance = viewer.cam.distance
+                camera.azimuth = viewer.cam.azimuth
+                camera.elevation = viewer.cam.elevation
+                return camera
+            except Exception:
+                pass
+        self._apply_follow_camera(camera)
+        return camera
+
+    def _record_video_frame(self, viewer=None) -> None:
+        if not self.enable_video_recording:
+            return
+        self._ensure_video_recording_started()
+        camera = self._make_recording_camera(viewer)
+        self.video_renderer.update_scene(self.data, camera=camera)
+        frame = self.video_renderer.render()
+        self.video_writer.append_data(frame)
+
+    def _close_video_recording(self) -> None:
+        if self.video_writer is not None:
+            self.video_writer.close()
+            self.video_writer = None
+            self.get_logger().info(f"video recording saved: {self.video_output_resolved}")
+        if self.video_renderer is not None:
+            close_fn = getattr(self.video_renderer, "close", None)
+            if callable(close_fn):
+                close_fn()
+            self.video_renderer = None
+
     def _on_inspector(self, msg: String) -> None:
         self.latest_inspector_line = msg.data.strip()
         self.last_inspector_wall_sec = time.monotonic()
@@ -219,7 +358,9 @@ class MujocoViewerFrontend(Node):
             self.get_logger().info("enable_viewer=false, enter headless inspector mode.")
             render_period = 1.0 / self.viewer_fps
             while rclpy.ok():
-                self._apply_pending_frame()
+                updated = self._apply_pending_frame()
+                if updated and self.enable_video_recording:
+                    self._record_video_frame()
                 self._warn_if_stale()
                 self._log_inspector_periodically()
                 time.sleep(render_period)
@@ -234,11 +375,15 @@ class MujocoViewerFrontend(Node):
         ) as viewer:
             while rclpy.ok() and viewer.is_running():
                 updated = self._apply_pending_frame()
+                with viewer.lock():
+                    self._apply_follow_camera(viewer.cam)
                 if updated:
                     viewer.sync()
                 else:
                     self._warn_if_stale()
                     viewer.sync()
+                if self.enable_video_recording:
+                    self._record_video_frame(viewer)
                 self._log_inspector_periodically()
                 time.sleep(render_period)
 
@@ -251,6 +396,7 @@ def main() -> None:
     try:
         node.run()
     finally:
+        node._close_video_recording()
         if sys.stdout and not sys.stdout.closed:
             sys.stdout.flush()
         node.destroy_node()

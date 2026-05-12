@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   echo "Use: source script/dev_env.sh" >&2
@@ -28,6 +27,23 @@ export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export ROS_LOG_DIR="${ROS_LOG_DIR:-${WORKSPACE_DIR}/log/ros2}"
 mkdir -p "${ROS_LOG_DIR}" >/dev/null 2>&1 || true
 
+# Prefer system Python over any auto-activated conda Python. ROS Humble here is
+# built against system Python, and mixing it with conda Python can cause import
+# errors or shell exits after `source`.
+system_bin_dirs=(
+  "/usr/bin"
+  "/bin"
+  "/usr/sbin"
+  "/sbin"
+)
+
+joined_system_bins="$(IFS=:; echo "${system_bin_dirs[*]}")"
+if [[ -n "${PATH:-}" ]]; then
+  export PATH="${joined_system_bins}:${PATH}"
+else
+  export PATH="${joined_system_bins}"
+fi
+
 # Prefer system/ROS runtime libraries ahead of conda-provided copies.
 system_lib_dirs=(
   "/usr/lib/x86_64-linux-gnu"
@@ -46,7 +62,7 @@ fi
 
 if [[ -n "${CONDA_PREFIX:-}" ]]; then
   log_warn "Detected active conda environment: ${CONDA_PREFIX}"
-  log_warn "If ROS2/MuJoCo runtime behaves strangely, run: conda deactivate"
+  log_warn "dev_env.sh now prioritizes system Python ahead of conda on PATH"
 fi
 
 log_info "Environment ready"
@@ -55,3 +71,4 @@ log_info "ROS setup: ${ROS_DISTRO:-unknown}"
 log_info "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}"
 log_info "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
 log_info "ROS_LOG_DIR=${ROS_LOG_DIR}"
+log_info "python3=$(command -v python3)"

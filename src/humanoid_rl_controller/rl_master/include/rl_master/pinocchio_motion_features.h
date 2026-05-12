@@ -28,6 +28,7 @@ public:
         const RobotState &robot,
         const std::vector<std::string> &body_names,
         const std::string &anchor_body,
+        const std::string &reference_alignment_mode,
         const std::vector<float> &reference_body_pos_w,
         const std::vector<float> &reference_body_quat_w_xyzw,
         std::vector<float> *motion_anchor_pos_b,

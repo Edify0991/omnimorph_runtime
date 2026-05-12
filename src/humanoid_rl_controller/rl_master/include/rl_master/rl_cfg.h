@@ -750,6 +750,7 @@ public:
     std::string reference_motion_sampling = "phase"; // phase / step
     std::string reference_motion_source = "auto";    // auto / file / policy_outputs
     std::string reference_anchor_body = "base";
+    std::string motion_reference_alignment = "current_robot_anchor"; // current_robot_anchor / startup_anchor_pos_yaw
     std::vector<std::string> reference_body_names;
     std::vector<std::string> reference_joint_order;
     std::string pinocchio_urdf_file;
@@ -762,6 +763,7 @@ public:
     std::string startup_completion_action = "hold";
     int policy_startup_warmup_steps = 0;
     bool prefill_observation_history_on_running_start = false;
+    bool seed_running_start_observation_from_reference = false;
     double zeroing_duration_s = 2.0;
     double zeroing_position_tolerance = 0.05;
     double zeroing_velocity_tolerance = 0.2;
@@ -1350,6 +1352,10 @@ public:
             reference_motion_sampling = yamlReadOr<std::string>(cfg, "reference_motion_sampling", "phase");
             reference_motion_source = yamlReadOr<std::string>(cfg, "reference_motion_source", "auto");
             reference_anchor_body = yamlReadOr<std::string>(cfg, "reference_anchor_body", "base");
+            motion_reference_alignment = yamlReadOr<std::string>(
+                cfg,
+                "motion_reference_alignment",
+                motion_reference_alignment);
             reference_body_names = yamlReadOr<std::vector<std::string>>(cfg, "reference_body_names", {});
             reference_joint_order = yamlReadOr<std::vector<std::string>>(cfg, "reference_joint_order", {});
             pinocchio_urdf_file = yamlReadOr<std::string>(cfg, "pinocchio_urdf_file", "");
@@ -1644,6 +1650,7 @@ public:
                 return text;
             };
             const std::string normalized_reference_motion_source = normalizeLower(reference_motion_source);
+            motion_reference_alignment = normalizeLower(motion_reference_alignment);
             const bool reference_file_contract_active =
                 enable_reference_motion && normalized_reference_motion_source != "policy_outputs";
             if (reference_file_contract_active)
@@ -1700,6 +1707,12 @@ public:
                 throw std::runtime_error(
                     "observation_contract.canonical.body_orientation_representation must be 'rot6'");
             }
+            if (motion_reference_alignment != "current_robot_anchor" &&
+                motion_reference_alignment != "startup_anchor_pos_yaw")
+            {
+                throw std::runtime_error(
+                    "motion_reference_alignment must be 'current_robot_anchor' or 'startup_anchor_pos_yaw'");
+            }
 
             if (cfg["external_observations"])
             {
@@ -1742,6 +1755,8 @@ public:
             }
             prefill_observation_history_on_running_start =
                 yamlReadOr<bool>(cfg, "prefill_observation_history_on_running_start", false);
+            seed_running_start_observation_from_reference =
+                yamlReadOr<bool>(cfg, "seed_running_start_observation_from_reference", false);
             zeroing_duration_s = yamlReadOr<double>(cfg, "zeroing_duration_s", 2.0);
             zeroing_position_tolerance = yamlReadOr<double>(cfg, "zeroing_position_tolerance", 0.05);
             if (zeroing_position_tolerance < 0.0)
@@ -1926,6 +1941,7 @@ public:
                   << ", enabled=" << (enable_reference_motion ? "true" : "false")
                   << std::endl;
         std::cout << "Reference Motion Path: " << reference_motion_path << std::endl;
+        std::cout << "Motion Reference Alignment: " << motion_reference_alignment << std::endl;
         std::cout << "Pinocchio URDF Path: " << pinocchio_urdf_path << std::endl;
         std::cout << "Reference Joint Order: " << reference_joint_order.size() << std::endl;
         std::cout << "Source Contract IMU: payload=" << source_contract.imu_input.payload

@@ -193,6 +193,7 @@ private:
     bool phase_origin_initialized_ = false;
     bool phase_reset_pending_ = true;
     bool observation_history_prefill_pending_ = false;
+    bool running_start_reference_observation_seed_pending_ = false;
 
     std::vector<float> action;
     std::vector<float> joint_target_q;

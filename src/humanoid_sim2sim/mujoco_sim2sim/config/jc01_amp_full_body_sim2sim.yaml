@@ -183,6 +183,9 @@ mujoco_sim_bridge:
     post_release_settle_ticks: 0
     enable_prepose_snap: false
     sim_sync_running_start_to_reference: false
+    # Sim2sim-only helper for reference-tracking policies: at RUNNING entry,
+    # seed MuJoCo with reference joint/base velocities without snapping pose.
+    sim_seed_running_start_reference_dynamics: true
 
     enable_viewer: false
     enable_python_viewer_stream: false

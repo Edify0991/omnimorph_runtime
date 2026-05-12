@@ -58,6 +58,18 @@ std::array<float, 3> rotateVectorByQuat(
         2.0f * (xz - wy) * vec[0] + 2.0f * (yz + wx) * vec[1] + (1.0f - 2.0f * (xx + yy)) * vec[2]};
 }
 
+std::array<float, 3> rotateWorldVectorToBodyFrame(
+    const std::array<float, 3> &vec_world,
+    const std::array<float, 4> &body_quat_xyzw)
+{
+    const std::array<float, 4> quat_conjugate = {
+        -body_quat_xyzw[0],
+        -body_quat_xyzw[1],
+        -body_quat_xyzw[2],
+        body_quat_xyzw[3]};
+    return rotateVectorByQuat(vec_world, quat_conjugate);
+}
+
 float vectorNorm3(const std::array<float, 3> &vec)
 {
     return std::sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
@@ -1823,6 +1835,7 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                     *robot,
                     body_names,
                     anchor_body,
+                    cfg.motion_reference_alignment,
                     *reference_body_pos_w,
                     *reference_body_quat_w,
                     &motion_anchor_pos_b,
@@ -1970,6 +1983,8 @@ rl_master::RobotCommandData RL_controller::step(
         if (entered_running)
         {
             resetPolicyScheduler();
+            running_start_reference_observation_seed_pending_ =
+                activePolicyCfg().seed_running_start_observation_from_reference;
         }
     }
     const double local_phase_t = std::max(0.0, phase_t - phase_origin_t_);
@@ -1980,6 +1995,10 @@ rl_master::RobotCommandData RL_controller::step(
                   << rl_master::DeployStateMachine::stateName(deploy_output.state)
                   << std::endl;
         last_deploy_state_ = deploy_output.state;
+    }
+    if (deploy_output.state != rl_master::DeployLifecycleState::kRunning)
+    {
+        running_start_reference_observation_seed_pending_ = false;
     }
 
     bool policy_ran_this_tick = false;
@@ -2164,8 +2183,102 @@ std::vector<float> RL_controller::get_robot_observation(double phase_t)
 
     const ObservationFeatureContext feature_context = buildObservationFeatureContext(active_cfg, phase_t);
     latest_observation_feature_context_ = feature_context;
+    const RobotState *observation_robot = robot.get();
+    RobotState running_start_seeded_robot;
+    if (running_start_reference_observation_seed_pending_ && robot)
+    {
+        running_start_seeded_robot = *robot;
+        bool seeded_any = false;
+
+        const auto reference_joint_vel_it = feature_context.named_features.find("reference_joint_vel");
+        if (reference_joint_vel_it != feature_context.named_features.end())
+        {
+            const auto &reference_joint_vel = reference_joint_vel_it->second;
+            if (reference_joint_vel.size() == running_start_seeded_robot.joint_dq.size())
+            {
+                running_start_seeded_robot.joint_dq = reference_joint_vel;
+                seeded_any = true;
+            }
+        }
+
+        const auto reference_body_lin_vel_it = feature_context.named_features.find("reference_body_lin_vel_w");
+        const auto reference_body_ang_vel_it = feature_context.named_features.find("reference_body_ang_vel_w");
+        if ((reference_body_lin_vel_it != feature_context.named_features.end() ||
+             reference_body_ang_vel_it != feature_context.named_features.end()) &&
+            running_start_seeded_robot.base_quat.size() >= 4)
+        {
+            const std::vector<std::string> body_names =
+                effectiveReferenceBodyNames(active_cfg, &activeReferenceMotionProvider());
+            const std::string anchor_body =
+                effectiveReferenceAnchorBody(active_cfg, &activeReferenceMotionProvider());
+            const auto anchor_it = std::find(body_names.begin(), body_names.end(), anchor_body);
+            if (anchor_it != body_names.end())
+            {
+                const size_t anchor_index =
+                    static_cast<size_t>(std::distance(body_names.begin(), anchor_it));
+                const std::array<float, 4> base_quat = {
+                    running_start_seeded_robot.base_quat[0],
+                    running_start_seeded_robot.base_quat[1],
+                    running_start_seeded_robot.base_quat[2],
+                    running_start_seeded_robot.base_quat[3]};
+                const std::string velocity_source =
+                    toLowerCopy(active_cfg.source_contract.sim_base.velocity_source);
+
+                if (reference_body_lin_vel_it != feature_context.named_features.end())
+                {
+                    const auto &reference_body_lin_vel = reference_body_lin_vel_it->second;
+                    const size_t offset = anchor_index * 3;
+                    if ((offset + 2) < reference_body_lin_vel.size() &&
+                        running_start_seeded_robot.base_lin_vel.size() >= 3)
+                    {
+                        std::array<float, 3> lin_vel_world = {
+                            reference_body_lin_vel[offset + 0],
+                            reference_body_lin_vel[offset + 1],
+                            reference_body_lin_vel[offset + 2]};
+                        if (velocity_source == "body_object_velocity_local" ||
+                            velocity_source == "body_cvel")
+                        {
+                            lin_vel_world = rotateWorldVectorToBodyFrame(lin_vel_world, base_quat);
+                        }
+                        for (size_t i = 0; i < 3; ++i)
+                        {
+                            running_start_seeded_robot.base_lin_vel[i] = lin_vel_world[i];
+                        }
+                        seeded_any = true;
+                    }
+                }
+
+                if (reference_body_ang_vel_it != feature_context.named_features.end())
+                {
+                    const auto &reference_body_ang_vel = reference_body_ang_vel_it->second;
+                    const size_t offset = anchor_index * 3;
+                    if ((offset + 2) < reference_body_ang_vel.size() &&
+                        running_start_seeded_robot.base_ang_vel.size() >= 3)
+                    {
+                        std::array<float, 3> ang_vel_world = {
+                            reference_body_ang_vel[offset + 0],
+                            reference_body_ang_vel[offset + 1],
+                            reference_body_ang_vel[offset + 2]};
+                        const std::array<float, 3> ang_vel_observation =
+                            rotateWorldVectorToBodyFrame(ang_vel_world, base_quat);
+                        for (size_t i = 0; i < 3; ++i)
+                        {
+                            running_start_seeded_robot.base_ang_vel[i] = ang_vel_observation[i];
+                        }
+                        seeded_any = true;
+                    }
+                }
+            }
+        }
+
+        if (seeded_any)
+        {
+            observation_robot = &running_start_seeded_robot;
+            running_start_reference_observation_seed_pending_ = false;
+        }
+    }
     obs = activeObservationBuilder().build(
-        *robot,
+        *observation_robot,
         cmd,
         action,
         phase_t,
