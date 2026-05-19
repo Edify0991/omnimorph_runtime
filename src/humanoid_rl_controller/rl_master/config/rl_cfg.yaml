@@ -99,15 +99,18 @@ joint_groups:
   - left_wrist_roll
 deploy_mode_profiles:
 - mode_id: 0
+  config_section: tienkun_amp_jc01_full_body
+  tag: tienkun_amp
+- mode_id: 1
   config_section: amp_mjlab_jc01_full_body
   tag: amp_mjlab_jc01_full_body
-- mode_id: 1
+- mode_id: 2
   config_section: engineai_walk
   tag: vel_walk
-- mode_id: 2
+- mode_id: 3
   config_section: engineai_stand
   tag: stand
-- mode_id: 3
+- mode_id: 4
   config_section: beyondmimic_leg12_strict_walk2
   tag: beyondmimic_walk
 - mode_id: 4

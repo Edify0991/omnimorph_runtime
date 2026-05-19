@@ -307,8 +307,9 @@ class JoystickStateTracker:
                         keymap = {
                             ecodes.BTN_SOUTH: "btn_a",
                             ecodes.BTN_EAST: "btn_b",
-                            ecodes.BTN_NORTH: "btn_x",
-                            ecodes.BTN_WEST: "btn_y",
+                            # Xbox 360 reports physical X as BTN_WEST and physical Y as BTN_NORTH.
+                            ecodes.BTN_WEST: "btn_x",
+                            ecodes.BTN_NORTH: "btn_y",
                             ecodes.BTN_TL: "btn_l1",
                             ecodes.BTN_TR: "btn_r1",
                             ecodes.BTN_SELECT: "btn_select",
@@ -498,17 +499,19 @@ class JoyLaunchApp:
         return True
 
     def _handle_combo_actions(self, state: Dict[str, object]) -> None:
+        matched_action = False
         for keys, action in self.combo_actions:
             key_tuple = tuple(keys)
             triggered = self._combo_is_triggered(keys, state)
 
-            if triggered and not self.triggered_flags.get(key_tuple, False):
+            if triggered and not self.triggered_flags.get(key_tuple, False) and not matched_action:
                 log(f"[COMBO] Triggered {keys}")
                 try:
                     action()
                 except Exception as exc:
                     log(f"[COMBO][ERR] {keys}: {exc}")
                 self.triggered_flags[key_tuple] = True
+                matched_action = True
             elif not triggered:
                 self.triggered_flags[key_tuple] = False
 

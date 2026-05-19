@@ -271,7 +271,7 @@ beyondmimic_leg12_strict_walk2:
     - left_elbow_yaw
     - left_wrist_pitch
     - left_wrist_roll
-  pinocchio_urdf_path: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF.urdf
+  pinocchio_urdf_path: /home/nvidia/Documents/jc01-model/JC01-URDF.urdf
   reference_joint_order:
     - left_hip_roll
     - right_hip_roll

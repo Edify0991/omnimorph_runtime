@@ -5,9 +5,16 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   exit 1
 fi
 
+__jc01_saved_shell_opts="$(set +o)"
+set +e +u
+set +o pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common.sh"
+
+eval "${__jc01_saved_shell_opts}"
+unset __jc01_saved_shell_opts
 
 restore_nounset=0
 if [[ -o nounset ]]; then
