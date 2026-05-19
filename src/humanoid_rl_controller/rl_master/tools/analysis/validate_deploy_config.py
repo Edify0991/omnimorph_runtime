@@ -160,6 +160,20 @@ ISAACLAB_LEFT_FIRST_JOINT_ORDER = [
     "right_ankle_pitch",
     "right_ankle_roll",
 ]
+ISAACLAB_ARTICULATION_JOINT_ORDER = [
+    "left_hip_roll",
+    "right_hip_roll",
+    "left_hip_yaw",
+    "right_hip_yaw",
+    "left_hip_pitch",
+    "right_hip_pitch",
+    "left_knee_pitch",
+    "right_knee_pitch",
+    "left_ankle_pitch",
+    "right_ankle_pitch",
+    "left_ankle_roll",
+    "right_ankle_roll",
+]
 ISAACLAB_LOCOMOTION_TERM_ORDER = [
     "base_ang_vel",
     "projected_gravity",
@@ -869,8 +883,8 @@ def check_isaaclab_locomotion_profile(
     if list(action_order) != ISAACLAB_LEFT_FIRST_JOINT_ORDER:
         issues.error(context, "IsaacLab locomotion action_joint_order must be left-first training order")
     effective_obs_order = list(obs_order) if obs_order else list(action_order)
-    if effective_obs_order != ISAACLAB_LEFT_FIRST_JOINT_ORDER:
-        issues.error(context, "IsaacLab locomotion obs_joint_order must be left-first training order")
+    if effective_obs_order != ISAACLAB_ARTICULATION_JOINT_ORDER:
+        issues.error(context, "IsaacLab locomotion obs_joint_order must be IsaacLab articulation joint order")
 
 
 def load_manifest_terms(

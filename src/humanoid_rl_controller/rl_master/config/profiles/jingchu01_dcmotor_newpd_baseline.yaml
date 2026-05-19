@@ -1,6 +1,6 @@
 jingchu01_dcmotor_newpd_baseline:
   policy_name: jingchu01_dcmotor_newpd_baseline
-  policy_file: policies/jingchu01_dcmotor_newpd_baseline.onnx
+  policy_file: policies/NoPace.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 5
@@ -105,16 +105,16 @@ jingchu01_dcmotor_newpd_baseline:
     - right_ankle_roll
   obs_joint_order:
     - left_hip_roll
-    - left_hip_yaw
-    - left_hip_pitch
-    - left_knee_pitch
-    - left_ankle_pitch
-    - left_ankle_roll
     - right_hip_roll
+    - left_hip_yaw
     - right_hip_yaw
+    - left_hip_pitch
     - right_hip_pitch
+    - left_knee_pitch
     - right_knee_pitch
+    - left_ankle_pitch
     - right_ankle_pitch
+    - left_ankle_roll
     - right_ankle_roll
   observation_manifest_file: observation_manifest_jingchu01_isaaclab_locomotion.yaml
   enable_reference_motion: false

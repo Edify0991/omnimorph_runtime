@@ -3,6 +3,8 @@ observation_manifest:
   profile: "jingchu01_isaaclab_locomotion"
   # One frame: 45
   # Stacked actor input: term-major 5-frame history = 225
+  # joint_pos/joint_vel use obs_joint_order from IsaacLab articulation.
+  # last_action uses action_joint_order and is intentionally different.
   terms:
     - name: base_ang_vel
       enabled: true

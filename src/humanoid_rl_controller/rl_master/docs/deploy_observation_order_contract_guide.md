@@ -259,7 +259,47 @@ observation_manifest:
 
 当没有训练侧模型时，建议至少做部署侧自洽检查。
 
-### 8.1 配置静态检查
+### 8.1 Jingchu01 IsaacLab locomotion 特例
+
+`hust_lab` 训练的 Jingchu01 locomotion policy 中，`joint_pos` / `joint_vel` 与 `last_action` / `action` 的关节顺序不同。
+
+`joint_pos` / `joint_vel` 必须按 IsaacLab runtime articulation joint order：
+
+```text
+left_hip_roll
+right_hip_roll
+left_hip_yaw
+right_hip_yaw
+left_hip_pitch
+right_hip_pitch
+left_knee_pitch
+right_knee_pitch
+left_ankle_pitch
+right_ankle_pitch
+left_ankle_roll
+right_ankle_roll
+```
+
+`last_action` 和 ONNX 输出 `action` 必须按训练时 action order：
+
+```text
+left_hip_roll
+left_hip_yaw
+left_hip_pitch
+left_knee_pitch
+left_ankle_pitch
+left_ankle_roll
+right_hip_roll
+right_hip_yaw
+right_hip_pitch
+right_knee_pitch
+right_ankle_pitch
+right_ankle_roll
+```
+
+部署时不要把 `obs_joint_order` 复制成 `action_joint_order`。这两个顺序混用会让策略输出明显异常。
+
+### 8.2 配置静态检查
 
 重点检查以下几类字段：
 
@@ -270,7 +310,7 @@ observation_manifest:
 - observation manifest 中各项 `count` / `components`
 - `policy_io.onnx_inputs`
 
-### 8.2 预检查命令
+### 8.3 预检查命令
 
 当前仓库可直接使用以下命令：
 
@@ -288,7 +328,7 @@ python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_conf
   --skip-onnx
 ```
 
-### 8.3 手工核对项
+### 8.4 手工核对项
 
 建议手工按以下顺序检查：
 
