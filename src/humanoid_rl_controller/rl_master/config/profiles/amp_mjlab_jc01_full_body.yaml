@@ -239,7 +239,7 @@ amp_mjlab_jc01_full_body:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-      # velocity_source: body_object_velocity_local
+      velocity_source: body_object_velocity_root_local
     base_velocity_estimator:
       enabled: true
       use_imu_prediction: true

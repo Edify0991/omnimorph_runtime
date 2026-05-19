@@ -33,7 +33,7 @@ MujocoSimBridge::MujocoSimBridge()
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, sim_base_velocity_source=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, release_settle_ticks=%d, hold_settle_ticks=%d, prepose_snap=%s, running_start_ref_sync=%s, running_start_ref_dynamics_seed=%s, sim_only_force_policy_csp=%s",
+        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, sim_base_velocity_source=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, release_settle_ticks=%d, hold_settle_ticks=%d, prepose_snap=%s, running_start_ref_sync=%s, sim_only_force_policy_csp=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
@@ -54,7 +54,6 @@ MujocoSimBridge::MujocoSimBridge()
         post_zeroing_hold_settle_ticks_,
         enable_prepose_snap_ ? "on" : "off",
         sim_sync_running_start_to_reference_ ? "on" : "off",
-        sim_seed_running_start_reference_dynamics_ ? "on" : "off",
         sim_only_force_policy_csp_ ? "on" : "off");
     RCLCPP_INFO(
         this->get_logger(),

@@ -239,7 +239,7 @@ beyondmimic_leg12_strict_walk2:
   reference_motion_dim: 0
   reference_motion_sampling: step
   reference_motion_source: policy_outputs
-  reference_anchor_body: Robotbase
+  reference_anchor_body: waist_yaw
   motion_reference_alignment: startup_anchor_pos_yaw
   reference_body_names:
     - Robotbase
@@ -311,7 +311,7 @@ beyondmimic_leg12_strict_walk2:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-      # velocity_source: body_object_velocity_local
+      velocity_source: body_object_velocity_root_local
     base_velocity_estimator:
       enabled: false
       use_imu_prediction: true
@@ -390,7 +390,7 @@ beyondmimic_leg12_strict_walk2:
   state_telemetry_hz: 50.0
   startup_completion_action: hold
   policy_startup_warmup_steps: 0
-  seed_running_start_observation_from_reference: true
+  seed_running_start_observation_from_reference: false
   zeroing_duration_s: 5.0
   zeroing_position_tolerance: 100.0
   zeroing_velocity_tolerance: 100.0

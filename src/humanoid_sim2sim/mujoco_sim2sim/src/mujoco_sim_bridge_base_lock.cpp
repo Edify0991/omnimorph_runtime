@@ -1,5 +1,48 @@
 #include "mujoco_sim_bridge_internal.hpp"
 
+namespace
+{
+
+struct ReferenceRootBodySelection
+{
+    size_t index = 0;
+    std::string body_name;
+    bool used_anchor_fallback = false;
+};
+
+std::optional<ReferenceRootBodySelection> selectReferenceRootBody(
+    const std::vector<std::string> &reference_body_names,
+    const std::string &sim_root_body_name,
+    const std::string &reference_anchor_body)
+{
+    const auto try_find =
+        [&](const std::string &body_name,
+            const bool used_anchor_fallback) -> std::optional<ReferenceRootBodySelection> {
+        if (body_name.empty())
+        {
+            return std::nullopt;
+        }
+        const auto it = std::find(reference_body_names.begin(), reference_body_names.end(), body_name);
+        if (it == reference_body_names.end())
+        {
+            return std::nullopt;
+        }
+        ReferenceRootBodySelection selection;
+        selection.index = static_cast<size_t>(std::distance(reference_body_names.begin(), it));
+        selection.body_name = body_name;
+        selection.used_anchor_fallback = used_anchor_fallback;
+        return selection;
+    };
+
+    if (const auto root_match = try_find(sim_root_body_name, false))
+    {
+        return root_match;
+    }
+    return try_find(reference_anchor_body, true);
+}
+
+} // namespace
+
 namespace mujoco_sim2sim
 {
 using namespace bridge_internal;
@@ -63,8 +106,7 @@ bool MujocoSimBridge::maybeApplyRunningStartReferenceSync(
     const rl_master::logging::ControllerLogSnapshot &controller_snapshot)
 {
     const bool full_pose_sync = sim_sync_running_start_to_reference_;
-    const bool dynamics_only_seed = sim_seed_running_start_reference_dynamics_;
-    if ((!full_pose_sync && !dynamics_only_seed) || !running_start_reference_sync_pending_)
+    if (!full_pose_sync || !running_start_reference_sync_pending_)
     {
         return false;
     }
@@ -163,13 +205,25 @@ bool MujocoSimBridge::maybeApplyRunningStartReferenceSync(
         (base_free_qvel_adr_ + 5) < model_->nv)
     {
         const std::vector<std::string> &body_names = active_cfg.reference_body_names;
-        const auto anchor_it = std::find(body_names.begin(), body_names.end(), active_cfg.reference_anchor_body);
-        if (anchor_it != body_names.end())
+        const auto reference_root_body = selectReferenceRootBody(
+            body_names,
+            base_body_name_,
+            active_cfg.reference_anchor_body);
+        if (reference_root_body.has_value())
         {
-            const size_t anchor_index = static_cast<size_t>(std::distance(body_names.begin(), anchor_it));
+            if (reference_root_body->used_anchor_fallback)
+            {
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "Reference startup seed could not find sim root body '%s' in reference_body_names; "
+                    "falling back to reference_anchor_body '%s'.",
+                    base_body_name_.c_str(),
+                    reference_root_body->body_name.c_str());
+            }
+            const size_t root_body_index = reference_root_body->index;
             if (full_pose_sync && reference_body_quat_w)
             {
-                const size_t quat_offset = anchor_index * 4;
+                const size_t quat_offset = root_body_index * 4;
                 if (quat_offset + 3 < reference_body_quat_w->size())
                 {
                     const std::array<double, 4> current_quat_wxyz = normalizeQuatWxyz({
@@ -200,7 +254,7 @@ bool MujocoSimBridge::maybeApplyRunningStartReferenceSync(
             }
             if (reference_body_lin_vel_w)
             {
-                const size_t vel_offset = anchor_index * 3;
+                const size_t vel_offset = root_body_index * 3;
                 if (vel_offset + 2 < reference_body_lin_vel_w->size())
                 {
                     data_->qvel[base_free_qvel_adr_ + 0] =
@@ -213,7 +267,7 @@ bool MujocoSimBridge::maybeApplyRunningStartReferenceSync(
             }
             if (reference_body_ang_vel_w)
             {
-                const size_t vel_offset = anchor_index * 3;
+                const size_t vel_offset = root_body_index * 3;
                 if (vel_offset + 2 < reference_body_ang_vel_w->size())
                 {
                     data_->qvel[base_free_qvel_adr_ + 3] =
@@ -229,18 +283,9 @@ bool MujocoSimBridge::maybeApplyRunningStartReferenceSync(
 
     mj_forward(model_, data_);
     running_start_reference_sync_pending_ = false;
-    if (full_pose_sync)
-    {
-        RCLCPP_INFO(
-            this->get_logger(),
-            "Applied sim-only startup reference sync at RUNNING entry without changing base world pose.");
-    }
-    else
-    {
-        RCLCPP_INFO(
-            this->get_logger(),
-            "Applied sim-only startup reference dynamics seed at RUNNING entry (joint/base velocities only).");
-    }
+    RCLCPP_INFO(
+        this->get_logger(),
+        "Applied sim-only startup reference sync at RUNNING entry without changing base world pose.");
     return true;
 }
 
@@ -344,13 +389,25 @@ bool MujocoSimBridge::applyReferencePoseReplayFrame(
         (base_free_qvel_adr_ + 5) < model_->nv)
     {
         const std::vector<std::string> &body_names = active_cfg.reference_body_names;
-        const auto anchor_it = std::find(body_names.begin(), body_names.end(), active_cfg.reference_anchor_body);
-        if (anchor_it != body_names.end())
+        const auto reference_root_body = selectReferenceRootBody(
+            body_names,
+            base_body_name_,
+            active_cfg.reference_anchor_body);
+        if (reference_root_body.has_value())
         {
-            const size_t anchor_index = static_cast<size_t>(std::distance(body_names.begin(), anchor_it));
+            if (reference_root_body->used_anchor_fallback && !reference_pose_replay_test_logged_)
+            {
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "Reference pose replay could not find sim root body '%s' in reference_body_names; "
+                    "falling back to reference_anchor_body '%s'.",
+                    base_body_name_.c_str(),
+                    reference_root_body->body_name.c_str());
+            }
+            const size_t root_body_index = reference_root_body->index;
             if (reference_body_pos_w)
             {
-                const size_t pos_offset = anchor_index * 3;
+                const size_t pos_offset = root_body_index * 3;
                 if (pos_offset + 2 < reference_body_pos_w->size())
                 {
                     data_->qpos[base_free_qpos_adr_ + 0] =
@@ -363,7 +420,7 @@ bool MujocoSimBridge::applyReferencePoseReplayFrame(
             }
             if (reference_body_quat_w)
             {
-                const size_t quat_offset = anchor_index * 4;
+                const size_t quat_offset = root_body_index * 4;
                 if (quat_offset + 3 < reference_body_quat_w->size())
                 {
                     const std::array<double, 4> reference_quat_wxyz = normalizeQuatWxyz({
@@ -384,7 +441,7 @@ bool MujocoSimBridge::applyReferencePoseReplayFrame(
             }
             if (reference_body_lin_vel_w)
             {
-                const size_t vel_offset = anchor_index * 3;
+                const size_t vel_offset = root_body_index * 3;
                 if (vel_offset + 2 < reference_body_lin_vel_w->size())
                 {
                     data_->qvel[base_free_qvel_adr_ + 0] =
@@ -397,7 +454,7 @@ bool MujocoSimBridge::applyReferencePoseReplayFrame(
             }
             if (reference_body_ang_vel_w)
             {
-                const size_t vel_offset = anchor_index * 3;
+                const size_t vel_offset = root_body_index * 3;
                 if (vel_offset + 2 < reference_body_ang_vel_w->size())
                 {
                     data_->qvel[base_free_qvel_adr_ + 3] =
@@ -434,7 +491,8 @@ bool MujocoSimBridge::applyReferencePoseReplayFrame(
     {
         RCLCPP_INFO(
             this->get_logger(),
-            "Reference pose replay test enabled: each RUNNING control tick now writes reference qpos/qvel/base pose directly.");
+            "Reference pose replay test enabled: each RUNNING control tick now writes reference qpos/qvel "
+            "and sim-root-body pose directly. reference_anchor_body remains only a motion-feature anchor.");
         reference_pose_replay_test_logged_ = true;
     }
     return true;

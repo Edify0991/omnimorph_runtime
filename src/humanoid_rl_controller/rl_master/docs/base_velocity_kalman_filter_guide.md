@@ -148,7 +148,10 @@ source_contract:
 
 - `freejoint_qvel`
 - `body_object_velocity_local`
+- `body_object_velocity_root_local`
 - `body_cvel`
+
+其中 `body_object_velocity_root_local` 会先读取 MuJoCo `mjOBJ_BODY` 的 inertial-frame 局部速度，再在 sim backend 中转换回 regular body/root frame。
 
 如果 `base_velocity_estimator.enabled: false`，策略 observation 直接使用 MuJoCo 提供的速度。sim2sim 中通常不需要开启滤波器，除非要模拟实机观测链路。
 

@@ -1,0 +1,515 @@
+beyondmimic_g1_full_body:
+  # Matched to:
+  # /home/edify/Code/beyondmimic/logs/rsl_rl/g1_flat/2026-04-08_10-39-46/exported/policy.onnx
+  # ONNX IO:
+  #   obs[1,160] + time_step[1,1]
+  #   -> actions[1,29], joint_pos[1,29], joint_vel[1,29],
+  #      body_pos_w[1,14,3], body_quat_w[1,14,4], body_lin_vel_w[1,14,3], body_ang_vel_w[1,14,3]
+  policy_name: beyondmimic_g1_flat_2026_04_08_10_39_46
+  policy_family: beyondmimic
+  policy_adapter: onnx
+  policy_file: /home/edify/Code/beyondmimic/logs/rsl_rl/g1_flat/2026-04-08_10-39-46/exported/policy.onnx
+  inference_strategy: sync_step
+  obs_stack_N: 1
+  cycle_time: 1.0
+  kps:
+    left_hip_pitch_joint: 40.179237
+    left_hip_roll_joint: 99.098427
+    left_hip_yaw_joint: 40.179237
+    left_knee_joint: 99.098427
+    left_ankle_pitch_joint: 28.501245
+    left_ankle_roll_joint: 28.501245
+    right_hip_pitch_joint: 40.179237
+    right_hip_roll_joint: 99.098427
+    right_hip_yaw_joint: 40.179237
+    right_knee_joint: 99.098427
+    right_ankle_pitch_joint: 28.501245
+    right_ankle_roll_joint: 28.501245
+    waist_yaw_joint: 40.179237
+    waist_roll_joint: 28.501245
+    waist_pitch_joint: 28.501245
+    left_shoulder_pitch_joint: 14.250623
+    left_shoulder_roll_joint: 14.250623
+    left_shoulder_yaw_joint: 14.250623
+    left_elbow_joint: 14.250623
+    left_wrist_roll_joint: 14.250623
+    left_wrist_pitch_joint: 16.778328
+    left_wrist_yaw_joint: 16.778328
+    right_shoulder_pitch_joint: 14.250623
+    right_shoulder_roll_joint: 14.250623
+    right_shoulder_yaw_joint: 14.250623
+    right_elbow_joint: 14.250623
+    right_wrist_roll_joint: 14.250623
+    right_wrist_pitch_joint: 16.778328
+    right_wrist_yaw_joint: 16.778328
+  kds:
+    left_hip_pitch_joint: 2.557890
+    left_hip_roll_joint: 6.308802
+    left_hip_yaw_joint: 2.557890
+    left_knee_joint: 6.308802
+    left_ankle_pitch_joint: 1.814446
+    left_ankle_roll_joint: 1.814446
+    right_hip_pitch_joint: 2.557890
+    right_hip_roll_joint: 6.308802
+    right_hip_yaw_joint: 2.557890
+    right_knee_joint: 6.308802
+    right_ankle_pitch_joint: 1.814446
+    right_ankle_roll_joint: 1.814446
+    waist_yaw_joint: 2.557890
+    waist_roll_joint: 1.814446
+    waist_pitch_joint: 1.814446
+    left_shoulder_pitch_joint: 0.907223
+    left_shoulder_roll_joint: 0.907223
+    left_shoulder_yaw_joint: 0.907223
+    left_elbow_joint: 0.907223
+    left_wrist_roll_joint: 0.907223
+    left_wrist_pitch_joint: 1.068141
+    left_wrist_yaw_joint: 1.068141
+    right_shoulder_pitch_joint: 0.907223
+    right_shoulder_roll_joint: 0.907223
+    right_shoulder_yaw_joint: 0.907223
+    right_elbow_joint: 0.907223
+    right_wrist_roll_joint: 0.907223
+    right_wrist_pitch_joint: 1.068141
+    right_wrist_yaw_joint: 1.068141
+  tau_limit:
+    left_hip_pitch_joint: 88.0
+    left_hip_roll_joint: 88.0
+    left_hip_yaw_joint: 88.0
+    left_knee_joint: 139.0
+    left_ankle_pitch_joint: 50.0
+    left_ankle_roll_joint: 50.0
+    right_hip_pitch_joint: 88.0
+    right_hip_roll_joint: 88.0
+    right_hip_yaw_joint: 88.0
+    right_knee_joint: 139.0
+    right_ankle_pitch_joint: 50.0
+    right_ankle_roll_joint: 50.0
+    waist_yaw_joint: 88.0
+    waist_roll_joint: 50.0
+    waist_pitch_joint: 50.0
+    left_shoulder_pitch_joint: 25.0
+    left_shoulder_roll_joint: 25.0
+    left_shoulder_yaw_joint: 25.0
+    left_elbow_joint: 25.0
+    left_wrist_roll_joint: 25.0
+    left_wrist_pitch_joint: 5.0
+    left_wrist_yaw_joint: 5.0
+    right_shoulder_pitch_joint: 25.0
+    right_shoulder_roll_joint: 25.0
+    right_shoulder_yaw_joint: 25.0
+    right_elbow_joint: 25.0
+    right_wrist_roll_joint: 25.0
+    right_wrist_pitch_joint: 5.0
+    right_wrist_yaw_joint: 5.0
+  clip_observations: 100.0
+  clip_actions: 100.0
+  action_scales:
+    left_hip_pitch_joint: 0.547546465
+    left_hip_roll_joint: 0.350661466
+    left_hip_yaw_joint: 0.547546465
+    left_knee_joint: 0.350661466
+    left_ankle_pitch_joint: 0.438577314
+    left_ankle_roll_joint: 0.438577314
+    right_hip_pitch_joint: 0.547546465
+    right_hip_roll_joint: 0.350661466
+    right_hip_yaw_joint: 0.547546465
+    right_knee_joint: 0.350661466
+    right_ankle_pitch_joint: 0.438577314
+    right_ankle_roll_joint: 0.438577314
+    waist_yaw_joint: 0.547546465
+    waist_roll_joint: 0.438577314
+    waist_pitch_joint: 0.438577314
+    left_shoulder_pitch_joint: 0.438577314
+    left_shoulder_roll_joint: 0.438577314
+    left_shoulder_yaw_joint: 0.438577314
+    left_elbow_joint: 0.438577314
+    left_wrist_roll_joint: 0.438577314
+    left_wrist_pitch_joint: 0.074500870
+    left_wrist_yaw_joint: 0.074500870
+    right_shoulder_pitch_joint: 0.438577314
+    right_shoulder_roll_joint: 0.438577314
+    right_shoulder_yaw_joint: 0.438577314
+    right_elbow_joint: 0.438577314
+    right_wrist_roll_joint: 0.438577314
+    right_wrist_pitch_joint: 0.074500870
+    right_wrist_yaw_joint: 0.074500870
+  device_id: 0
+  obs_dim: 160
+  action_dim: 29
+  motor_N: 29
+  RL_control_f: 50
+  solver_control_hz: 500
+  installed_joint_run_modes:
+    left_hip_pitch_joint: cst
+    left_hip_roll_joint: cst
+    left_hip_yaw_joint: cst
+    left_knee_joint: cst
+    left_ankle_pitch_joint: cst
+    left_ankle_roll_joint: cst
+    right_hip_pitch_joint: cst
+    right_hip_roll_joint: cst
+    right_hip_yaw_joint: cst
+    right_knee_joint: cst
+    right_ankle_pitch_joint: cst
+    right_ankle_roll_joint: cst
+    waist_yaw_joint: cst
+    waist_roll_joint: cst
+    waist_pitch_joint: cst
+    left_shoulder_pitch_joint: cst
+    left_shoulder_roll_joint: cst
+    left_shoulder_yaw_joint: cst
+    left_elbow_joint: cst
+    left_wrist_roll_joint: cst
+    left_wrist_pitch_joint: cst
+    left_wrist_yaw_joint: cst
+    right_shoulder_pitch_joint: cst
+    right_shoulder_roll_joint: cst
+    right_shoulder_yaw_joint: cst
+    right_elbow_joint: cst
+    right_wrist_roll_joint: cst
+    right_wrist_pitch_joint: cst
+    right_wrist_yaw_joint: cst
+  realtime:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
+  action_joint_order:
+    - left_hip_pitch_joint
+    - right_hip_pitch_joint
+    - waist_yaw_joint
+    - left_hip_roll_joint
+    - right_hip_roll_joint
+    - waist_roll_joint
+    - left_hip_yaw_joint
+    - right_hip_yaw_joint
+    - waist_pitch_joint
+    - left_knee_joint
+    - right_knee_joint
+    - left_shoulder_pitch_joint
+    - right_shoulder_pitch_joint
+    - left_ankle_pitch_joint
+    - right_ankle_pitch_joint
+    - left_shoulder_roll_joint
+    - right_shoulder_roll_joint
+    - left_ankle_roll_joint
+    - right_ankle_roll_joint
+    - left_shoulder_yaw_joint
+    - right_shoulder_yaw_joint
+    - left_elbow_joint
+    - right_elbow_joint
+    - left_wrist_roll_joint
+    - right_wrist_roll_joint
+    - left_wrist_pitch_joint
+    - right_wrist_pitch_joint
+    - left_wrist_yaw_joint
+    - right_wrist_yaw_joint
+  obs_joint_order:
+    - left_hip_pitch_joint
+    - right_hip_pitch_joint
+    - waist_yaw_joint
+    - left_hip_roll_joint
+    - right_hip_roll_joint
+    - waist_roll_joint
+    - left_hip_yaw_joint
+    - right_hip_yaw_joint
+    - waist_pitch_joint
+    - left_knee_joint
+    - right_knee_joint
+    - left_shoulder_pitch_joint
+    - right_shoulder_pitch_joint
+    - left_ankle_pitch_joint
+    - right_ankle_pitch_joint
+    - left_shoulder_roll_joint
+    - right_shoulder_roll_joint
+    - left_ankle_roll_joint
+    - right_ankle_roll_joint
+    - left_shoulder_yaw_joint
+    - right_shoulder_yaw_joint
+    - left_elbow_joint
+    - right_elbow_joint
+    - left_wrist_roll_joint
+    - right_wrist_roll_joint
+    - left_wrist_pitch_joint
+    - right_wrist_pitch_joint
+    - left_wrist_yaw_joint
+    - right_wrist_yaw_joint
+  observation_manifest_file: observation_manifest_beyondmimic_g1_full_body.yaml
+  enable_reference_motion: true
+  reference_motion_dim: 0
+  reference_motion_sampling: step
+  reference_motion_source: policy_outputs
+  reference_anchor_body: torso_link
+  motion_reference_alignment: startup_anchor_pos_yaw
+  reference_body_names:
+    - pelvis
+    - left_hip_roll_link
+    - left_knee_link
+    - left_ankle_roll_link
+    - right_hip_roll_link
+    - right_knee_link
+    - right_ankle_roll_link
+    - torso_link
+    - left_shoulder_roll_link
+    - left_elbow_link
+    - left_wrist_yaw_link
+    - right_shoulder_roll_link
+    - right_elbow_link
+    - right_wrist_yaw_link
+  pinocchio_urdf_path: /home/edify/Code/unitree_rl_gym/resources/robots/g1_description/g1_29dof.urdf
+  reference_joint_order:
+    - left_hip_pitch_joint
+    - right_hip_pitch_joint
+    - waist_yaw_joint
+    - left_hip_roll_joint
+    - right_hip_roll_joint
+    - waist_roll_joint
+    - left_hip_yaw_joint
+    - right_hip_yaw_joint
+    - waist_pitch_joint
+    - left_knee_joint
+    - right_knee_joint
+    - left_shoulder_pitch_joint
+    - right_shoulder_pitch_joint
+    - left_ankle_pitch_joint
+    - right_ankle_pitch_joint
+    - left_shoulder_roll_joint
+    - right_shoulder_roll_joint
+    - left_ankle_roll_joint
+    - right_ankle_roll_joint
+    - left_shoulder_yaw_joint
+    - right_shoulder_yaw_joint
+    - left_elbow_joint
+    - right_elbow_joint
+    - left_wrist_roll_joint
+    - right_wrist_roll_joint
+    - left_wrist_pitch_joint
+    - right_wrist_pitch_joint
+    - left_wrist_yaw_joint
+    - right_wrist_yaw_joint
+  source_contract:
+    imu_input:
+      payload: euler_compat
+      euler_order: [roll, pitch, yaw]
+      euler_unit: rad
+      quat_order: xyzw
+      ang_vel_order: [x, y, z]
+      frame_alignment_rpy: [0.0, 0.0, 0.0]
+    sim_base:
+      quat_source_order: wxyz
+      velocity_source: body_object_velocity_root_local
+    base_velocity_estimator:
+      enabled: false
+      use_imu_prediction: true
+      imu_accel_frame: body
+      imu_accel_includes_gravity: true
+      gravity_mps2: 9.80665
+      use_input_velocity_measurement: true
+      input_velocity_measurement_noise: 0.02
+      use_odom_velocity_measurement: true
+      odom_topic: /glim/odom
+      odom_velocity_frame: world
+      odom_velocity_measurement_noise: 0.03
+      zero_velocity_update: true
+      zero_velocity_measurement_noise: 0.01
+      stationary_joint_velocity_threshold: 0.03
+      stationary_ang_vel_threshold: 0.12
+      stationary_accel_norm_tolerance: 0.5
+      initial_variance: 0.25
+      process_noise: 0.05
+      accel_noise: 0.2
+      min_dt: 0.0001
+      max_dt: 0.05
+      reset_on_mode_switch: true
+    policy_extra_outputs:
+      reference_joint_pos_key: joint_pos
+      reference_joint_vel_key: joint_vel
+      reference_joint_order_metadata_key: command_joint_names
+      preserve_reference_joint_order: true
+      reference_body_pos_w_key: body_pos_w
+      reference_body_quat_w_key: body_quat_w
+      reference_body_lin_vel_w_key: body_lin_vel_w
+      reference_body_ang_vel_w_key: body_ang_vel_w
+      body_quat_order: wxyz
+      body_quat_representation: quat
+      body_quat_frame: world
+  observation_contract:
+    canonical:
+      joint_order: robot_global_joint_order
+      quat_order: xyzw
+      quat_representation: quat
+      body_quat_frame: world
+      body_orientation_representation: rot6
+  onnx_intra_threads: 1
+  onnx_inter_threads: 1
+  policy_io:
+    obs_input_name: obs
+    action_output_name: actions
+    enable_time_step_input: true
+    time_step_input_name: time_step
+    time_step_start: 0
+    advance_time_step_on_reference_prefetch: false
+    strict_model_io: true
+    enable_metadata_check: true
+    metadata_check_strict: false
+    required_metadata_keys:
+      - action_joint_names
+      - joint_names
+      - command_joint_names
+      - policy_joint_names
+      - body_names
+      - anchor_body_name
+    expected_metadata: {}
+    reset_policy_on_mode_switch: true
+    extra_output_names:
+      - joint_pos
+      - joint_vel
+      - body_pos_w
+      - body_quat_w
+      - body_lin_vel_w
+      - body_ang_vel_w
+    onnx_inputs: []
+  enable_cmd_watchdog: true
+  cmd_timeout_s: 0.12
+  loop_overrun_warn_us: 2000
+  enable_state_telemetry: true
+  state_telemetry_hz: 50.0
+  startup_completion_action: hold
+  policy_startup_warmup_steps: 0
+  seed_running_start_observation_from_reference: false
+  zeroing_duration_s: 5.0
+  zeroing_position_tolerance: 100.0
+  zeroing_velocity_tolerance: 100.0
+  control_mode: sim2real
+  action_filter: 0.0
+  robot:
+    default_joint_angles:
+      left_hip_pitch_joint: -0.312
+      left_hip_roll_joint: 0.0
+      left_hip_yaw_joint: 0.0
+      left_knee_joint: 0.669
+      left_ankle_pitch_joint: -0.363
+      left_ankle_roll_joint: 0.0
+      right_hip_pitch_joint: -0.312
+      right_hip_roll_joint: 0.0
+      right_hip_yaw_joint: 0.0
+      right_knee_joint: 0.669
+      right_ankle_pitch_joint: -0.363
+      right_ankle_roll_joint: 0.0
+      waist_yaw_joint: 0.0
+      waist_roll_joint: 0.0
+      waist_pitch_joint: 0.0
+      left_shoulder_pitch_joint: 0.2
+      left_shoulder_roll_joint: 0.2
+      left_shoulder_yaw_joint: 0.0
+      left_elbow_joint: 0.6
+      left_wrist_roll_joint: 0.0
+      left_wrist_pitch_joint: 0.0
+      left_wrist_yaw_joint: 0.0
+      right_shoulder_pitch_joint: 0.2
+      right_shoulder_roll_joint: -0.2
+      right_shoulder_yaw_joint: 0.0
+      right_elbow_joint: 0.6
+      right_wrist_roll_joint: 0.0
+      right_wrist_pitch_joint: 0.0
+      right_wrist_yaw_joint: 0.0
+    zero_joint_angles:
+      left_hip_pitch_joint: -0.312
+      left_hip_roll_joint: 0.0
+      left_hip_yaw_joint: 0.0
+      left_knee_joint: 0.669
+      left_ankle_pitch_joint: -0.363
+      left_ankle_roll_joint: 0.0
+      right_hip_pitch_joint: -0.312
+      right_hip_roll_joint: 0.0
+      right_hip_yaw_joint: 0.0
+      right_knee_joint: 0.669
+      right_ankle_pitch_joint: -0.363
+      right_ankle_roll_joint: 0.0
+      waist_yaw_joint: 0.0
+      waist_roll_joint: 0.0
+      waist_pitch_joint: 0.0
+      left_shoulder_pitch_joint: 0.2
+      left_shoulder_roll_joint: 0.2
+      left_shoulder_yaw_joint: 0.0
+      left_elbow_joint: 0.6
+      left_wrist_roll_joint: 0.0
+      left_wrist_pitch_joint: 0.0
+      left_wrist_yaw_joint: 0.0
+      right_shoulder_pitch_joint: 0.2
+      right_shoulder_roll_joint: -0.2
+      right_shoulder_yaw_joint: 0.0
+      right_elbow_joint: 0.6
+      right_wrist_roll_joint: 0.0
+      right_wrist_pitch_joint: 0.0
+      right_wrist_yaw_joint: 0.0
+    joint_limit_range:
+      left_hip_pitch_joint: [-2.5307, 2.8798]
+      left_hip_roll_joint: [-0.5236, 2.9671]
+      left_hip_yaw_joint: [-2.7576, 2.7576]
+      left_knee_joint: [-0.087267, 2.8798]
+      left_ankle_pitch_joint: [-0.87267, 0.5236]
+      left_ankle_roll_joint: [-0.2618, 0.2618]
+      right_hip_pitch_joint: [-2.5307, 2.8798]
+      right_hip_roll_joint: [-2.9671, 0.5236]
+      right_hip_yaw_joint: [-2.7576, 2.7576]
+      right_knee_joint: [-0.087267, 2.8798]
+      right_ankle_pitch_joint: [-0.87267, 0.5236]
+      right_ankle_roll_joint: [-0.2618, 0.2618]
+      waist_yaw_joint: [-2.618, 2.618]
+      waist_roll_joint: [-0.52, 0.52]
+      waist_pitch_joint: [-0.52, 0.52]
+      left_shoulder_pitch_joint: [-3.0892, 2.6704]
+      left_shoulder_roll_joint: [-1.5882, 2.2515]
+      left_shoulder_yaw_joint: [-2.618, 2.618]
+      left_elbow_joint: [-1.0472, 2.0944]
+      left_wrist_roll_joint: [-1.97222, 1.97222]
+      left_wrist_pitch_joint: [-1.61443, 1.61443]
+      left_wrist_yaw_joint: [-1.61443, 1.61443]
+      right_shoulder_pitch_joint: [-3.0892, 2.6704]
+      right_shoulder_roll_joint: [-2.2515, 1.5882]
+      right_shoulder_yaw_joint: [-2.618, 2.618]
+      right_elbow_joint: [-1.0472, 2.0944]
+      right_wrist_roll_joint: [-1.97222, 1.97222]
+      right_wrist_pitch_joint: [-1.61443, 1.61443]
+      right_wrist_yaw_joint: [-1.61443, 1.61443]
+    motor_torque_limit:
+      left_hip_pitch_joint: 88.0
+      left_hip_roll_joint: 88.0
+      left_hip_yaw_joint: 88.0
+      left_knee_joint: 139.0
+      left_ankle_pitch_joint: 50.0
+      left_ankle_roll_joint: 50.0
+      right_hip_pitch_joint: 88.0
+      right_hip_roll_joint: 88.0
+      right_hip_yaw_joint: 88.0
+      right_knee_joint: 139.0
+      right_ankle_pitch_joint: 50.0
+      right_ankle_roll_joint: 50.0
+      waist_yaw_joint: 88.0
+      waist_roll_joint: 50.0
+      waist_pitch_joint: 50.0
+      left_shoulder_pitch_joint: 25.0
+      left_shoulder_roll_joint: 25.0
+      left_shoulder_yaw_joint: 25.0
+      left_elbow_joint: 25.0
+      left_wrist_roll_joint: 25.0
+      left_wrist_pitch_joint: 5.0
+      left_wrist_yaw_joint: 5.0
+      right_shoulder_pitch_joint: 25.0
+      right_shoulder_roll_joint: 25.0
+      right_shoulder_yaw_joint: 25.0
+      right_elbow_joint: 25.0
+      right_wrist_roll_joint: 25.0
+      right_wrist_pitch_joint: 5.0
+      right_wrist_yaw_joint: 5.0
+  scales:
+    lin_vel: 1.0
+    ang_vel: 1.0
+    dof_pos: 1.0
+    dof_vel: 1.0
+    quat: 1.0
+    height_measurements: 1.0

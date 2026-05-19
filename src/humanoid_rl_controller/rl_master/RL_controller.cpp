@@ -2236,6 +2236,7 @@ std::vector<float> RL_controller::get_robot_observation(double phase_t)
                             reference_body_lin_vel[offset + 1],
                             reference_body_lin_vel[offset + 2]};
                         if (velocity_source == "body_object_velocity_local" ||
+                            velocity_source == "body_object_velocity_root_local" ||
                             velocity_source == "body_cvel")
                         {
                             lin_vel_world = rotateWorldVectorToBodyFrame(lin_vel_world, base_quat);

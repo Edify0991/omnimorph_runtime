@@ -221,6 +221,7 @@ beyondmimic_leg12_strict_walk2:
   state_telemetry_hz: 50.0
   startup_completion_action: hold
   policy_startup_warmup_steps: 0
+  seed_running_start_observation_from_reference: false
   zeroing_duration_s: 5.0
   zeroing_position_tolerance: 100.0
   zeroing_velocity_tolerance: 100.0

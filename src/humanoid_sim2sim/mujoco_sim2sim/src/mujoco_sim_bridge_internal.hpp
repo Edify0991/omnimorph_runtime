@@ -193,7 +193,6 @@ private:
     int post_release_settle_ticks_ = 0;
     bool enable_prepose_snap_ = false;
     bool sim_sync_running_start_to_reference_ = false;
-    bool sim_seed_running_start_reference_dynamics_ = false;
     bool enable_reference_pose_replay_test_ = false;
     std::vector<double> prepose_joint_q_;
     bool sim_only_force_policy_csp_ = false;

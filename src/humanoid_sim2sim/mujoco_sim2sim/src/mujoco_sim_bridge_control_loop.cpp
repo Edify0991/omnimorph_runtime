@@ -192,9 +192,7 @@ void MujocoSimBridge::controlLoopTick()
         if (last_controller_deploy_state_ != rl_master::DeployLifecycleState::kRunning &&
             controller_state == rl_master::DeployLifecycleState::kRunning)
         {
-            running_start_reference_sync_pending_ =
-                sim_sync_running_start_to_reference_ ||
-                sim_seed_running_start_reference_dynamics_;
+            running_start_reference_sync_pending_ = sim_sync_running_start_to_reference_;
         }
     }
     if (controller_state != rl_master::DeployLifecycleState::kRunning)

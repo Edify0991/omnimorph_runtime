@@ -516,7 +516,7 @@ struct SourceContractImuInput
 struct SourceContractSimBase
 {
     std::string quat_source_order = "wxyz"; // MuJoCo free-joint qpos order
-    std::string velocity_source = "freejoint_qvel"; // freejoint_qvel / body_object_velocity_local / body_cvel
+    std::string velocity_source = "freejoint_qvel"; // freejoint_qvel / body_object_velocity_local / body_object_velocity_root_local / body_cvel
 };
 
 struct GaitConfig
@@ -1611,11 +1611,13 @@ public:
             }
             if (source_contract.sim_base.velocity_source != "freejoint_qvel" &&
                 source_contract.sim_base.velocity_source != "body_object_velocity_local" &&
+                source_contract.sim_base.velocity_source != "body_object_velocity_root_local" &&
                 source_contract.sim_base.velocity_source != "body_cvel")
             {
                 throw std::runtime_error(
                     "source_contract.sim_base.velocity_source must be "
-                    "'freejoint_qvel', 'body_object_velocity_local', or 'body_cvel'");
+                    "'freejoint_qvel', 'body_object_velocity_local', "
+                    "'body_object_velocity_root_local', or 'body_cvel'");
             }
             if (source_contract.base_velocity_estimator.imu_accel_frame != "body" &&
                 source_contract.base_velocity_estimator.imu_accel_frame != "world")

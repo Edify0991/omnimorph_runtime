@@ -3,6 +3,39 @@
 namespace mujoco_sim2sim
 {
 
+namespace
+{
+
+void assignVec3(std::array<float, 3> &dst, const mjtNum *src)
+{
+    dst[0] = static_cast<float>(src[0]);
+    dst[1] = static_cast<float>(src[1]);
+    dst[2] = static_cast<float>(src[2]);
+}
+
+void matVecMul3(const mjtNum *mat3x3, const mjtNum *vec3, mjtNum *out3)
+{
+    out3[0] = mat3x3[0] * vec3[0] + mat3x3[1] * vec3[1] + mat3x3[2] * vec3[2];
+    out3[1] = mat3x3[3] * vec3[0] + mat3x3[4] * vec3[1] + mat3x3[5] * vec3[2];
+    out3[2] = mat3x3[6] * vec3[0] + mat3x3[7] * vec3[1] + mat3x3[8] * vec3[2];
+}
+
+void matTVecMul3(const mjtNum *mat3x3, const mjtNum *vec3, mjtNum *out3)
+{
+    out3[0] = mat3x3[0] * vec3[0] + mat3x3[3] * vec3[1] + mat3x3[6] * vec3[2];
+    out3[1] = mat3x3[1] * vec3[0] + mat3x3[4] * vec3[1] + mat3x3[7] * vec3[2];
+    out3[2] = mat3x3[2] * vec3[0] + mat3x3[5] * vec3[1] + mat3x3[8] * vec3[2];
+}
+
+void cross3(const mjtNum *a, const mjtNum *b, mjtNum *out3)
+{
+    out3[0] = a[1] * b[2] - a[2] * b[1];
+    out3[1] = a[2] * b[0] - a[0] * b[2];
+    out3[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+} // namespace
+
 rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
 {
     const Sim2realCfg &runtime_cfg = controller_runtime_.runtimeCfg();
@@ -22,11 +55,12 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
     }
     if (velocity_source != "freejoint_qvel" &&
         velocity_source != "body_object_velocity_local" &&
+        velocity_source != "body_object_velocity_root_local" &&
         velocity_source != "body_cvel")
     {
         throw std::runtime_error(
             "MuJoCo sim base velocity source must be 'freejoint_qvel', "
-            "'body_object_velocity_local', or 'body_cvel', got '" +
+            "'body_object_velocity_local', 'body_object_velocity_root_local', or 'body_cvel', got '" +
             runtime_cfg.source_contract.sim_base.velocity_source + "'");
     }
 
@@ -72,24 +106,55 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
     {
         mjtNum vel6_local[6] = {0, 0, 0, 0, 0, 0};
         mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_local, 1);
-        state.base_ang_vel[0] = static_cast<float>(vel6_local[0]);
-        state.base_ang_vel[1] = static_cast<float>(vel6_local[1]);
-        state.base_ang_vel[2] = static_cast<float>(vel6_local[2]);
-        state.base_lin_vel[0] = static_cast<float>(vel6_local[3]);
-        state.base_lin_vel[1] = static_cast<float>(vel6_local[4]);
-        state.base_lin_vel[2] = static_cast<float>(vel6_local[5]);
+        assignVec3(state.base_ang_vel, vel6_local + 0);
+        assignVec3(state.base_lin_vel, vel6_local + 3);
+        base_velocity_valid = true;
+    }
+    else if (velocity_source == "body_object_velocity_root_local" &&
+             base_body_id_ >= 0 && base_body_id_ < model_->nbody &&
+             data_->xmat && data_->ximat && data_->xpos && data_->xipos)
+    {
+        mjtNum vel6_inertial_local[6] = {0, 0, 0, 0, 0, 0};
+        mj_objectVelocity(model_, data_, mjOBJ_BODY, base_body_id_, vel6_inertial_local, 1);
+
+        const mjtNum *rot_w_root = data_->xmat + 9 * base_body_id_;
+        const mjtNum *rot_w_inertial = data_->ximat + 9 * base_body_id_;
+        const mjtNum *root_origin_w = data_->xpos + 3 * base_body_id_;
+        const mjtNum *inertial_origin_w = data_->xipos + 3 * base_body_id_;
+
+        // MuJoCo's mjOBJ_BODY velocity is attached to the inertial frame/origin.
+        // Convert it back to the regular body/root frame at the body origin.
+        mjtNum ang_world[3] = {0, 0, 0};
+        mjtNum lin_world_at_inertial_origin[3] = {0, 0, 0};
+        mjtNum inertial_to_root_world[3] = {
+            root_origin_w[0] - inertial_origin_w[0],
+            root_origin_w[1] - inertial_origin_w[1],
+            root_origin_w[2] - inertial_origin_w[2]};
+        mjtNum ang_cross_offset[3] = {0, 0, 0};
+        mjtNum lin_world_at_root_origin[3] = {0, 0, 0};
+        mjtNum ang_root_local[3] = {0, 0, 0};
+        mjtNum lin_root_local[3] = {0, 0, 0};
+
+        matVecMul3(rot_w_inertial, vel6_inertial_local + 0, ang_world);
+        matVecMul3(rot_w_inertial, vel6_inertial_local + 3, lin_world_at_inertial_origin);
+        cross3(ang_world, inertial_to_root_world, ang_cross_offset);
+        for (size_t i = 0; i < 3; ++i)
+        {
+            lin_world_at_root_origin[i] = lin_world_at_inertial_origin[i] + ang_cross_offset[i];
+        }
+        matTVecMul3(rot_w_root, ang_world, ang_root_local);
+        matTVecMul3(rot_w_root, lin_world_at_root_origin, lin_root_local);
+
+        assignVec3(state.base_ang_vel, ang_root_local);
+        assignVec3(state.base_lin_vel, lin_root_local);
         base_velocity_valid = true;
     }
     else if (velocity_source == "body_cvel" &&
              base_body_id_ >= 0 && base_body_id_ < model_->nbody && data_->cvel)
     {
         const mjtNum *cvel = data_->cvel + 6 * base_body_id_;
-        state.base_ang_vel[0] = static_cast<float>(cvel[0]);
-        state.base_ang_vel[1] = static_cast<float>(cvel[1]);
-        state.base_ang_vel[2] = static_cast<float>(cvel[2]);
-        state.base_lin_vel[0] = static_cast<float>(cvel[3]);
-        state.base_lin_vel[1] = static_cast<float>(cvel[4]);
-        state.base_lin_vel[2] = static_cast<float>(cvel[5]);
+        assignVec3(state.base_ang_vel, cvel + 0);
+        assignVec3(state.base_lin_vel, cvel + 3);
         base_velocity_valid = true;
     }
     else if (base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv)
