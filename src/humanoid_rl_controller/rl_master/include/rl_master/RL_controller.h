@@ -148,6 +148,9 @@ private:
         ReferenceMotionProvider *provider,
         const std::string &tag);
     ObservationFeatureContext buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t);
+    void buildStackedObservation(
+        const std::deque<std::vector<float>> &observation_history,
+        const char *context);
     bool canHotSwitch(int from_mode, int to_mode) const;
     const ModeProfile &modeProfileForModeId(int mode_id) const;
 

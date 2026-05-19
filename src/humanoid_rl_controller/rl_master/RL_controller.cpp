@@ -832,6 +832,69 @@ const RL_controller::ModeProfile &RL_controller::modeProfileForModeId(int mode_i
     return mode_profiles_[profile_index];
 }
 
+void RL_controller::buildStackedObservation(
+    const std::deque<std::vector<float>> &observation_history,
+    const char *context)
+{
+    const auto &active_cfg = activePolicyCfg();
+    const size_t frame_dim = static_cast<size_t>(active_cfg.obs_dim);
+    const size_t expected_obs_size = frame_dim * observation_history.size();
+    if (stacked_obs_buffer_.size() != expected_obs_size)
+    {
+        stacked_obs_buffer_.assign(expected_obs_size, 0.0f);
+    }
+
+    for (const auto &frame_obs : observation_history)
+    {
+        if (frame_obs.size() != frame_dim)
+        {
+            throw std::runtime_error(
+                std::string("Stacked observation frame dim mismatch") +
+                (context ? std::string(" during ") + context : std::string()) +
+                ". got=" + std::to_string(frame_obs.size()) +
+                ", expected=" + std::to_string(active_cfg.obs_dim));
+        }
+    }
+
+    if (active_cfg.observation_stack_layout == "frame_major")
+    {
+        size_t offset = 0;
+        for (const auto &frame_obs : observation_history)
+        {
+            std::copy(
+                frame_obs.begin(),
+                frame_obs.end(),
+                stacked_obs_buffer_.begin() + static_cast<std::ptrdiff_t>(offset));
+            offset += frame_obs.size();
+        }
+        return;
+    }
+
+    if (active_cfg.observation_stack_layout != "term_major")
+    {
+        throw std::runtime_error(
+            "Unsupported observation_stack_layout: " + active_cfg.observation_stack_layout);
+    }
+
+    size_t offset = 0;
+    for (const auto &term : activeObservationBuilder().termLayout())
+    {
+        if (term.offset + term.dim > frame_dim)
+        {
+            throw std::runtime_error(
+                "Observation term layout exceeds frame dim for term '" + term.name + "'");
+        }
+        for (const auto &frame_obs : observation_history)
+        {
+            std::copy(
+                frame_obs.begin() + static_cast<std::ptrdiff_t>(term.offset),
+                frame_obs.begin() + static_cast<std::ptrdiff_t>(term.offset + term.dim),
+                stacked_obs_buffer_.begin() + static_cast<std::ptrdiff_t>(offset));
+            offset += term.dim;
+        }
+    }
+}
+
 bool RL_controller::canHotSwitch(int from_mode, int to_mode) const
 {
     if (from_mode == to_mode)
@@ -902,6 +965,10 @@ bool RL_controller::canHotSwitch(int from_mode, int to_mode) const
     if (from_cfg.observation_manifest_path != to_cfg.observation_manifest_path)
     {
         return reject("observation_manifest_path mismatch");
+    }
+    if (from_cfg.observation_stack_layout != to_cfg.observation_stack_layout)
+    {
+        return reject("observation_stack_layout mismatch");
     }
     if (from_cfg.external_observations.size() != to_cfg.external_observations.size())
     {
@@ -1408,27 +1475,7 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs(bool advance_time_step
     }
 
     const auto &active_cfg = activePolicyCfg();
-    const size_t expected_obs_size = static_cast<size_t>(active_cfg.obs_dim) * obs_deque.size();
-    if (stacked_obs_buffer_.size() != expected_obs_size)
-    {
-        stacked_obs_buffer_.assign(expected_obs_size, 0.0f);
-    }
-    size_t offset = 0;
-    for (const auto &frame_obs : obs_deque)
-    {
-        if (frame_obs.size() != static_cast<size_t>(active_cfg.obs_dim))
-        {
-            throw std::runtime_error(
-                "Stacked observation frame dim mismatch during reference prefetch. got=" +
-                std::to_string(frame_obs.size()) +
-                ", expected=" + std::to_string(active_cfg.obs_dim));
-        }
-        std::copy(
-            frame_obs.begin(),
-            frame_obs.end(),
-            stacked_obs_buffer_.begin() + static_cast<std::ptrdiff_t>(offset));
-        offset += frame_obs.size();
-    }
+    buildStackedObservation(obs_deque, "reference prefetch");
 
     std::vector<float> current_observation = obs;
     if (current_observation.size() != static_cast<size_t>(active_cfg.obs_dim))
@@ -2137,24 +2184,7 @@ std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs
     }
 
     const auto &active_cfg = activePolicyCfg();
-    const size_t expected_obs_size = static_cast<size_t>(active_cfg.obs_dim) * obs_deque_ptr->size();
-    if (stacked_obs_buffer_.size() != expected_obs_size)
-    {
-        stacked_obs_buffer_.assign(expected_obs_size, 0.0f);
-    }
-
-    size_t offset = 0;
-    for (const auto &frame_obs : *obs_deque_ptr)
-    {
-        if (frame_obs.size() != static_cast<size_t>(active_cfg.obs_dim))
-        {
-            throw std::runtime_error(
-                "Stacked observation frame dim mismatch. got=" + std::to_string(frame_obs.size()) +
-                ", expected=" + std::to_string(active_cfg.obs_dim));
-        }
-        std::copy(frame_obs.begin(), frame_obs.end(), stacked_obs_buffer_.begin() + static_cast<std::ptrdiff_t>(offset));
-        offset += frame_obs.size();
-    }
+    buildStackedObservation(*obs_deque_ptr, "policy run");
 
     PolicyRunOutput policy_output = runPolicyGroup(
         &activePolicyGroup(),

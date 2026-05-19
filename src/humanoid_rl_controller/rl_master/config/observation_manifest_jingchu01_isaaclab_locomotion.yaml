@@ -1,0 +1,24 @@
+observation_manifest:
+  schema_version: 3
+  profile: "jingchu01_isaaclab_locomotion"
+  # One frame: 45
+  # Stacked actor input: term-major 5-frame history = 225
+  terms:
+    - name: base_ang_vel
+      enabled: true
+      components: [x, y, z]
+    - name: projected_gravity
+      enabled: true
+      count: 3
+    - name: command
+      enabled: true
+      components: [vx, vy, dyaw]
+    - name: joint_pos
+      enabled: true
+      count: 12
+    - name: joint_vel
+      enabled: true
+      count: 12
+    - name: last_action
+      enabled: true
+      count: 12

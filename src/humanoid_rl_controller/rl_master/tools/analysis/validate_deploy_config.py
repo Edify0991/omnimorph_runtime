@@ -141,6 +141,34 @@ SUPPORTED_ONNX_INPUT_SOURCES = {
     "constant",
 }
 
+SUPPORTED_OBSERVATION_STACK_LAYOUTS = {"frame_major", "term_major"}
+ISAACLAB_LOCOMOTION_SECTIONS = {
+    "jingchu01_dcmotor_newpd_baseline",
+    "jingchu01_pacedcmotor_group_delay_qdq_newpd",
+}
+ISAACLAB_LEFT_FIRST_JOINT_ORDER = [
+    "left_hip_roll",
+    "left_hip_yaw",
+    "left_hip_pitch",
+    "left_knee_pitch",
+    "left_ankle_pitch",
+    "left_ankle_roll",
+    "right_hip_roll",
+    "right_hip_yaw",
+    "right_hip_pitch",
+    "right_knee_pitch",
+    "right_ankle_pitch",
+    "right_ankle_roll",
+]
+ISAACLAB_LOCOMOTION_TERM_ORDER = [
+    "base_ang_vel",
+    "projected_gravity",
+    "command",
+    "joint_pos",
+    "joint_vel",
+    "last_action",
+]
+
 SUPPORTED_IMU_PAYLOADS = {"euler_compat", "quaternion"}
 SUPPORTED_EULER_UNITS = {"rad", "deg"}
 SUPPORTED_QUAT_ORDERS = {"xyzw", "wxyz"}
@@ -757,6 +785,92 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
         total_dim += max(dim, 0)
 
     return total_dim
+
+
+def enabled_manifest_term_names(manifest_terms: Sequence[Dict[str, Any]]) -> List[str]:
+    names: List[str] = []
+    for raw_term in manifest_terms:
+        term = to_dict(raw_term)
+        if not as_bool(term.get("enabled", True), True):
+            continue
+        name = manifest_term_name(term)
+        if name:
+            names.append(name)
+    return names
+
+
+def check_observation_stack_layout(
+    section_cfg: Dict[str, Any],
+    issues: IssueCollector,
+    context: str,
+) -> str:
+    layout = normalize_token(section_cfg.get("observation_stack_layout", "frame_major"))
+    if layout not in SUPPORTED_OBSERVATION_STACK_LAYOUTS:
+        issues.error(
+            context,
+            "observation_stack_layout must be one of "
+            + str(sorted(SUPPORTED_OBSERVATION_STACK_LAYOUTS)),
+        )
+    return layout or "frame_major"
+
+
+def check_isaaclab_locomotion_profile(
+    section_cfg: Dict[str, Any],
+    manifest_path: Path,
+    manifest_dim: int,
+    manifest_terms: Sequence[Dict[str, Any]],
+    observation_stack_layout: str,
+    action_order: Sequence[str],
+    obs_order: Sequence[str],
+    issues: IssueCollector,
+    context: str,
+) -> None:
+    obs_dim = as_int(section_cfg.get("obs_dim"), 0)
+    obs_stack_n = as_int(section_cfg.get("obs_stack_N"), 0)
+    action_dim = as_int(section_cfg.get("action_dim"), 0)
+    action_scale = float(section_cfg.get("action_scale", 0.0) or 0.0)
+    actor_input_dim = obs_dim * obs_stack_n if obs_dim > 0 and obs_stack_n > 0 else 0
+
+    if manifest_path.name != "observation_manifest_jingchu01_isaaclab_locomotion.yaml":
+        issues.error(
+            context,
+            "IsaacLab locomotion profiles must use observation_manifest_jingchu01_isaaclab_locomotion.yaml",
+        )
+    if manifest_dim != 45:
+        issues.error(context, f"IsaacLab locomotion manifest dim must be 45, got {manifest_dim}")
+    if obs_dim != 45:
+        issues.error(context, f"IsaacLab locomotion obs_dim must be 45, got {obs_dim}")
+    if obs_stack_n != 5:
+        issues.error(context, f"IsaacLab locomotion obs_stack_N must be 5, got {obs_stack_n}")
+    if observation_stack_layout != "term_major":
+        issues.error(context, "IsaacLab locomotion profiles must set observation_stack_layout: term_major")
+    if actor_input_dim != 225:
+        issues.error(context, f"IsaacLab locomotion stacked actor input must be 225, got {actor_input_dim}")
+    if action_dim != 12:
+        issues.error(context, f"IsaacLab locomotion action_dim must be 12, got {action_dim}")
+    if not math.isclose(action_scale, 0.25, rel_tol=0.0, abs_tol=1.0e-6):
+        issues.error(context, f"IsaacLab locomotion action_scale must be 0.25, got {action_scale}")
+
+    term_names = enabled_manifest_term_names(manifest_terms)
+    forbidden_terms = sorted({"base_rpy", "phase"} & set(term_names))
+    if forbidden_terms:
+        issues.error(
+            context,
+            "IsaacLab locomotion manifest must not include forbidden terms: "
+            + ", ".join(forbidden_terms),
+        )
+    if term_names != ISAACLAB_LOCOMOTION_TERM_ORDER:
+        issues.error(
+            context,
+            "IsaacLab locomotion manifest term order must be "
+            + ", ".join(ISAACLAB_LOCOMOTION_TERM_ORDER),
+        )
+
+    if list(action_order) != ISAACLAB_LEFT_FIRST_JOINT_ORDER:
+        issues.error(context, "IsaacLab locomotion action_joint_order must be left-first training order")
+    effective_obs_order = list(obs_order) if obs_order else list(action_order)
+    if effective_obs_order != ISAACLAB_LEFT_FIRST_JOINT_ORDER:
+        issues.error(context, "IsaacLab locomotion obs_joint_order must be left-first training order")
 
 
 def load_manifest_terms(
@@ -1839,6 +1953,7 @@ def validate_profile(
     action_dim = as_int(section_cfg.get("action_dim"), 0)
     motor_n = as_int(section_cfg.get("motor_N"), 0)
     obs_stack_n = as_int(section_cfg.get("obs_stack_N"), 0)
+    observation_stack_layout = check_observation_stack_layout(section_cfg, issues, context)
 
     if obs_stack_n <= 0:
         issues.error(context, "obs_stack_N must be > 0")
@@ -1967,6 +2082,7 @@ def validate_profile(
     validate_robot_cfg_against_global_joint_order(section_cfg, global_joint_order, issues, context)
     validate_zero_pose_contract(section_cfg, global_joint_order, issues, context)
     manifest_path = get_manifest_path(section_cfg, root_dir)
+    manifest_terms = load_manifest_terms(manifest_path, issues, context)
     required_reference_features = collect_required_reference_features(manifest_path, issues, context)
     check_source_contract(section_cfg, required_reference_features, issues, context)
     check_reference_contract(
@@ -1991,6 +2107,18 @@ def validate_profile(
         issues.error(
             context,
             f"manifest dim {manifest_dim} does not match cfg obs_dim {obs_dim}. manifest={manifest_path}",
+        )
+    if section_name in ISAACLAB_LOCOMOTION_SECTIONS:
+        check_isaaclab_locomotion_profile(
+            section_cfg,
+            manifest_path,
+            manifest_dim,
+            manifest_terms,
+            observation_stack_layout,
+            action_order,
+            obs_order,
+            issues,
+            context,
         )
 
     policy_io_cfg = to_dict(section_cfg.get("policy_io", section_cfg))

@@ -1109,6 +1109,21 @@ const std::vector<std::string> &ObservationBuilder::layoutDescription() const
     return layout_description_;
 }
 
+std::vector<ObservationTermLayout> ObservationBuilder::termLayout() const
+{
+    std::vector<ObservationTermLayout> layout;
+    layout.reserve(resolved_terms_.size());
+    for (const auto &term : resolved_terms_)
+    {
+        layout.push_back(ObservationTermLayout{
+            term.config.name,
+            term.offset,
+            term.dim,
+        });
+    }
+    return layout;
+}
+
 std::vector<float> ObservationBuilder::build(
     const RobotState &robot,
     const Cmd &cmd,

@@ -695,6 +695,7 @@ public:
     int action_chunk_execute_steps = 1;
     int action_chunk_replan_interval = 1;
     int obs_stack_N = 1;
+    std::string observation_stack_layout = "frame_major";
     double cycle_time = 1.0;
 
     std::vector<float> kps;
@@ -1025,6 +1026,21 @@ public:
                 "action_chunk_replan_interval",
                 action_chunk_execute_steps);
             obs_stack_N = cfg["obs_stack_N"].as<int>();
+            observation_stack_layout = yamlReadOr<std::string>(
+                cfg,
+                "observation_stack_layout",
+                "frame_major");
+            std::transform(
+                observation_stack_layout.begin(),
+                observation_stack_layout.end(),
+                observation_stack_layout.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (observation_stack_layout != "frame_major" &&
+                observation_stack_layout != "term_major")
+            {
+                throw std::runtime_error(
+                    "observation_stack_layout must be one of: frame_major, term_major");
+            }
             cycle_time = cfg["cycle_time"].as<double>();
 
             clip_observations = cfg["clip_observations"].as<float>();

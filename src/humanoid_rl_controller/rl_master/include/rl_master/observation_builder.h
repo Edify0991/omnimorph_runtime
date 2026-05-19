@@ -35,6 +35,13 @@ struct ObservationFeatureContext
     std::unordered_map<std::string, ObservationFeatureContract> named_feature_contracts;
 };
 
+struct ObservationTermLayout
+{
+    std::string name;
+    size_t offset = 0;
+    size_t dim = 0;
+};
+
 class ObservationManifest
 {
 public:
@@ -62,6 +69,7 @@ public:
 
     size_t expectedDim() const;
     const std::vector<std::string> &layoutDescription() const;
+    std::vector<ObservationTermLayout> termLayout() const;
 
 private:
     using GatherFn = std::function<void(
