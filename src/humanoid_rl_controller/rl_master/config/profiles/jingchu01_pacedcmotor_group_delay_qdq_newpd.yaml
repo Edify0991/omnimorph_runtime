@@ -193,6 +193,64 @@ jingchu01_pacedcmotor_group_delay_qdq_newpd:
       left_elbow_yaw: 0.0
       left_wrist_pitch: 0.0
       left_wrist_roll: 0.0
+    joint_limit_range:
+      right_hip_roll: [-0.1396, 0.5236]
+      right_hip_yaw: [-0.5236, 0.5236]
+      right_hip_pitch: [-1.2566, 0.7853]
+      right_knee_pitch: [-0.0872, 1.7453]
+      right_ankle_pitch: [-0.7853, 0.5236]
+      right_ankle_roll: [-0.2617, 0.2617]
+      left_hip_roll: [-0.1396, 0.5236]
+      left_hip_yaw: [-0.5236, 0.5236]
+      left_hip_pitch: [-1.2566, 0.7853]
+      left_knee_pitch: [-0.0872, 1.7453]
+      left_ankle_pitch: [-0.7853, 0.5236]
+      left_ankle_roll: [-0.2617, 0.2617]
+      waist_roll: [-0.2617, 0.2617]
+      waist_yaw: [-0.7853, 0.7853]
+      right_shoulder_pitch: [-1.0471, 3.1415]
+      right_shoulder_roll: [-0.0872, 2.2689]
+      right_shoulder_yaw: [-2.0943, 2.0943]
+      right_elbow_pitch: [0.0, 1.8325]
+      right_elbow_yaw: [-2.0943, 2.0943]
+      right_wrist_pitch: [-1.2217, 1.2217]
+      right_wrist_roll: [-1.2217, 1.2217]
+      left_shoulder_pitch: [-1.0471, 3.1415]
+      left_shoulder_roll: [-0.0872, 2.2689]
+      left_shoulder_yaw: [-2.0943, 2.0943]
+      left_elbow_pitch: [0.0, 1.8325]
+      left_elbow_yaw: [-2.0943, 2.0943]
+      left_wrist_pitch: [-1.2217, 1.2217]
+      left_wrist_roll: [-1.2217, 1.2217]
+    motor_torque_limit:
+      right_hip_roll: 330.0
+      right_hip_yaw: 150.0
+      right_hip_pitch: 330.0
+      right_knee_pitch: 2000.0
+      right_ankle_pitch: 90.0
+      right_ankle_roll: 90.0
+      left_hip_roll: 330.0
+      left_hip_yaw: 150.0
+      left_hip_pitch: 330.0
+      left_knee_pitch: 2000.0
+      left_ankle_pitch: 90.0
+      left_ankle_roll: 90.0
+      waist_roll: 330.0
+      waist_yaw: 150.0
+      right_shoulder_pitch: 90.0
+      right_shoulder_roll: 90.0
+      right_shoulder_yaw: 60.0
+      right_elbow_pitch: 60.0
+      right_elbow_yaw: 36.0
+      right_wrist_pitch: 36.0
+      right_wrist_roll: 36.0
+      left_shoulder_pitch: 90.0
+      left_shoulder_roll: 90.0
+      left_shoulder_yaw: 60.0
+      left_elbow_pitch: 60.0
+      left_elbow_yaw: 36.0
+      left_wrist_pitch: 36.0
+      left_wrist_roll: 36.0
     zero_joint_angles:
       right_hip_roll: 0.0
       right_hip_yaw: 0.0
