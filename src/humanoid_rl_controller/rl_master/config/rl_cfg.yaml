@@ -110,9 +110,9 @@ deploy_mode_profiles:
 - mode_id: 3
   config_section: engineai_stand
   tag: stand
-- mode_id: 4
-  config_section: beyondmimic_leg12_strict_walk2
-  tag: beyondmimic_walk
+# - mode_id: 4
+#   config_section: beyondmimic_leg12_strict_walk2
+#   tag: beyondmimic_walk
 - mode_id: 4
   config_section: tienkun_amp_jc01_full_body
   tag: tienkun_amp

@@ -90,6 +90,7 @@ jingchu01_pacedcmotor_group_delay_qdq_newpd:
     cpu_id: 3
     use_fifo: true
     fifo_priority: 90
+  # Policy action/last_action order follows the IsaacLab action config.
   action_joint_order:
     - left_hip_roll
     - left_hip_yaw
@@ -103,6 +104,7 @@ jingchu01_pacedcmotor_group_delay_qdq_newpd:
     - right_knee_pitch
     - right_ankle_pitch
     - right_ankle_roll
+  # joint_pos/joint_vel observations follow IsaacLab articulation order.
   obs_joint_order:
     - left_hip_roll
     - right_hip_roll

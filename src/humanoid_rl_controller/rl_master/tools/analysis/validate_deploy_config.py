@@ -2252,15 +2252,28 @@ def main() -> int:
         root_dir = cfg_path.parent.parent
     else:
         configured_root = resolve_path(root_dir_raw, cfg_path.parent)
-        if configured_root.exists():
+        configured_root_error: OSError | None = None
+        try:
+            configured_root_exists = configured_root.exists()
+        except OSError as exc:
+            configured_root_exists = False
+            configured_root_error = exc
+        if configured_root_exists:
             root_dir = configured_root
         else:
             root_dir = cfg_path.parent.parent
-            issues.warn(
-                "global",
-                f"configured humanoid_rl_root_dir does not exist: {configured_root}. "
-                f"fallback to local path: {root_dir}",
-            )
+            if configured_root_error is not None:
+                issues.warn(
+                    "global",
+                    f"configured humanoid_rl_root_dir is not accessible: {configured_root} ({configured_root_error}). "
+                    f"fallback to local path: {root_dir}",
+                )
+            else:
+                issues.warn(
+                    "global",
+                    f"configured humanoid_rl_root_dir does not exist: {configured_root}. "
+                    f"fallback to local path: {root_dir}",
+                )
 
     validate_logging_config(root_cfg, root_dir, issues)
 

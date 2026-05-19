@@ -90,6 +90,7 @@ jingchu01_dcmotor_newpd_baseline:
     cpu_id: 3
     use_fifo: true
     fifo_priority: 90
+  # Policy action/last_action order follows the IsaacLab action config.
   action_joint_order:
     - left_hip_roll
     - left_hip_yaw
@@ -103,18 +104,19 @@ jingchu01_dcmotor_newpd_baseline:
     - right_knee_pitch
     - right_ankle_pitch
     - right_ankle_roll
+  # joint_pos/joint_vel observations follow IsaacLab articulation order.
   obs_joint_order:
     - left_hip_roll
-    - left_hip_yaw
-    - left_hip_pitch
-    - left_knee_pitch
-    - left_ankle_pitch
-    - left_ankle_roll
     - right_hip_roll
+    - left_hip_yaw
     - right_hip_yaw
+    - left_hip_pitch
     - right_hip_pitch
+    - left_knee_pitch
     - right_knee_pitch
+    - left_ankle_pitch
     - right_ankle_pitch
+    - left_ankle_roll
     - right_ankle_roll
   observation_manifest_file: observation_manifest_jingchu01_isaaclab_locomotion.yaml
   enable_reference_motion: false
