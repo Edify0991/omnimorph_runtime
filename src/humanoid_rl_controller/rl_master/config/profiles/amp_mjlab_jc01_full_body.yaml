@@ -1,5 +1,5 @@
 amp_mjlab_jc01_full_body:
-  policy_name: Jingchu01-AMP-Flat_model_18500
+  policy_name: Jingchu01-AMP-Flat_model_5200
   policy_family: amp_mjlab
   policy_file: policies/Jingchu01-AMP-Flat_model_18500.onnx
   obs_stack_N: 4
@@ -239,7 +239,7 @@ amp_mjlab_jc01_full_body:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-      velocity_source: body_object_velocity_local
+      # velocity_source: body_object_velocity_local
     base_velocity_estimator:
       enabled: true
       use_imu_prediction: true

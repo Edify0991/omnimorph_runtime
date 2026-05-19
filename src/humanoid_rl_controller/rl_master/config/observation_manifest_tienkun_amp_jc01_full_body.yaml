@@ -25,12 +25,12 @@ observation_manifest:
     - name: last_action
       enabled: true
       count: 28
-    - name: gait_phase_sin
-      enabled: true
-      count: 2
-    - name: gait_phase_cos
-      enabled: true
-      count: 2
-    - name: gait_phase_ratio
-      enabled: true
-      count: 2
+    # - name: gait_phase_sin
+    #   enabled: true
+    #   count: 2
+    # - name: gait_phase_cos
+    #   enabled: true
+    #   count: 2
+    # - name: gait_phase_ratio
+    #   enabled: true
+    #   count: 2
