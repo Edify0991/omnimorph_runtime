@@ -8,7 +8,7 @@ beyondmimic_g1_full_body:
   policy_name: beyondmimic_g1_flat_2026_04_08_10_39_46
   policy_family: beyondmimic
   policy_adapter: onnx
-  policy_file: /home/edify/Code/beyondmimic/logs/rsl_rl/g1_flat/2026-04-08_10-39-46/exported/policy.onnx
+  policy_file: /home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/policies/policy_dance1_subject1.onnx
   inference_strategy: sync_step
   obs_stack_N: 1
   cycle_time: 1.0
@@ -135,7 +135,7 @@ beyondmimic_g1_full_body:
     right_wrist_pitch_joint: 0.074500870
     right_wrist_yaw_joint: 0.074500870
   device_id: 0
-  obs_dim: 160
+  obs_dim: 154
   action_dim: 29
   motor_N: 29
   RL_control_f: 50

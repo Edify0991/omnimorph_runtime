@@ -12,20 +12,20 @@ observation_manifest:
     - name: reference_joint_vel
       enabled: true
       count: 29
-    - name: motion_anchor_pos_b
-      enabled: true
-      count: 3
-      source: motion_anchor_pos_b
+    # - name: motion_anchor_pos_b
+    #   enabled: true
+    #   count: 3
+      # source: motion_anchor_pos_b
     - name: motion_anchor_ori_b
       enabled: true
       count: 6
       source: motion_anchor_ori_b
       target_representation: rot6
       target_frame: body_local
-    - name: base_lin_vel
-      enabled: true
-      count: 3
-      components: [x, y, z]
+    # - name: base_lin_vel
+    #   enabled: true
+    #   count: 3
+    #   components: [x, y, z]
     - name: base_ang_vel
       enabled: true
       count: 3
