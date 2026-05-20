@@ -1,6 +1,6 @@
 mujoco_sim_bridge:
   ros__parameters:
-    model_path: "/home/yuchenlin/IsaacLab5_1_0/Project/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/models/jingchu01_isaaclab_locomotion_newpd_sim2sim.xml"
+    model_path: "/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/scene_jingchu01.xml"
 
     base_body_name: "Body"
     base_free_joint_name: ""
