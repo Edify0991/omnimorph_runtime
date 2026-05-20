@@ -130,7 +130,7 @@ jingchu01_dcmotor_newpd_baseline:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-      velocity_source: freejoint_qvel
+      velocity_source: body_object_velocity_root_local
   observation_contract:
     canonical:
       joint_order: robot_global_joint_order
