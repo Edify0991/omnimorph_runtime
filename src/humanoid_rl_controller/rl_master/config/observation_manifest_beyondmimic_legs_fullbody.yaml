@@ -10,34 +10,34 @@ observation_manifest:
       enabled: true
       count: 12
       target_order:
-        - left_hip_roll
         - right_hip_roll
-        - left_hip_yaw
         - right_hip_yaw
-        - left_hip_pitch
         - right_hip_pitch
-        - left_knee_pitch
         - right_knee_pitch
-        - left_ankle_pitch
         - right_ankle_pitch
-        - left_ankle_roll
         - right_ankle_roll
+        - left_hip_roll
+        - left_hip_yaw
+        - left_hip_pitch
+        - left_knee_pitch
+        - left_ankle_pitch
+        - left_ankle_roll
     - name: reference_joint_vel
       enabled: true
       count: 12
       target_order:
-        - left_hip_roll
         - right_hip_roll
-        - left_hip_yaw
         - right_hip_yaw
-        - left_hip_pitch
         - right_hip_pitch
-        - left_knee_pitch
         - right_knee_pitch
-        - left_ankle_pitch
         - right_ankle_pitch
-        - left_ankle_roll
         - right_ankle_roll
+        - left_hip_roll
+        - left_hip_yaw
+        - left_hip_pitch
+        - left_knee_pitch
+        - left_ankle_pitch
+        - left_ankle_roll
     - name: motion_anchor_pos_b
       enabled: true
       count: 3
