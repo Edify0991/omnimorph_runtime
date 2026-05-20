@@ -843,6 +843,10 @@ def check_isaaclab_locomotion_profile(
     obs_stack_n = as_int(section_cfg.get("obs_stack_N"), 0)
     action_dim = as_int(section_cfg.get("action_dim"), 0)
     action_scale = float(section_cfg.get("action_scale", 0.0) or 0.0)
+    clip_actions = float(section_cfg.get("clip_actions", 0.0) or 0.0)
+    source_contract = to_dict(section_cfg.get("source_contract"))
+    sim_base = to_dict(source_contract.get("sim_base"))
+    velocity_source = normalize_token(sim_base.get("velocity_source", "freejoint_qvel"))
     actor_input_dim = obs_dim * obs_stack_n if obs_dim > 0 and obs_stack_n > 0 else 0
 
     if manifest_path.name != "observation_manifest_jingchu01_isaaclab_locomotion.yaml":
@@ -864,6 +868,14 @@ def check_isaaclab_locomotion_profile(
         issues.error(context, f"IsaacLab locomotion action_dim must be 12, got {action_dim}")
     if not math.isclose(action_scale, 0.25, rel_tol=0.0, abs_tol=1.0e-6):
         issues.error(context, f"IsaacLab locomotion action_scale must be 0.25, got {action_scale}")
+    if not math.isclose(clip_actions, 2.0, rel_tol=0.0, abs_tol=1.0e-6):
+        issues.error(context, f"IsaacLab locomotion clip_actions must match training clip 2.0, got {clip_actions}")
+    if velocity_source != "body_object_velocity_root_local":
+        issues.error(
+            context,
+            "IsaacLab locomotion sim_base.velocity_source must be body_object_velocity_root_local "
+            f"for body-frame IMU angular velocity semantics, got {velocity_source}",
+        )
 
     term_names = enabled_manifest_term_names(manifest_terms)
     forbidden_terms = sorted({"base_rpy", "phase"} & set(term_names))

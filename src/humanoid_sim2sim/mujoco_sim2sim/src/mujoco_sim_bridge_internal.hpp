@@ -32,6 +32,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <mutex>
 
@@ -221,6 +222,9 @@ private:
     std::vector<int> qvel_addrs_;
     std::vector<int> actuator_ids_;
     std::vector<ActuatorBackend> joint_actuator_backends_;
+    std::vector<double> default_dof_armature_;
+    std::vector<double> default_dof_frictionloss_;
+    std::vector<double> default_dof_damping_;
     std::vector<int> position_actuator_joint_indices_;
     std::vector<double> applied_position_actuator_kp_;
     std::vector<double> applied_position_actuator_kv_;
@@ -234,6 +238,9 @@ private:
     std::vector<double> resolved_policy_profile_kp_;
     std::vector<double> resolved_policy_profile_kd_;
     std::vector<double> resolved_policy_profile_torque_limit_;
+    std::vector<double> resolved_pace_encoder_bias_;
+    std::vector<int> resolved_pace_torque_delay_ticks_;
+    std::vector<std::deque<double>> pace_torque_delay_buffers_;
     std::vector<float> resolved_hold_target_q_;
     std::vector<float> joint_cmd_q_;
     std::vector<float> joint_cmd_dq_;
