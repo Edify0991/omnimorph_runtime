@@ -92,7 +92,7 @@ mujoco_sim_bridge:
     # segment used by beyondmimic_leg12_strict_walk2 (time_step_start=12250).
     # The zero pose is the H5 current robot state, not the reference command;
     # this height puts the support foot near contact before release.
-    fixed_base_height: 0.8210
+    fixed_base_height: 0.92
     enable_fixed_base_zeroing: true
     enable_fixed_base_hold_after_zeroing: true
     enable_release_before_running: true
