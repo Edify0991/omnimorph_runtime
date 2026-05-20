@@ -461,8 +461,12 @@ void MujocoSimBridge::updateControlInput(
                             "resolved policy profile gains/limits size mismatch for canonical joint '" +
                             joint_names_[i] + "'");
                     }
+                    const double q_for_pd =
+                        (i < resolved_pace_encoder_bias_.size())
+                            ? (q - resolved_pace_encoder_bias_[i])
+                            : q;
                     tau =
-                        resolved_policy_profile_kp_[i] * (q_des - q) +
+                        resolved_policy_profile_kp_[i] * (q_des - q_for_pd) +
                         resolved_policy_profile_kd_[i] * (dq_des - dq);
                     if (joint_mode == SimJointRuntimeMode::kR1)
                     {
@@ -470,6 +474,20 @@ void MujocoSimBridge::updateControlInput(
                     }
                     const double limit = std::max(1e-6, std::abs(resolved_policy_profile_torque_limit_[i]));
                     tau = std::clamp(tau, -limit, limit);
+                }
+                if (i < resolved_pace_torque_delay_ticks_.size() &&
+                    i < pace_torque_delay_buffers_.size() &&
+                    resolved_pace_torque_delay_ticks_[i] > 0)
+                {
+                    const int delay_ticks = resolved_pace_torque_delay_ticks_[i];
+                    auto &delay_buffer = pace_torque_delay_buffers_[i];
+                    while (static_cast<int>(delay_buffer.size()) < delay_ticks)
+                    {
+                        delay_buffer.push_back(0.0);
+                    }
+                    delay_buffer.push_back(tau);
+                    tau = delay_buffer.front();
+                    delay_buffer.pop_front();
                 }
             }
             else

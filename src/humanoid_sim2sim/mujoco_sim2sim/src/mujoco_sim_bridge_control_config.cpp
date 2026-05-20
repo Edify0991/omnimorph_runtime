@@ -160,6 +160,9 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
     resolved_policy_profile_kp_.assign(joint_names_.size(), 0.0);
     resolved_policy_profile_kd_.assign(joint_names_.size(), 0.0);
     resolved_policy_profile_torque_limit_.assign(joint_names_.size(), 0.0);
+    resolved_pace_encoder_bias_.assign(joint_names_.size(), 0.0);
+    resolved_pace_torque_delay_ticks_.assign(joint_names_.size(), 0);
+    pace_torque_delay_buffers_.assign(joint_names_.size(), {});
     resolved_hold_target_q_.assign(joint_names_.size(), 0.0f);
     joint_cmd_q_.assign(joint_names_.size(), 0.0f);
     joint_cmd_dq_.assign(joint_names_.size(), 0.0f);
@@ -169,6 +172,23 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const std::string &joint_name = joint_names_[i];
+        const int qvel_adr = (i < qvel_addrs_.size()) ? qvel_addrs_[i] : -1;
+        if (qvel_adr >= 0 && qvel_adr < model_->nv)
+        {
+            if (i < default_dof_armature_.size())
+            {
+                model_->dof_armature[qvel_adr] = default_dof_armature_[i];
+            }
+            if (i < default_dof_frictionloss_.size())
+            {
+                model_->dof_frictionloss[qvel_adr] = default_dof_frictionloss_[i];
+            }
+            if (i < default_dof_damping_.size())
+            {
+                model_->dof_damping[qvel_adr] = default_dof_damping_[i];
+            }
+        }
+
         joint_is_policy_controlled_[i] =
             std::find(active_cfg.action_joint_order.begin(), active_cfg.action_joint_order.end(), joint_name) !=
             active_cfg.action_joint_order.end();
@@ -203,6 +223,37 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
                     "' is missing from active_cfg.action_joint_order");
             }
         }
+
+        if (active_cfg.sim_pace_motor.enabled && joint_is_policy_controlled_[i])
+        {
+            if (qvel_adr >= 0 && qvel_adr < model_->nv)
+            {
+                const auto armature_it = active_cfg.sim_pace_motor.armature.find(joint_name);
+                if (armature_it != active_cfg.sim_pace_motor.armature.end())
+                {
+                    model_->dof_armature[qvel_adr] = static_cast<double>(armature_it->second);
+                }
+                const auto friction_it = active_cfg.sim_pace_motor.frictionloss.find(joint_name);
+                if (friction_it != active_cfg.sim_pace_motor.frictionloss.end())
+                {
+                    model_->dof_frictionloss[qvel_adr] = static_cast<double>(friction_it->second);
+                }
+            }
+            const auto bias_it = active_cfg.sim_pace_motor.encoder_bias.find(joint_name);
+            if (bias_it != active_cfg.sim_pace_motor.encoder_bias.end())
+            {
+                resolved_pace_encoder_bias_[i] = static_cast<double>(bias_it->second);
+            }
+            const auto delay_it = active_cfg.sim_pace_motor.delay.find(joint_name);
+            if (delay_it != active_cfg.sim_pace_motor.delay.end())
+            {
+                const double delay_seconds =
+                    static_cast<double>(delay_it->second) * active_cfg.sim_pace_motor.delay_step_dt_s;
+                resolved_pace_torque_delay_ticks_[i] =
+                    std::max(0, static_cast<int>(std::lround(delay_seconds * control_hz_)));
+            }
+        }
+
         auto override_it = override_modes.find(joint_name);
         if (override_it != override_modes.end())
         {

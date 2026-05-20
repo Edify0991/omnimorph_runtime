@@ -208,11 +208,15 @@ inline std::filesystem::path resolveConfigSectionPath(
     {
         throw std::runtime_error("config_files is missing mapping for config section: " + config_section);
     }
-    if (!std::filesystem::exists(profile_path))
+    std::error_code profile_exists_ec;
+    if (!std::filesystem::exists(profile_path, profile_exists_ec))
     {
+        const std::string access_suffix = profile_exists_ec
+                                              ? " (" + profile_exists_ec.message() + ")"
+                                              : "";
         throw std::runtime_error(
             "profile file not found for config section '" + config_section + "': " +
-            profile_path.string());
+            profile_path.string() + access_suffix);
     }
     return profile_path;
 }
@@ -685,6 +689,18 @@ struct RuntimeLoggingConfig
 class Sim2realCfg
 {
 public:
+    class SimPaceMotorCfg
+    {
+    public:
+        bool enabled = false;
+        int max_delay = 0;
+        double delay_step_dt_s = 0.005;
+        std::map<std::string, float> armature;
+        std::map<std::string, float> frictionloss;
+        std::map<std::string, float> encoder_bias;
+        std::map<std::string, int> delay;
+    };
+
     std::string humanoid_rl_root_dir;
     std::string policy_name;
     std::string policy_family = "amp"; // amp / beyondmimic / custom
@@ -758,6 +774,7 @@ public:
     std::vector<ExternalObservationSpec> external_observations;
     SourceContract source_contract;
     ObservationCanonicalContract observation_canonical_contract;
+    SimPaceMotorCfg sim_pace_motor;
     GaitConfig gait;
 
     std::string startup_completion_action = "hold";
@@ -826,6 +843,7 @@ public:
             named_tau_limit.clear();
             source_contract = SourceContract{};
             observation_canonical_contract = ObservationCanonicalContract{};
+            sim_pace_motor = SimPaceMotorCfg{};
             gait = GaitConfig{};
             logging = RuntimeLoggingConfig{};
 
@@ -840,14 +858,18 @@ public:
                 {
                     candidate = cfg_parent_dir / candidate;
                 }
-                if (std::filesystem::exists(candidate))
+                std::error_code candidate_exists_ec;
+                if (std::filesystem::exists(candidate, candidate_exists_ec))
                 {
                     resolved_root_path = candidate;
                 }
                 else
                 {
-                    std::cerr << "[Sim2realCfg] warning: configured humanoid_rl_root_dir does not exist: "
+                    std::cerr << "[Sim2realCfg] warning: configured humanoid_rl_root_dir does not exist"
+                              << (candidate_exists_ec ? " or is not accessible" : "")
+                              << ": "
                               << candidate
+                              << (candidate_exists_ec ? " (" + candidate_exists_ec.message() + ")" : "")
                               << ", fallback to RL_MASTER_ROOT_DIR: "
                               << default_root_path << std::endl;
                 }
@@ -1235,6 +1257,67 @@ public:
                 tau_limit.push_back(named_tau_limit.at(joint_name));
                 action_scales.push_back(
                     named_action_scales.empty() ? action_scale : named_action_scales.at(joint_name));
+            }
+
+            const YAML::Node sim_pace_cfg = cfg["sim_pace_motor"];
+            if (sim_pace_cfg)
+            {
+                if (!sim_pace_cfg.IsMap())
+                {
+                    throw std::runtime_error("sim_pace_motor must be a map when provided");
+                }
+                sim_pace_motor.enabled = yamlReadOr<bool>(sim_pace_cfg, "enabled", false);
+                sim_pace_motor.max_delay = yamlReadOr<int>(sim_pace_cfg, "max_delay", 0);
+                sim_pace_motor.delay_step_dt_s = yamlReadOr<double>(sim_pace_cfg, "delay_step_dt_s", 0.005);
+                if (sim_pace_motor.max_delay < 0)
+                {
+                    throw std::runtime_error("sim_pace_motor.max_delay must be >= 0");
+                }
+                if (sim_pace_motor.delay_step_dt_s <= 0.0)
+                {
+                    throw std::runtime_error("sim_pace_motor.delay_step_dt_s must be > 0");
+                }
+                sim_pace_motor.armature = yamlReadFloatMapOr(sim_pace_cfg, "armature");
+                sim_pace_motor.frictionloss = yamlReadFloatMapOr(sim_pace_cfg, "frictionloss");
+                sim_pace_motor.encoder_bias = yamlReadFloatMapOr(sim_pace_cfg, "encoder_bias");
+                const YAML::Node delay_node = sim_pace_cfg["delay"];
+                if (delay_node)
+                {
+                    if (!delay_node.IsMap())
+                    {
+                        throw std::runtime_error("sim_pace_motor.delay must be a joint-name map");
+                    }
+                    for (auto it = delay_node.begin(); it != delay_node.end(); ++it)
+                    {
+                        const std::string joint_name = it->first.as<std::string>();
+                        const int delay_steps = it->second.as<int>();
+                        if (delay_steps < 0 || delay_steps > sim_pace_motor.max_delay)
+                        {
+                            throw std::runtime_error(
+                                "sim_pace_motor.delay for joint '" + joint_name +
+                                "' must be in [0, max_delay]");
+                        }
+                        sim_pace_motor.delay[joint_name] = delay_steps;
+                    }
+                }
+                auto validateOptionalActionJointMap = [&](const auto &value_map, const std::string &field_name) {
+                    std::unordered_set<std::string> action_joint_names(
+                        action_joint_order.begin(),
+                        action_joint_order.end());
+                    for (const auto &entry : value_map)
+                    {
+                        if (action_joint_names.find(entry.first) == action_joint_names.end())
+                        {
+                            throw std::runtime_error(
+                                "sim_pace_motor." + field_name +
+                                " contains joint not present in action_joint_order: " + entry.first);
+                        }
+                    }
+                };
+                validateOptionalActionJointMap(sim_pace_motor.armature, "armature");
+                validateOptionalActionJointMap(sim_pace_motor.frictionloss, "frictionloss");
+                validateOptionalActionJointMap(sim_pace_motor.encoder_bias, "encoder_bias");
+                validateOptionalActionJointMap(sim_pace_motor.delay, "delay");
             }
 
             const std::string policy_file = yamlReadOr<std::string>(cfg, "policy_file", "");

@@ -13,7 +13,7 @@ Usage:
 Options:
   --model-path <path>             MuJoCo XML/MJB model path (required)
   --mode-id <int>                 startup deploy mode_id (default: 0)
-  --control-hz <float>            control_hz launch arg (default: 100.0)
+  --control-hz <float>            control_hz launch arg (default: 500.0)
   --fixed-base <true|false>       fixed_base launch arg (default: false)
   --enable-fixed-base-zeroing <true|false>
                                   lock base in air for startup/required re-zeroing (default: true)
@@ -22,7 +22,7 @@ Options:
   --enable-release-before-running <true|false>
                                   release base before entering running (default: true)
   --post-release-settle-ticks <int>
-                                  hold ticks after release before running (default: 20)
+                                  hold ticks after release before running (default: 200)
   --enable-prepose-snap <true|false>
                                   snap controlled joints to prepose_joint_q before zeroing (default: false)
   --enable-viewer <bool>          enable_viewer launch arg (default: true)
@@ -41,12 +41,12 @@ USAGE
 
 MODEL_PATH=""
 MODE_ID=0
-CONTROL_HZ="100.0"
+CONTROL_HZ="500.0"
 FIXED_BASE="false"
 ENABLE_FIXED_BASE_ZEROING="true"
 ENABLE_FIXED_BASE_HOLD_AFTER_ZEROING="true"
 ENABLE_RELEASE_BEFORE_RUNNING="true"
-POST_RELEASE_SETTLE_TICKS="20"
+POST_RELEASE_SETTLE_TICKS="200"
 ENABLE_PREPOSE_SNAP="false"
 ENABLE_VIEWER="true"
 PAUSE_WHEN_NO_COMMAND="false"

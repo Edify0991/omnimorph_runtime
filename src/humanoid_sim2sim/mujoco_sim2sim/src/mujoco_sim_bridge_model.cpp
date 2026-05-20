@@ -46,6 +46,9 @@ void MujocoSimBridge::loadModel()
 void MujocoSimBridge::resolveModelMappings()
 {
     joint_actuator_backends_.assign(joint_names_.size(), ActuatorBackend::kTorque);
+    default_dof_armature_.assign(joint_names_.size(), 0.0);
+    default_dof_frictionloss_.assign(joint_names_.size(), 0.0);
+    default_dof_damping_.assign(joint_names_.size(), 0.0);
     position_controlled_joint_names_.clear();
     position_actuator_joint_indices_.clear();
     applied_position_actuator_kp_.clear();
@@ -70,6 +73,9 @@ void MujocoSimBridge::resolveModelMappings()
         joint_ids_[i] = joint_id;
         qpos_addrs_[i] = model_->jnt_qposadr[joint_id];
         qvel_addrs_[i] = model_->jnt_dofadr[joint_id];
+        default_dof_armature_[i] = model_->dof_armature[qvel_addrs_[i]];
+        default_dof_frictionloss_[i] = model_->dof_frictionloss[qvel_addrs_[i]];
+        default_dof_damping_[i] = model_->dof_damping[qvel_addrs_[i]];
 
         int actuator_id = mj_name2id(model_, mjOBJ_ACTUATOR, actuator_names_[i].c_str());
         if (actuator_id < 0)
