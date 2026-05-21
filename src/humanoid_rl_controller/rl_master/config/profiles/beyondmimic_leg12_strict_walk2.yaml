@@ -75,34 +75,34 @@ beyondmimic_leg12_strict_walk2:
     left_wrist_pitch: 2.009
     left_wrist_roll: 2.009
   tau_limit:
-    right_hip_roll: 330.0
-    right_hip_yaw: 150.0
-    right_hip_pitch: 330.0
-    right_knee_pitch: 306.0
-    right_ankle_pitch: 90.0
-    right_ankle_roll: 90.0
-    left_hip_roll: 330.0
-    left_hip_yaw: 150.0
-    left_hip_pitch: 330.0
-    left_knee_pitch: 306.0
-    left_ankle_pitch: 90.0
-    left_ankle_roll: 90.0
-    waist_roll: 330.0
-    waist_yaw: 150.0
-    right_shoulder_pitch: 90.0
-    right_shoulder_roll: 90.0
-    right_shoulder_yaw: 60.0
-    right_elbow_pitch: 60.0
-    right_elbow_yaw: 36.0
-    right_wrist_pitch: 36.0
-    right_wrist_roll: 36.0
-    left_shoulder_pitch: 90.0
-    left_shoulder_roll: 90.0
-    left_shoulder_yaw: 60.0
-    left_elbow_pitch: 60.0
-    left_elbow_yaw: 36.0
-    left_wrist_pitch: 36.0
-    left_wrist_roll: 36.0
+    right_hip_roll: 130.0
+    right_hip_yaw: 130.0
+    right_hip_pitch: 130.0
+    right_knee_pitch: 130.0
+    right_ankle_pitch: 130.0
+    right_ankle_roll: 130.0
+    left_hip_roll: 130.0
+    left_hip_yaw: 130.0
+    left_hip_pitch: 130.0
+    left_knee_pitch: 130.0
+    left_ankle_pitch: 130.0
+    left_ankle_roll: 130.0
+    waist_roll: 50.0
+    waist_yaw: 50.0
+    right_shoulder_pitch: 25.0
+    right_shoulder_roll: 25.0
+    right_shoulder_yaw: 25.0
+    right_elbow_pitch: 25.0
+    right_elbow_yaw: 25.0
+    right_wrist_pitch: 10.0
+    right_wrist_roll: 10.0
+    left_shoulder_pitch: 25.0
+    left_shoulder_roll: 25.0
+    left_shoulder_yaw: 25.0
+    left_elbow_pitch: 25.0
+    left_elbow_yaw: 25.0
+    left_wrist_pitch: 10.0
+    left_wrist_roll: 10.0
   clip_observations: 100.0
   clip_actions: 100.0
   action_scales:
@@ -139,7 +139,7 @@ beyondmimic_leg12_strict_walk2:
   action_dim: 28
   motor_N: 28
   RL_control_f: 50
-  solver_control_hz: 500
+  solver_control_hz: 200
   installed_joint_run_modes:
     right_hip_roll: cst
     right_hip_yaw: cst
@@ -273,34 +273,34 @@ beyondmimic_leg12_strict_walk2:
     - left_wrist_roll
   pinocchio_urdf_path: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF.urdf
   reference_joint_order:
-    - left_hip_roll
     - right_hip_roll
-    - waist_roll
-    - left_hip_yaw
     - right_hip_yaw
-    - waist_yaw
-    - left_hip_pitch
     - right_hip_pitch
-    - left_shoulder_pitch
-    - right_shoulder_pitch
-    - left_knee_pitch
     - right_knee_pitch
-    - left_shoulder_roll
-    - right_shoulder_roll
-    - left_ankle_pitch
     - right_ankle_pitch
-    - left_shoulder_yaw
-    - right_shoulder_yaw
-    - left_ankle_roll
     - right_ankle_roll
-    - left_elbow_pitch
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+    - waist_roll
+    - waist_yaw
+    - right_shoulder_pitch
+    - right_shoulder_roll
+    - right_shoulder_yaw
     - right_elbow_pitch
-    - left_elbow_yaw
     - right_elbow_yaw
-    - left_wrist_pitch
     - right_wrist_pitch
-    - left_wrist_roll
     - right_wrist_roll
+    - left_shoulder_pitch
+    - left_shoulder_roll
+    - left_shoulder_yaw
+    - left_elbow_pitch
+    - left_elbow_yaw
+    - left_wrist_pitch
+    - left_wrist_roll
   source_contract:
     imu_input:
       payload: euler_compat

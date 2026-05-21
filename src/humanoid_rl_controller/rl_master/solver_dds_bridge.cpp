@@ -361,6 +361,7 @@ void SolverDdsBridge::configureOdomSubscription()
         odom_sub_.reset();
         active_odom_topic_.clear();
         std::lock_guard<std::mutex> lock(imu_mutex_);
+        has_odom_pose_ = false;
         has_odom_lin_vel_ = false;
         return;
     }
@@ -402,6 +403,11 @@ void SolverDdsBridge::configureOdomSubscription()
 
             {
                 std::lock_guard<std::mutex> lock(imu_mutex_);
+                odom_pos_w_ = {
+                    static_cast<float>(msg->pose.pose.position.x),
+                    static_cast<float>(msg->pose.pose.position.y),
+                    static_cast<float>(msg->pose.pose.position.z)};
+                has_odom_pose_ = true;
                 odom_lin_vel_w_ = velocity;
                 has_odom_lin_vel_ = true;
             }
@@ -616,6 +622,10 @@ void SolverDdsBridge::buildRobotStateData(
         state->base_quat = imu_quat_;
         state->base_rpy = imu_rpy_;
         state->base_lin_acc_valid = has_imu_sample_;
+        if (has_odom_pose_)
+        {
+            state->base_pos_w = odom_pos_w_;
+        }
         if (has_odom_lin_vel_)
         {
             state->base_lin_vel = odom_lin_vel_w_;

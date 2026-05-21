@@ -61,6 +61,8 @@ public:
     int activeModeId() const;
     const std::string &activeConfigSection() const;
     const rl_master::logging::ControllerLogSnapshot &latestLogSnapshot() const;
+    std::vector<std::string> activeResolvedReferenceBodyNames() const;
+    std::string activeResolvedReferenceAnchorBody() const;
     void setExternalObservationFeature(const std::string &name, const std::vector<float> &values);
     void setExternalObservationFeature(const std::string &name, const std::vector<float> &values, double monotonic_time_sec);
     std::vector<rl_master::logging::RuntimeSourceSampleRecord> drainExternalObservationSamplesForLogging();

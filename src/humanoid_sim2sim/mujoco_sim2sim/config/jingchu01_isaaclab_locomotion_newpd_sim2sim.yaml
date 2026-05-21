@@ -165,7 +165,7 @@ mujoco_sim_bridge:
     pause_when_no_command: false
     no_command_behavior: "hold_last"
     fix_base: false
-    fixed_base_height: 0.375
+    fixed_base_height: 0.9
     enable_fixed_base_zeroing: true
     enable_fixed_base_hold_after_zeroing: true
     enable_release_before_running: true
