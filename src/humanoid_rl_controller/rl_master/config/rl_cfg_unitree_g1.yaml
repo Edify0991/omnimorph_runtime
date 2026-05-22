@@ -99,11 +99,11 @@ joint_groups:
 
 deploy_mode_profiles:
   - mode_id: 0
-    config_section: beyondmimic_g1_full_body
+    config_section: beyondmimic_g1_walk_full_body_w_state_estimation
     tag: g1_beyondmimic
 
 config_files:
-  beyondmimic_g1_full_body: profiles/beyondmimic_g1_full_body.yaml
+  beyondmimic_g1_walk_full_body_w_state_estimation: profiles/beyondmimic_g1_walk_full_body_w_state_estimation.yaml
 
 runtime_process:
   controller:

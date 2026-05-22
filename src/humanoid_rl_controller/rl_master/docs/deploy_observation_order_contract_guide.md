@@ -49,11 +49,11 @@
 - `sim2real` 的 IMU 可以按配置解释为 `euler_compat` 或 `quaternion`
 - `base_rpy` 在观测中不是直接相信外部输入，而是从内部 `base_quat` 再计算一次
 
-## 3. 哪些顺序放在 `rl_cfg.yaml`
+## 3. 哪些顺序放在 `rl_cfg_jc01.yaml`
 
 在当前多文件结构里，应理解为：
 
-- 根 `rl_cfg.yaml` 负责索引 profile
+- 根 `rl_cfg_jc01.yaml` 负责索引 profile
 - 具体策略的 `source_contract` 放在对应 profile 文件里
 
 也就是说，这一节提到的顺序字段，逻辑上属于“部署侧 `rl_cfg` 体系”，物理上通常写在某个 profile 文件中。
@@ -202,7 +202,7 @@ observation manifest 负责定义“最终送进策略的观测排列方式”�
 
 推荐将部署侧配置职责固定为两层：
 
-- `rl_cfg.yaml` 负责“源数据解释”
+- `rl_cfg_jc01.yaml` 负责“源数据解释”
 - observation manifest 负责“最终 obs 排列”
 
 建议遵循以下规则：
@@ -316,14 +316,14 @@ right_ankle_roll
 
 ```bash
 python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py \
-  --rl-cfg src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml \
+  --rl-cfg src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml \
   --config-section engineai_walk \
   --skip-onnx
 ```
 
 ```bash
 python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py \
-  --rl-cfg src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml \
+  --rl-cfg src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml \
   --config-section stand_sim2real \
   --skip-onnx
 ```

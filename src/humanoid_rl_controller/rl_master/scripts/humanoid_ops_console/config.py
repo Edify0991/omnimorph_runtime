@@ -10,13 +10,13 @@ from .models import GuiConfig, ModeProfile
 
 def find_default_config() -> Path:
     candidates: list[Path] = [
-        Path.cwd() / "src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml",
-        Path.cwd() / "config/rl_cfg.yaml",
+        Path.cwd() / "src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml",
+        Path.cwd() / "config/rl_cfg_jc01.yaml",
     ]
 
     for prefix in os.environ.get("AMENT_PREFIX_PATH", "").split(os.pathsep):
         if prefix:
-            candidates.append(Path(prefix) / "share/rl_master/config/rl_cfg.yaml")
+            candidates.append(Path(prefix) / "share/rl_master/config/rl_cfg_jc01.yaml")
 
     for path in candidates:
         if path.is_file():

@@ -1,5 +1,5 @@
 # Alternate root config for the AMP_mjlab Jingchu01 full-body policy.
-# Keep the default rl_cfg.yaml on the current 12-DoF leg setup; use this root
+# Keep the default rl_cfg_jc01.yaml on the current 12-DoF leg setup; use this root
 # when the full-body MuJoCo/real joint interface is ready.
 
 humanoid_rl_root_dir: /home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master
@@ -99,32 +99,29 @@ joint_groups:
   - left_wrist_roll
 deploy_mode_profiles:
 - mode_id: 0
-  config_section: tienkun_amp_jc01_full_body
-  tag: tienkun_amp
+  config_section: amp_tienkunglab_jc01_walk_full_body
+  tag: tienkung_amp
 - mode_id: 1
-  config_section: amp_mjlab_jc01_full_body
-  tag: amp_mjlab_jc01_full_body
+  config_section: amp_mjlab_jc01_walkrun_full_body
+  tag: amp_mjlab_jc01_walkrun_full_body
 - mode_id: 2
-  config_section: engineai_walk
+  config_section: engineaigym_walk_lower_body
   tag: vel_walk
 - mode_id: 3
-  config_section: engineai_stand
+  config_section: engineaigym_stand_lower_body
   tag: stand
 - mode_id: 4
-  config_section: tienkun_amp_jc01_full_body
-  tag: tienkun_amp
-- mode_id: 5
   config_section: jingchu01_dcmotor_newpd_baseline
   tag: jc01_dcmotor_newpd
-- mode_id: 6
+- mode_id: 5
   config_section: jingchu01_pacedcmotor_group_delay_qdq_newpd
   tag: jc01_pacedc_group_delay_qdq_newpd
+- mode_id: 6
+  config_section: beyondmimic_jc01_walk_lower_body_w_state_estimation
+  tag: beyondmimic_jc01_walk_lower_body_w_state_estimation
 - mode_id: 7
-  config_section: beyondmimic_leg12_legacy_fullbody
-  tag: beyondmimic_leg12_legacy_fullbody
-- mode_id: 8
-  config_section: beyondmimic_jingchu01_full_body_wo_state_estimation
-  tag: beyondmimic_jingchu01_full_body_wo_state_estimation
+  config_section: beyondmimic_jc01_dance_full_body_wo_state_estimation
+  tag: beyondmimic_jc01_dance_full_body_wo_state_estimation
 config_files:
   amp_mjlab_jc01_full_body: profiles/amp_mjlab_jc01_full_body.yaml
   beyondmimic_leg12_legacy: profiles/beyondmimic_leg12_legacy.yaml

@@ -1,5 +1,5 @@
-engineai_stand:
-  policy_name: 2026-04-09_15-00-05v2
+engineaigym_walk_lower_body:
+  policy_name: 2026-04-10_15-45-32v1
   policy_family: velloco
   obs_stack_N: 15
   cycle_time: 1.0
@@ -113,7 +113,7 @@ engineai_stand:
     - right_knee_pitch
     - right_ankle_pitch
     - right_ankle_roll
-  observation_manifest_file: observation_manifest_velloco.yaml
+  observation_manifest_file: observation_manifest_engineaigym_jc01_lower_body.yaml
   enable_reference_motion: false
   source_contract:
     imu_input:
@@ -155,7 +155,7 @@ engineai_stand:
   state_telemetry_hz: 50.0
   startup_completion_action: hold
   zeroing_duration_s: 5.0
-  zeroing_position_tolerance: 0.1
+  zeroing_position_tolerance: 0.8
   zeroing_velocity_tolerance: 0.8
   control_mode: sim2real
   action_filter: 0.5
@@ -251,13 +251,13 @@ engineai_stand:
       right_hip_roll: 330.0
       right_hip_yaw: 150.0
       right_hip_pitch: 330.0
-      right_knee_pitch: 306.0
+      right_knee_pitch: 2000.0
       right_ankle_pitch: 90.0
       right_ankle_roll: 90.0
       left_hip_roll: 330.0
       left_hip_yaw: 150.0
       left_hip_pitch: 330.0
-      left_knee_pitch: 306.0
+      left_knee_pitch: 2000.0
       left_ankle_pitch: 90.0
       left_ankle_roll: 90.0
       waist_roll: 330.0

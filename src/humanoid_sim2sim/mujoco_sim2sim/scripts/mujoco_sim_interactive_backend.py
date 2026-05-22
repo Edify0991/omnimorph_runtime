@@ -70,7 +70,7 @@ def resolve_rl_cfg_path(config_override: str = "") -> Path:
             raise RuntimeError(f"configured rl_cfg_path does not exist: {path}")
         return path
     try:
-        return Path(get_package_share_directory("rl_master")) / "config" / "rl_cfg.yaml"
+        return Path(get_package_share_directory("rl_master")) / "config" / "rl_cfg_jc01.yaml"
     except Exception:
         source_tree_candidate = (
             Path(__file__).resolve().parents[4]
@@ -78,12 +78,12 @@ def resolve_rl_cfg_path(config_override: str = "") -> Path:
             / "humanoid_rl_controller"
             / "rl_master"
             / "config"
-            / "rl_cfg.yaml"
+            / "rl_cfg_jc01.yaml"
         )
         if source_tree_candidate.exists():
             return source_tree_candidate
         raise RuntimeError(
-            "failed to locate rl_master/config/rl_cfg.yaml for python interactive backend"
+            "failed to locate rl_master/config/rl_cfg_jc01.yaml for python interactive backend"
         )
 
 

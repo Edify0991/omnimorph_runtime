@@ -122,7 +122,7 @@ Use a layered GUI stack:
 - Publishes `/humanoid/rl/teleop`.
 - Subscribes to `/humanoid/rl/state`.
 - Decodes protocol-v2 dynamic joint telemetry.
-- Loads `robot_global_joint_order` and `deploy_mode_profiles` from `rl_cfg.yaml`.
+- Loads `robot_global_joint_order` and `deploy_mode_profiles` from `rl_cfg_jc01.yaml`.
 - Shows mode buttons, teleop controls, joint table, simple rolling plot, and a
   lightweight robot twin panel.
 

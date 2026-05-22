@@ -1,6 +1,6 @@
 observation_manifest:
   schema_version: 3
-  profile: "beyondmimic_legs"
+  profile: "beyondmimic_jc01_lower_body_w_state_estimation"
   # 75D total:
   #   ref_joint_pos(12) + ref_joint_vel(12) + motion_anchor_pos_b(3) +
   #   motion_anchor_ori_b(6) + base_lin_vel(3) + base_ang_vel(3) +
@@ -9,9 +9,35 @@ observation_manifest:
     - name: reference_joint_pos
       enabled: true
       count: 12
+      target_order:
+        - right_hip_roll
+        - right_hip_yaw
+        - right_hip_pitch
+        - right_knee_pitch
+        - right_ankle_pitch
+        - right_ankle_roll
+        - left_hip_roll
+        - left_hip_yaw
+        - left_hip_pitch
+        - left_knee_pitch
+        - left_ankle_pitch
+        - left_ankle_roll
     - name: reference_joint_vel
       enabled: true
       count: 12
+      target_order:
+        - right_hip_roll
+        - right_hip_yaw
+        - right_hip_pitch
+        - right_knee_pitch
+        - right_ankle_pitch
+        - right_ankle_roll
+        - left_hip_roll
+        - left_hip_yaw
+        - left_hip_pitch
+        - left_knee_pitch
+        - left_ankle_pitch
+        - left_ankle_roll
     - name: motion_anchor_pos_b
       enabled: true
       count: 3

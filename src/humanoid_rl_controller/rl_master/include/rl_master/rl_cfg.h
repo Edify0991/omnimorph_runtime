@@ -486,7 +486,7 @@ inline int readDeployModeIdFromEnv(
     }
 }
 
-#define RL_CFG_PATH RL_MASTER_ROOT_DIR "/config/rl_cfg.yaml"
+#define RL_CFG_PATH RL_MASTER_ROOT_DIR "/config/rl_cfg_jc01.yaml"
 #define OBS_MANIFEST_PATH RL_MASTER_ROOT_DIR "/config/observation_manifest.yaml"
 
 struct ExternalObservationSpec

@@ -18,7 +18,7 @@ from .ros_interface import HumanoidOpsNode
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Qt operator console for the JC01 humanoid deploy runtime.")
-    parser.add_argument("--config", type=Path, default=find_default_config(), help="Path to rl_cfg.yaml")
+    parser.add_argument("--config", type=Path, default=find_default_config(), help="Path to rl_cfg_jc01.yaml")
     parser.add_argument("--camera-topic", default=TOPIC_CAMERA_COLOR, help="ROS topic for color image preview")
     parser.add_argument("--depth-topic", default=TOPIC_CAMERA_DEPTH, help="ROS topic for depth image preview")
     parser.add_argument(

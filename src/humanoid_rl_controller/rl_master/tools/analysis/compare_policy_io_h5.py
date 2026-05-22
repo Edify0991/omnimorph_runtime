@@ -29,7 +29,7 @@ except ImportError as exc:  # pragma: no cover - runtime dependency
 
 
 DEFAULT_H5 = Path("/home/edify/Code/beyondmimic/outputs/policy_io/jc01_walk2_policy_io.h5")
-DEFAULT_CFG = Path(__file__).resolve().parents[2] / "config" / "rl_cfg.yaml"
+DEFAULT_CFG = Path(__file__).resolve().parents[2] / "config" / "rl_cfg_jc01.yaml"
 DEFAULT_SECTION = "beyondmimic_leg12_strict_walk2"
 
 

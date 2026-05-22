@@ -77,7 +77,7 @@ Then rebuild `rl_master`.
 - Start with:
   - `onnx_intra_threads: 1`
   - `onnx_inter_threads: 1`
-  in `config/rl_cfg.yaml`, then tune per CPU load.
+  in `config/rl_cfg_jc01.yaml`, then tune per CPU load.
 - If you deploy on heterogeneous ARM cores (big.LITTLE), keep your real-time pinning policy aligned with big cores.
 - Keep `native_tuning=OFF` for release artifacts shared across multiple ARM devices.
 

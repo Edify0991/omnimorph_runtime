@@ -1,4 +1,4 @@
-beyondmimic_g1_full_body:
+beyondmimic_g1_walk_full_body_w_state_estimation:
   # Matched to:
   # /home/edify/Code/beyondmimic/logs/rsl_rl/g1_flat/2026-04-08_10-39-46/exported/policy.onnx
   # ONNX IO:

@@ -57,7 +57,7 @@ The easiest safe rule is:
 
 This repository now includes a ready-to-copy example:
 
-- profile section: [`rl_cfg.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml)
+- profile section: [`rl_cfg_jc01.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml)
   Search for `engineai_full_body_example`
 - observation manifest: [`observation_manifest_full_body_example.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/observation_manifest_full_body_example.yaml)
 

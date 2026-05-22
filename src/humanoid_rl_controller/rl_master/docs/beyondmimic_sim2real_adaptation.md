@@ -26,7 +26,7 @@ Meaning:
 
 ## 2. Reference Motion Source Policy
 
-New config keys in `rl_cfg.yaml`:
+New config keys in `rl_cfg_jc01.yaml`:
 
 ```yaml
 enable_reference_motion: true

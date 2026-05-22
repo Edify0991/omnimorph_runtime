@@ -1,8 +1,40 @@
 observation_manifest:
   schema_version: 3
-  profile: "default_velloco"
-  # Total dimension: 47
+  profile: "default_velloco_with_all_supported_examples"
+  # Default active layout keeps backward compatibility with the legacy 47-dim template:
+  #   phase(2) + command(3) + joint_pos(12) + joint_vel(12)
+  #   + last_action(12) + base_ang_vel(3) + base_rpy(3) = 47
+  #
+  # This file is also used as a sample manifest for all currently supported
+  # observation terms in ObservationBuilder::registry().
+  #
+  # Common per-term fields:
+  #   name: required term type
+  #   enabled: whether this term participates in the final observation
+  #   count: target output dim for the term
+  #   components: component order for command / base_ang_vel / base_lin_vel / base_euler
+  #   source: named feature source for reference / external / generic feature terms
+  #   target_order: reorder named-vector features to the requested semantic order
+  #   target_representation: contract check only, e.g. quat / rot6
+  #   target_frame: contract check only, e.g. joint_space / world / body_local
+  #
+  # External sensor reminder:
+  #   manifest only declares how a named feature enters the observation vector.
+  #   The actual DDS subscription must still be declared in the profile's
+  #   external_observations list, for example:
+  #
+  #   external_observations:
+  #     - name: camera_features
+  #       dim: 8
+  #       topic: /humanoid/camera/features
+  #       message_type: float32_multi_array
+  #
+  # Reference/body reminder:
+  #   reference_* / motion_* / robot_body_* terms require the runtime to provide
+  #   matching reference features and, for motion/body-local terms, a valid
+  #   reference_body_names + reference_anchor_body configuration.
   terms:
+    # Minimal default locomotion block -------------------------------------------------
     - name: phase
       enabled: true
       count: 2
@@ -24,12 +56,131 @@ observation_manifest:
     - name: base_rpy
       enabled: true
       count: 3
-    # Optional terms for beyondmimic / multimodal deploy:
-    # - name: reference_motion
-    #   enabled: true
-    #   source: reference_motion
-    #   count: 24
-    # - name: external_sensor
-    #   enabled: true
-    #   source: vision_latent
-    #   count: 64
+
+    # Gait-phase variants --------------------------------------------------------------
+    - name: gait_phase_sin
+      enabled: false
+      count: 2
+    - name: gait_phase_cos
+      enabled: false
+      count: 2
+    - name: gait_phase_ratio
+      enabled: false
+      count: 2
+
+    # Command / base variants ----------------------------------------------------------
+    - name: command
+      enabled: false
+      components: [vx, dyaw]
+    - name: base_ang_vel
+      enabled: false
+      components: [wx, wy, wz]
+    - name: projected_gravity
+      enabled: false
+      count: 3
+    - name: base_lin_vel
+      enabled: false
+      components: [x, y, z]
+    - name: base_euler
+      enabled: false
+      components: [roll, pitch, yaw]
+    - name: base_quat
+      enabled: false
+      count: 4
+      target_order: [x, y, z, w]
+      target_representation: quat
+
+    # Reference motion terms -----------------------------------------------------------
+    - name: reference_motion
+      enabled: false
+      source: reference_motion
+      count: 24
+    - name: reference_joint_pos
+      enabled: false
+      source: reference_joint_pos
+      count: 12
+      # Example: reorder reference joints into the exact policy-expected order.
+      # target_order:
+      #   - right_hip_roll
+      #   - right_hip_yaw
+      #   - right_hip_pitch
+      #   - right_knee_pitch
+      #   - right_ankle_pitch
+      #   - right_ankle_roll
+      #   - left_hip_roll
+      #   - left_hip_yaw
+      #   - left_hip_pitch
+      #   - left_knee_pitch
+      #   - left_ankle_pitch
+      #   - left_ankle_roll
+      target_frame: joint_space
+    - name: reference_joint_vel
+      enabled: false
+      source: reference_joint_vel
+      count: 12
+      target_frame: joint_space
+
+    # Motion-local reference body features --------------------------------------------
+    - name: motion_anchor_pos_b
+      enabled: false
+      source: motion_anchor_pos_b
+      count: 3
+      target_frame: body_local
+    - name: motion_ref_pos_b
+      enabled: false
+      source: motion_ref_pos_b
+      count: 3
+      target_frame: body_local
+    - name: motion_anchor_ori_b
+      enabled: false
+      source: motion_anchor_ori_b
+      count: 6
+      target_representation: rot6
+      target_frame: body_local
+    - name: motion_ref_ori_b
+      enabled: false
+      source: motion_ref_ori_b
+      count: 6
+      target_representation: rot6
+      target_frame: body_local
+    - name: motion_body_pos_b
+      enabled: false
+      source: motion_body_pos_b
+      count: 42  # example: 14 bodies * 3
+      target_frame: body_local
+    - name: motion_body_ori_b
+      enabled: false
+      source: motion_body_ori_b
+      count: 84  # example: 14 bodies * 6(rot6)
+      target_representation: rot6
+      target_frame: body_local
+
+    # Robot body local features --------------------------------------------------------
+    - name: robot_body_pos
+      enabled: false
+      source: robot_body_pos
+      count: 42  # example: 14 bodies * 3
+      target_frame: body_local
+    - name: robot_body_ori
+      enabled: false
+      source: robot_body_ori
+      count: 84  # example: 14 bodies * 6(rot6)
+      target_representation: rot6
+      target_frame: body_local
+
+    # External / generic named features ------------------------------------------------
+    - name: external_sensor
+      enabled: false
+      source: vision_latent
+      count: 64
+    - name: feature
+      enabled: false
+      source: camera_features
+      count: 8
+    - name: feature
+      enabled: false
+      source: reference_body_quat_w
+      count: 4
+      target_order: [x, y, z, w]
+      target_representation: quat
+      target_frame: world

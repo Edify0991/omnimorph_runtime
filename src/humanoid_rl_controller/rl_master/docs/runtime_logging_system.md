@@ -99,7 +99,7 @@ Sparse transitions are emitted on `runtime/event`, for example:
 
 ## 5. Logging Configuration
 
-The active logging config is top-level in `rl_cfg.yaml`:
+The active logging config is top-level in `rl_cfg_jc01.yaml`:
 
 ```yaml
 logging:

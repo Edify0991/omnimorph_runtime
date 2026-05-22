@@ -1,20 +1,8 @@
-beyondmimic_leg12_strict_walk2:
-  policy_name: policy
-  policy_family: beyondmimic
-  policy_adapter: onnx
-  policy_file: policies/policy.onnx
-  inference_strategy: sync_step
-  # For chunked/generative policies, switch to:
-  # inference_strategy: chunked_receding
-  # action_output_layout: chunk_flat
-  # action_chunk_steps: 8
-  # action_chunk_execute_steps: 4
-  # action_chunk_replan_interval: 4
-  # onnx_inputs:
-  #   - name: prev_action
-  #     source: last_action
-  #     shape: [1, 28]
-  obs_stack_N: 1
+amp_mjlab_jc01_walkrun_full_body:
+  policy_name: Jingchu01-AMP-Flat_model_5200
+  policy_family: amp_mjlab
+  policy_file: policies/Jingchu01-AMP-Flat_model_18500.onnx
+  obs_stack_N: 4
   cycle_time: 1.0
   kps:
     right_hip_roll: 394.213
@@ -31,13 +19,6 @@ beyondmimic_leg12_strict_walk2:
     left_ankle_roll: 138.023
     waist_roll: 394.213
     waist_yaw: 99.511
-    right_shoulder_pitch: 69.012
-    right_shoulder_roll: 69.012
-    right_shoulder_yaw: 56.287
-    right_elbow_pitch: 56.287
-    right_elbow_yaw: 34.426
-    right_wrist_pitch: 34.426
-    right_wrist_roll: 34.426
     left_shoulder_pitch: 69.012
     left_shoulder_roll: 69.012
     left_shoulder_yaw: 56.287
@@ -45,6 +26,13 @@ beyondmimic_leg12_strict_walk2:
     left_elbow_yaw: 34.426
     left_wrist_pitch: 34.426
     left_wrist_roll: 34.426
+    right_shoulder_pitch: 69.012
+    right_shoulder_roll: 69.012
+    right_shoulder_yaw: 56.287
+    right_elbow_pitch: 56.287
+    right_elbow_yaw: 34.426
+    right_wrist_pitch: 34.426
+    right_wrist_roll: 34.426
   kds:
     right_hip_roll: 23.005
     right_hip_yaw: 5.807
@@ -59,14 +47,7 @@ beyondmimic_leg12_strict_walk2:
     left_ankle_pitch: 8.055
     left_ankle_roll: 8.055
     waist_roll: 23.005
-    waist_yaw: 5.807
-    right_shoulder_pitch: 4.027
-    right_shoulder_roll: 4.027
-    right_shoulder_yaw: 3.285
-    right_elbow_pitch: 3.285
-    right_elbow_yaw: 2.009
-    right_wrist_pitch: 2.009
-    right_wrist_roll: 2.009
+    waist_yaw: 10.807
     left_shoulder_pitch: 4.027
     left_shoulder_roll: 4.027
     left_shoulder_yaw: 3.285
@@ -74,35 +55,42 @@ beyondmimic_leg12_strict_walk2:
     left_elbow_yaw: 2.009
     left_wrist_pitch: 2.009
     left_wrist_roll: 2.009
+    right_shoulder_pitch: 4.027
+    right_shoulder_roll: 4.027
+    right_shoulder_yaw: 3.285
+    right_elbow_pitch: 3.285
+    right_elbow_yaw: 2.009
+    right_wrist_pitch: 2.009
+    right_wrist_roll: 2.009
   tau_limit:
-    right_hip_roll: 130.0
-    right_hip_yaw: 130.0
-    right_hip_pitch: 130.0
-    right_knee_pitch: 130.0
-    right_ankle_pitch: 130.0
-    right_ankle_roll: 130.0
-    left_hip_roll: 130.0
-    left_hip_yaw: 130.0
-    left_hip_pitch: 130.0
-    left_knee_pitch: 130.0
-    left_ankle_pitch: 130.0
-    left_ankle_roll: 130.0
-    waist_roll: 50.0
-    waist_yaw: 50.0
-    right_shoulder_pitch: 25.0
-    right_shoulder_roll: 25.0
-    right_shoulder_yaw: 25.0
-    right_elbow_pitch: 25.0
-    right_elbow_yaw: 25.0
-    right_wrist_pitch: 10.0
-    right_wrist_roll: 10.0
-    left_shoulder_pitch: 25.0
-    left_shoulder_roll: 25.0
-    left_shoulder_yaw: 25.0
-    left_elbow_pitch: 25.0
-    left_elbow_yaw: 25.0
-    left_wrist_pitch: 10.0
-    left_wrist_roll: 10.0
+    right_hip_roll: 330.0
+    right_hip_yaw: 150.0
+    right_hip_pitch: 330.0
+    right_knee_pitch: 306.0
+    right_ankle_pitch: 90.0
+    right_ankle_roll: 90.0
+    left_hip_roll: 330.0
+    left_hip_yaw: 150.0
+    left_hip_pitch: 330.0
+    left_knee_pitch: 306.0
+    left_ankle_pitch: 90.0
+    left_ankle_roll: 90.0
+    waist_roll: 330.0
+    waist_yaw: 150.0
+    left_shoulder_pitch: 90.0
+    left_shoulder_roll: 90.0
+    left_shoulder_yaw: 60.0
+    left_elbow_pitch: 60.0
+    left_elbow_yaw: 36.0
+    left_wrist_pitch: 36.0
+    left_wrist_roll: 36.0
+    right_shoulder_pitch: 90.0
+    right_shoulder_roll: 90.0
+    right_shoulder_yaw: 60.0
+    right_elbow_pitch: 60.0
+    right_elbow_yaw: 36.0
+    right_wrist_pitch: 36.0
+    right_wrist_roll: 36.0
   clip_observations: 100.0
   clip_actions: 100.0
   action_scales:
@@ -120,13 +108,6 @@ beyondmimic_leg12_strict_walk2:
     left_ankle_roll: 0.163016
     waist_roll: 0.209277
     waist_yaw: 0.376844
-    right_shoulder_pitch: 0.326032
-    right_shoulder_roll: 0.326032
-    right_shoulder_yaw: 0.266491
-    right_elbow_pitch: 0.266491
-    right_elbow_yaw: 0.26143
-    right_wrist_pitch: 0.26143
-    right_wrist_roll: 0.26143
     left_shoulder_pitch: 0.326032
     left_shoulder_roll: 0.326032
     left_shoulder_yaw: 0.266491
@@ -134,12 +115,24 @@ beyondmimic_leg12_strict_walk2:
     left_elbow_yaw: 0.26143
     left_wrist_pitch: 0.26143
     left_wrist_roll: 0.26143
+    right_shoulder_pitch: 0.326032
+    right_shoulder_roll: 0.326032
+    right_shoulder_yaw: 0.266491
+    right_elbow_pitch: 0.266491
+    right_elbow_yaw: 0.26143
+    right_wrist_pitch: 0.26143
+    right_wrist_roll: 0.26143
   device_id: 0
-  obs_dim: 155
+  obs_dim: 93
   action_dim: 28
   motor_N: 28
+  # AMP_mjlab training uses MuJoCo timestep=0.005 with decimation=4,
+  # so the actor policy updates at 50 Hz.
   RL_control_f: 50
+  # This field is consumed by the fused real-robot solver path.
+  # MuJoCo sim2sim uses mujoco_sim_bridge.control_hz instead.
   solver_control_hz: 200
+  prefill_observation_history_on_running_start: true
   installed_joint_run_modes:
     right_hip_roll: cst
     right_hip_yaw: cst
@@ -234,73 +227,8 @@ beyondmimic_leg12_strict_walk2:
     - left_elbow_yaw
     - left_wrist_pitch
     - left_wrist_roll
-  observation_manifest_file: observation_manifest_beyondmimic_full_body.yaml
-  enable_reference_motion: true
-  reference_motion_dim: 0
-  reference_motion_sampling: step
-  reference_motion_source: policy_outputs
-  reference_anchor_body: waist_yaw
-  motion_reference_alignment: startup_anchor_pos_yaw
-  reference_body_names:
-    - Robotbase
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
-    - left_hip_roll
-    - left_hip_yaw
-    - left_hip_pitch
-    - left_knee_pitch
-    - left_ankle_pitch
-    - left_ankle_roll
-    - waist_roll
-    - waist_yaw
-    - right_shoulder_pitch
-    - right_shoulder_roll
-    - right_shoulder_yaw
-    - right_elbow_pitch
-    - right_elbow_yaw
-    - right_wrist_pitch
-    - right_wrist_roll
-    - left_shoulder_pitch
-    - left_shoulder_roll
-    - left_shoulder_yaw
-    - left_elbow_pitch
-    - left_elbow_yaw
-    - left_wrist_pitch
-    - left_wrist_roll
-  pinocchio_urdf_path: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF.urdf
-  reference_joint_order:
-    - right_hip_roll
-    - right_hip_yaw
-    - right_hip_pitch
-    - right_knee_pitch
-    - right_ankle_pitch
-    - right_ankle_roll
-    - left_hip_roll
-    - left_hip_yaw
-    - left_hip_pitch
-    - left_knee_pitch
-    - left_ankle_pitch
-    - left_ankle_roll
-    - waist_roll
-    - waist_yaw
-    - right_shoulder_pitch
-    - right_shoulder_roll
-    - right_shoulder_yaw
-    - right_elbow_pitch
-    - right_elbow_yaw
-    - right_wrist_pitch
-    - right_wrist_roll
-    - left_shoulder_pitch
-    - left_shoulder_roll
-    - left_shoulder_yaw
-    - left_elbow_pitch
-    - left_elbow_yaw
-    - left_wrist_pitch
-    - left_wrist_roll
+  observation_manifest_file: observation_manifest_amp_mjlab_jc01_full_body.yaml
+  enable_reference_motion: false
   source_contract:
     imu_input:
       payload: euler_compat
@@ -313,7 +241,7 @@ beyondmimic_leg12_strict_walk2:
       quat_source_order: wxyz
       velocity_source: body_object_velocity_root_local
     base_velocity_estimator:
-      enabled: false
+      enabled: true
       use_imu_prediction: true
       imu_accel_frame: body
       imu_accel_includes_gravity: true
@@ -336,17 +264,15 @@ beyondmimic_leg12_strict_walk2:
       max_dt: 0.05
       reset_on_mode_switch: true
     policy_extra_outputs:
+      reference_motion_key: reference_motion
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
-      reference_joint_order_metadata_key: command_joint_names
-      preserve_reference_joint_order: false
       reference_body_pos_w_key: body_pos_w
       reference_body_quat_w_key: body_quat_w
-      reference_body_lin_vel_w_key: body_lin_vel_w
-      reference_body_ang_vel_w_key: body_ang_vel_w
       body_quat_order: wxyz
       body_quat_representation: quat
       body_quat_frame: world
+      preserve_reference_joint_order: false
   observation_contract:
     canonical:
       joint_order: robot_global_joint_order
@@ -354,46 +280,40 @@ beyondmimic_leg12_strict_walk2:
       quat_representation: quat
       body_quat_frame: world
       body_orientation_representation: rot6
+  # This feature already enters the runtime external observation cache.
+  # It only becomes part of the ONNX input when the observation manifest or
+  # policy_io.onnx_inputs explicitly consumes "camera_features".
+  external_observations:
+    - name: camera_features
+      dim: 8
+      required: false
+      topic: /humanoid/camera/features
+      message_type: float32_multi_array
   onnx_intra_threads: 1
   onnx_inter_threads: 1
   policy_io:
     obs_input_name: obs
     action_output_name: actions
-    enable_time_step_input: true
+    enable_time_step_input: false
     time_step_input_name: time_step
     time_step_start: 0
-    advance_time_step_on_reference_prefetch: false
-    strict_model_io: true
-    enable_metadata_check: true
-    metadata_check_strict: false
-    required_metadata_keys:
-      - action_joint_names
-      - joint_names
-      - command_joint_names
-      - policy_joint_names
-      - body_names
-      - anchor_body_name
+    strict_model_io: false
+    enable_metadata_check: false
+    metadata_check_strict: true
+    required_metadata_keys: []
     expected_metadata: {}
     reset_policy_on_mode_switch: true
-    extra_output_names:
-      - joint_pos
-      - joint_vel
-      - body_pos_w
-      - body_quat_w
-      - body_lin_vel_w
-      - body_ang_vel_w
     onnx_inputs: []
+    extra_output_names: []
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12
   loop_overrun_warn_us: 2000
   enable_state_telemetry: true
   state_telemetry_hz: 50.0
   startup_completion_action: hold
-  policy_startup_warmup_steps: 0
-  seed_running_start_observation_from_reference: false
   zeroing_duration_s: 5.0
-  zeroing_position_tolerance: 100.0
-  zeroing_velocity_tolerance: 100.0
+  zeroing_position_tolerance: 100
+  zeroing_velocity_tolerance: 100
   control_mode: sim2real
   action_filter: 0.0
   robot:
@@ -413,16 +333,16 @@ beyondmimic_leg12_strict_walk2:
       waist_roll: 0.0
       waist_yaw: 0.0
       right_shoulder_pitch: 0.2
-      right_shoulder_roll: 0.0
+      right_shoulder_roll: 0.2
       right_shoulder_yaw: 0.0
-      right_elbow_pitch: 0.5
+      right_elbow_pitch: 0.3
       right_elbow_yaw: 0.0
       right_wrist_pitch: 0.0
       right_wrist_roll: 0.0
       left_shoulder_pitch: 0.2
-      left_shoulder_roll: 0.0
+      left_shoulder_roll: 0.2
       left_shoulder_yaw: 0.0
-      left_elbow_pitch: 0.5
+      left_elbow_pitch: 0.3
       left_elbow_yaw: 0.0
       left_wrist_pitch: 0.0
       left_wrist_roll: 0.0
@@ -441,17 +361,17 @@ beyondmimic_leg12_strict_walk2:
       left_ankle_roll: 0.0
       waist_roll: 0.0
       waist_yaw: 0.0
-      right_shoulder_pitch: 0.0
-      right_shoulder_roll: 0.0
+      right_shoulder_pitch: 0.2
+      right_shoulder_roll: 0.2
       right_shoulder_yaw: 0.0
-      right_elbow_pitch: 0.0
+      right_elbow_pitch: 0.3
       right_elbow_yaw: 0.0
       right_wrist_pitch: 0.0
       right_wrist_roll: 0.0
-      left_shoulder_pitch: 0.0
-      left_shoulder_roll: 0.0
+      left_shoulder_pitch: 0.2
+      left_shoulder_roll: 0.2
       left_shoulder_yaw: 0.0
-      left_elbow_pitch: 0.0
+      left_elbow_pitch: 0.3
       left_elbow_yaw: 0.0
       left_wrist_pitch: 0.0
       left_wrist_roll: 0.0
@@ -488,13 +408,13 @@ beyondmimic_leg12_strict_walk2:
       right_hip_roll: 330.0
       right_hip_yaw: 150.0
       right_hip_pitch: 330.0
-      right_knee_pitch: 306.0
+      right_knee_pitch: 2000.0
       right_ankle_pitch: 90.0
       right_ankle_roll: 90.0
       left_hip_roll: 330.0
       left_hip_yaw: 150.0
       left_hip_pitch: 330.0
-      left_knee_pitch: 306.0
+      left_knee_pitch: 2000.0
       left_ankle_pitch: 90.0
       left_ankle_roll: 90.0
       waist_roll: 330.0

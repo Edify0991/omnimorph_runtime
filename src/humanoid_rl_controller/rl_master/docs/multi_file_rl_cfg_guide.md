@@ -2,9 +2,9 @@
 
 ## 1. 这次拆分后的核心原则
 
-当前仓库已经把原来的单文件 `rl_cfg.yaml` 拆成了：
+当前仓库已经把原来的单文件 `rl_cfg_jc01.yaml` 拆成了：
 
-- 一个根索引文件：[`config/rl_cfg.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml)
+- 一个根索引文件：[`config/rl_cfg_jc01.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml)
 - 多个按策略拆分的 profile 文件：[`config/profiles/engineai_walk.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/profiles/engineai_walk.yaml)、[`config/profiles/stand_sim2real.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/profiles/stand_sim2real.yaml) 等
 
 设计目标很简单：
@@ -15,7 +15,7 @@
 
 ## 2. 根文件和 profile 文件各自负责什么
 
-### 2.1 根 `rl_cfg.yaml`
+### 2.1 根 `rl_cfg_jc01.yaml`
 
 根文件负责：
 
@@ -105,7 +105,7 @@
 
 ```text
 config/
-├── rl_cfg.yaml
+├── rl_cfg_jc01.yaml
 └── profiles/
     ├── engineai_walk.yaml
     ├── stand_sim2real.yaml
@@ -123,8 +123,8 @@ config/
 
 1. 在 `config/profiles/` 下新增一个 profile 文件。
 2. 在这个文件里写一个新的顶层 `config_section`。
-3. 在根 [`rl_cfg.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml) 的 `config_files` 中注册这个 `config_section`。
-4. 在根 [`rl_cfg.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml) 的 `deploy_mode_profiles` 中注册新的 `mode_id`。
+3. 在根 [`rl_cfg_jc01.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml) 的 `config_files` 中注册这个 `config_section`。
+4. 在根 [`rl_cfg_jc01.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml) 的 `deploy_mode_profiles` 中注册新的 `mode_id`。
 5. 补齐这个 profile 的 observation manifest、policy 文件、joint order、source contract 等字段。
 
 最常见的写法是：
@@ -182,7 +182,7 @@ walk_with_vision:
 
 当前运行时加载顺序是：
 
-1. 先读取根 [`rl_cfg.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml)
+1. 先读取根 [`rl_cfg_jc01.yaml`](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml)
 2. 读取 `deploy_mode_profiles`
 3. 读取 `config_files`
 4. 按 `config_section` 找到对应 profile 文件
@@ -190,7 +190,7 @@ walk_with_vision:
 
 对于路径解析：
 
-- `config_files` 的相对路径，相对根 `rl_cfg.yaml` 所在目录
+- `config_files` 的相对路径，相对根 `rl_cfg_jc01.yaml` 所在目录
 - profile 文件内部的 `policy_file`、`observation_manifest_file`、`reference_motion_file` 等相对路径，仍然相对 `humanoid_rl_root_dir`
 
 ## 8. 常见错误
@@ -209,14 +209,14 @@ walk_with_vision:
 
 ```bash
 python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py \
-  --rl-cfg src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml \
+  --rl-cfg src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml \
   --config-section engineai_walk \
   --skip-onnx
 ```
 
 ```bash
 python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py \
-  --rl-cfg src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml \
+  --rl-cfg src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml \
   --config-section stand_sim2real \
   --skip-onnx
 ```

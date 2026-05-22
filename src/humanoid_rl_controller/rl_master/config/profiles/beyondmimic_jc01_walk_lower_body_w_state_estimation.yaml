@@ -1,18 +1,9 @@
-beyondmimic_leg12_strict_walk2:
+beyondmimic_jc01_walk_lower_body_w_state_estimation:
   policy_name: 2026-03-29_beyondmimic_jc01_leg12_strict_walk2
   policy_family: beyondmimic
   policy_adapter: onnx
+  policy_file: policies/2026-03-29_beyondmimic_jc01_leg12_strict_walk2.onnx
   inference_strategy: sync_step
-  # For chunked/generative policies, switch to:
-  # inference_strategy: chunked_receding
-  # action_output_layout: chunk_flat
-  # action_chunk_steps: 8
-  # action_chunk_execute_steps: 4
-  # action_chunk_replan_interval: 4
-  # onnx_inputs:
-  #   - name: prev_action
-  #     source: last_action
-  #     shape: [1, 12]
   obs_stack_N: 1
   cycle_time: 1.0
   kps:
@@ -88,6 +79,22 @@ beyondmimic_leg12_strict_walk2:
     left_knee_pitch: cst
     left_ankle_pitch: cst
     left_ankle_roll: cst
+    waist_roll: csp
+    waist_yaw: csp
+    right_shoulder_pitch: csp
+    right_shoulder_roll: csp
+    right_shoulder_yaw: csp
+    right_elbow_pitch: csp
+    right_elbow_yaw: csp
+    right_wrist_pitch: csp
+    right_wrist_roll: csp
+    left_shoulder_pitch: csp
+    left_shoulder_roll: csp
+    left_shoulder_yaw: csp
+    left_elbow_pitch: csp
+    left_elbow_yaw: csp
+    left_wrist_pitch: csp
+    left_wrist_roll: csp
   realtime:
     enabled: true
     lock_memory: true
@@ -121,12 +128,13 @@ beyondmimic_leg12_strict_walk2:
     - right_ankle_pitch
     - left_ankle_roll
     - right_ankle_roll
-  observation_manifest_file: observation_manifest_beyondmimic_legs.yaml
+  observation_manifest_file: observation_manifest_beyondmimic_jc01_lower_body_w_state_estimation.yaml
   enable_reference_motion: true
   reference_motion_dim: 0
   reference_motion_sampling: step
   reference_motion_source: policy_outputs
   reference_anchor_body: Robotbase
+  motion_reference_alignment: startup_anchor_pos_yaw
   reference_body_names:
     - Robotbase
     - right_hip_roll
@@ -141,7 +149,7 @@ beyondmimic_leg12_strict_walk2:
     - left_knee_pitch
     - left_ankle_pitch
     - left_ankle_roll
-  pinocchio_urdf_path: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF_legs.urdf
+  pinocchio_urdf_path: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF.urdf
   reference_joint_order:
     - left_hip_roll
     - right_hip_roll
@@ -165,11 +173,11 @@ beyondmimic_leg12_strict_walk2:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
-      # velocity_source: body_object_velocity_local
+      velocity_source: body_object_velocity_root_local
     policy_extra_outputs:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
-      reference_joint_order_metadata_key: joint_names
+      reference_joint_order_metadata_key: command_joint_names
       preserve_reference_joint_order: false
       reference_body_pos_w_key: body_pos_w
       reference_body_quat_w_key: body_quat_w
@@ -192,7 +200,7 @@ beyondmimic_leg12_strict_walk2:
     action_output_name: actions
     enable_time_step_input: true
     time_step_input_name: time_step
-    time_step_start: 50
+    time_step_start: 0
     advance_time_step_on_reference_prefetch: false
     strict_model_io: true
     enable_metadata_check: true
@@ -241,19 +249,51 @@ beyondmimic_leg12_strict_walk2:
       left_knee_pitch: 0.48
       left_ankle_pitch: -0.24
       left_ankle_roll: 0.0
+      waist_roll: 0.0
+      waist_yaw: 0.0
+      right_shoulder_pitch: 0.2
+      right_shoulder_roll: 0.2
+      right_shoulder_yaw: 0.0
+      right_elbow_pitch: 0.3
+      right_elbow_yaw: 0.0
+      right_wrist_pitch: 0.0
+      right_wrist_roll: 0.0
+      left_shoulder_pitch: 0.2
+      left_shoulder_roll: 0.2
+      left_shoulder_yaw: 0.0
+      left_elbow_pitch: 0.3
+      left_elbow_yaw: 0.0
+      left_wrist_pitch: 0.0
+      left_wrist_roll: 0.0
     zero_joint_angles:
-      right_hip_roll: 0.06155104563
-      right_hip_yaw: 0.06163998134
-      right_hip_pitch: -0.7300625741
-      right_knee_pitch: 0.9624607265
-      right_ankle_pitch: -0.3909943849
-      right_ankle_roll: 0.01593868062
-      left_hip_roll: 0.1247593905
-      left_hip_yaw: 0.4690311123
-      left_hip_pitch: -0.5295148194
-      left_knee_pitch: 0.9484381676
-      left_ankle_pitch: -0.1391760856
-      left_ankle_roll: -0.2259051586
+      right_hip_roll: 0.0
+      right_hip_yaw: 0.0
+      right_hip_pitch: -0.24
+      right_knee_pitch: 0.48
+      right_ankle_pitch: -0.24
+      right_ankle_roll: 0.0
+      left_hip_roll: 0.0
+      left_hip_yaw: 0.0
+      left_hip_pitch: -0.24
+      left_knee_pitch: 0.48
+      left_ankle_pitch: -0.24
+      left_ankle_roll: 0.0
+      waist_roll: 0.0
+      waist_yaw: 0.0
+      right_shoulder_pitch: 0.0
+      right_shoulder_roll: 0.0
+      right_shoulder_yaw: 0.0
+      right_elbow_pitch: 0.0
+      right_elbow_yaw: 0.0
+      right_wrist_pitch: 0.0
+      right_wrist_roll: 0.0
+      left_shoulder_pitch: 0.0
+      left_shoulder_roll: 0.0
+      left_shoulder_yaw: 0.0
+      left_elbow_pitch: 0.0
+      left_elbow_yaw: 0.0
+      left_wrist_pitch: 0.0
+      left_wrist_roll: 0.0
     joint_limit_range:
       right_hip_roll: [-0.2, 0.2]
       right_hip_yaw: [-1.05, 1.05]
@@ -267,6 +307,22 @@ beyondmimic_leg12_strict_walk2:
       left_knee_pitch: [0.0, 1.48]
       left_ankle_pitch: [-0.64, 0.4]
       left_ankle_roll: [-0.26, 0.26]
+      waist_roll: [-0.2617, 0.2617]
+      waist_yaw: [-0.7853, 0.7853]
+      right_shoulder_pitch: [-1.0471, 3.1415]
+      right_shoulder_roll: [-0.0872, 2.2689]
+      right_shoulder_yaw: [-2.0943, 2.0943]
+      right_elbow_pitch: [0.0, 1.8325]
+      right_elbow_yaw: [-2.0943, 2.0943]
+      right_wrist_pitch: [-1.2217, 1.2217]
+      right_wrist_roll: [-1.2217, 1.2217]
+      left_shoulder_pitch: [-1.0471, 3.1415]
+      left_shoulder_roll: [-0.0872, 2.2689]
+      left_shoulder_yaw: [-2.0943, 2.0943]
+      left_elbow_pitch: [0.0, 1.8325]
+      left_elbow_yaw: [-2.0943, 2.0943]
+      left_wrist_pitch: [-1.2217, 1.2217]
+      left_wrist_roll: [-1.2217, 1.2217]
     motor_torque_limit:
       right_hip_roll: 330
       right_hip_yaw: 150
@@ -280,6 +336,22 @@ beyondmimic_leg12_strict_walk2:
       left_knee_pitch: 8000
       left_ankle_pitch: 90
       left_ankle_roll: 90
+      waist_roll: 330.0
+      waist_yaw: 150.0
+      right_shoulder_pitch: 90.0
+      right_shoulder_roll: 90.0
+      right_shoulder_yaw: 60.0
+      right_elbow_pitch: 60.0
+      right_elbow_yaw: 36.0
+      right_wrist_pitch: 36.0
+      right_wrist_roll: 36.0
+      left_shoulder_pitch: 90.0
+      left_shoulder_roll: 90.0
+      left_shoulder_yaw: 60.0
+      left_elbow_pitch: 60.0
+      left_elbow_yaw: 36.0
+      left_wrist_pitch: 36.0
+      left_wrist_roll: 36.0
   scales:
     lin_vel: 1.0
     ang_vel: 1.0

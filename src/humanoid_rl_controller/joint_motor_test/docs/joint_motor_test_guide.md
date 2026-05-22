@@ -7,7 +7,7 @@
 It now runs with dynamic joint-count trajectories. The active joint layout is resolved in this order:
 
 - `joint_names` from `joint_motor_test.yaml` when explicitly provided
-- otherwise the selected `test_mode_id` from `deploy_config_path` / `rl_cfg.yaml`
+- otherwise the selected `test_mode_id` from `deploy_config_path` / `rl_cfg_jc01.yaml`
 - otherwise startup fails instead of silently assuming a legacy 12-dof layout
 
 It keeps the existing deployment pipeline:

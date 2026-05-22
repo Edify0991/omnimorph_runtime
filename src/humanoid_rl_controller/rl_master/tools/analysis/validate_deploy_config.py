@@ -2206,12 +2206,12 @@ def validate_profile(
 
 def build_arg_parser(default_cfg: Path) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate rl_cfg.yaml + observation manifest + ONNX model contracts."
+        description="Validate rl_cfg_jc01.yaml + observation manifest + ONNX model contracts."
     )
     parser.add_argument(
         "--rl-cfg",
         default=str(default_cfg),
-        help="Path to rl_cfg.yaml",
+        help="Path to rl_cfg_jc01.yaml",
     )
     parser.add_argument(
         "--mode-id",
@@ -2242,7 +2242,7 @@ def build_arg_parser(default_cfg: Path) -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    default_cfg = Path(__file__).resolve().parents[2] / "config" / "rl_cfg.yaml"
+    default_cfg = Path(__file__).resolve().parents[2] / "config" / "rl_cfg_jc01.yaml"
     parser = build_arg_parser(default_cfg)
     args = parser.parse_args()
 

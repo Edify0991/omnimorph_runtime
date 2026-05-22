@@ -3,7 +3,7 @@ mkdir -p "$ROS_LOG_DIR"
 
 ros2 run mujoco_sim2sim mujoco_sim_bridge --ros-args \
   --params-file /home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_amp_full_body_sim2sim.yaml \
-  -p rl_cfg_path:=/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml \
+  -p rl_cfg_path:=/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml \
   -p startup_mode_id:=0 \
   -p enable_viewer:=false \
   -p enable_python_viewer_stream:=true \

@@ -1,6 +1,6 @@
 observation_manifest:
   schema_version: 3
-  profile: "velloco"
+  profile: "engineaigym_jc01_lower_body"
   # Total dimension: 47
   terms:
     - name: phase

@@ -35,7 +35,7 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 其中最重要的是：
 
 - `mode_id` 是状态机和外部控制字真正切换的对象
-- `config_section` 是某一段具体策略配置的名字，根 `rl_cfg.yaml` 会通过 `config_files` 把它映射到对应 profile 文件
+- `config_section` 是某一段具体策略配置的名字，根 `rl_cfg_jc01.yaml` 会通过 `config_files` 把它映射到对应 profile 文件
 
 所以从运行时角度看，一个 `mode` 最终就是“通过 `mode_id` 选中某个 `config_section`，然后把它构造成运行时 profile”。
 
@@ -45,7 +45,7 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 
 在当前多文件结构里：
 
-- 根文件 `rl_cfg.yaml` 只保留全局项、`deploy_mode_profiles`、`config_files`、`runtime_process`、`logging`
+- 根文件 `rl_cfg_jc01.yaml` 只保留全局项、`deploy_mode_profiles`、`config_files`、`runtime_process`、`logging`
 - 每个 `config_section` 实际存放在单独的 profile 文件里
 - profile 文件路径由根文件 `config_files.<config_section>` 指向
 - 每个 profile 文件只应包含一个顶层 section，且 section 名必须与 `config_section` 完全一致
@@ -96,7 +96,7 @@ This guide describes how to take a policy trained in an EngineAI Gym-style RL fr
 
 请特别注意两点：
 
-- 它不是根 `rl_cfg.yaml` 里的顶层独立配置层级
+- 它不是根 `rl_cfg_jc01.yaml` 里的顶层独立配置层级
 - 它不是跨多个 mode 共享的运行时实例
 
 如果两个 mode 都是“主策略 + 2 个子模型”的结构，那么它们可以说“结构相似”，但在当前实现里仍然会各自创建自己的 `policy_group`。
@@ -199,7 +199,7 @@ src/humanoid_rl_controller/rl_master/policies/engineai_walk.onnx
 
 Edit:
 
-- `src/humanoid_rl_controller/rl_master/config/rl_cfg.yaml`
+- `src/humanoid_rl_controller/rl_master/config/rl_cfg_jc01.yaml`
 - `src/humanoid_rl_controller/rl_master/config/profiles/<config_section>.yaml`
 
 如果你想系统理解拆分后的目录职责和新增策略步骤，可直接配合阅读
@@ -209,8 +209,8 @@ Edit:
 
 1. 先确定是否需要一个新的 `mode_id`
 2. 为这个策略新增一个新的 profile 文件，并让它只包含一个新的 `config_section`
-3. 在根 `rl_cfg.yaml` 的 `config_files` 中注册 `config_section -> profile 文件路径`
-4. 在根 `rl_cfg.yaml` 的 `deploy_mode_profiles` 中注册 `mode_id -> config_section -> tag`
+3. 在根 `rl_cfg_jc01.yaml` 的 `config_files` 中注册 `config_section -> profile 文件路径`
+4. 在根 `rl_cfg_jc01.yaml` 的 `deploy_mode_profiles` 中注册 `mode_id -> config_section -> tag`
 5. 在该 profile section 中补齐该 mode 的完整部署信息
 6. 为该 mode 配套 observation manifest
 
@@ -467,7 +467,7 @@ That means:
   - `tools/analysis/analyze_runtime_log.py`
   - `tools/analysis/export_runtime_log.py`
 
-The top-level `logging:` block in the root `rl_cfg.yaml` is now the main logging config entry.
+The top-level `logging:` block in the root `rl_cfg_jc01.yaml` is now the main logging config entry.
 
 `save_data_flag` has been removed. New and existing profiles should use only top-level `logging.enabled`.
 
@@ -521,4 +521,4 @@ For the full active/legacy comparison and usage examples, see:
 - 一个 `policy_group` 只是这个 mode 内部实际参与推理的模型集合
 - 一个 `policy_family` 同时是语义分类标签和热切兼容分组，但仍不是“只要相同就一定能热切”的总开关
 
-按这个模型去写根 `rl_cfg.yaml` 和各 profile 文件，一般就不会再把 `mode`、`group`、`family` 这几层混淆。
+按这个模型去写根 `rl_cfg_jc01.yaml` 和各 profile 文件，一般就不会再把 `mode`、`group`、`family` 这几层混淆。

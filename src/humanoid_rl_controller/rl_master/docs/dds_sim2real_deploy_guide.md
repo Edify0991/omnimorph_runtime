@@ -115,7 +115,7 @@ Important details:
 
 - `solver` and `controller` now share the same cached mode/profile registry
 - runtime mode switching uses already-built in-memory profiles
-- switching mode no longer depends on both sides separately re-reading `rl_cfg.yaml`
+- switching mode no longer depends on both sides separately re-reading `rl_cfg_jc01.yaml`
 - ROS input callbacks and `/humanoid/rl/state` publish are kept off the control loop thread
 
 ## 6. Why This Is Better

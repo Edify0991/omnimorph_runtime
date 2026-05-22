@@ -58,7 +58,7 @@ Meaning:
 - `deploy_mode_profiles` is parsed once in `ModeProfileRegistry`
 - each referenced config section is loaded once into cached `Sim2realCfg`
 - `solver` and `controller` both read from that same registry
-- mode switching later does not re-read `rl_cfg.yaml`
+- mode switching later does not re-read `rl_cfg_jc01.yaml`
 
 ### 2.2 MuJoCo sim2sim fused runtime
 
