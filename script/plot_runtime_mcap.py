@@ -46,7 +46,7 @@ def install_compression_fallbacks() -> None:
 
 
 install_compression_fallbacks()
-sys.path.insert(0, str((Path(__file__).resolve().parents[1] / "src/humanoid_rl_controller/rl_master/tools/analysis").resolve()))
+sys.path.insert(0, str((Path(__file__).resolve().parents[1] / "src/omnimorph_rl_controller/rl_master/tools/analysis").resolve()))
 
 from runtime_log_utils import load_runtime_messages  # noqa: E402
 

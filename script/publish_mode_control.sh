@@ -80,5 +80,5 @@ case "${ACTION}" in
 esac
 
 source_ros_workspace
-log_info "Publishing /humanoid/rl/mode_control = ${CONTROL_WORD}"
-exec ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: ${CONTROL_WORD}}"
+log_info "Publishing /omnimorph/rl/mode_control = ${CONTROL_WORD}"
+exec ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: ${CONTROL_WORD}}"

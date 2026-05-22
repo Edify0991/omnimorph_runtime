@@ -157,7 +157,7 @@ fi
 log_info "Precheck python: ${PRECHECK_PYTHON}"
 
 if [[ "${SKIP_PRECHECK}" != "true" ]]; then
-  VALIDATOR="${WORKSPACE_DIR}/src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_config.py"
+  VALIDATOR="${WORKSPACE_DIR}/src/omnimorph_rl_controller/rl_master/tools/analysis/validate_deploy_config.py"
   [[ -f "${VALIDATOR}" ]] || die "validator not found: ${VALIDATOR}"
   CHECK_CMD=("${PRECHECK_PYTHON}" "${VALIDATOR}" --mode-id "${MODE_ID}")
   if [[ "${PRECHECK_SKIP_ONNX}" == "true" ]]; then
@@ -180,7 +180,7 @@ mkdir -p "${ROS_LOG_DIR}" >/dev/null 2>&1 || true
 if [[ "${AUTO_START_MODE}" == "true" ]]; then
   (
     sleep "${AUTO_START_DELAY}"
-    ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 \
+    ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 \
       "{data: $((1000 + MODE_ID))}" >/dev/null 2>&1 || true
   ) &
   log_info "Scheduled START control word: $((1000 + MODE_ID)) after ${AUTO_START_DELAY}s"

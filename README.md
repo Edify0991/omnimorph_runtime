@@ -41,6 +41,13 @@ source ./script/dev_env.sh
 sudo ./script/start_driver_jc01.sh  # JC01 only
 ```
 
+For Unitree G1, Terminal 1 is the vendor bridge instead of the JC01 driver:
+
+```bash
+source ./script/dev_env.sh
+./script/start_unitree_g1_bridge.sh
+```
+
 Terminal 2:
 
 ```bash
@@ -52,7 +59,7 @@ Terminal 3:
 
 ```bash
 source ./script/dev_env.sh
-ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=0
+./script/start_rl_solver.sh --ros-args -p startup_mode_id:=0
 ```
 
 Terminal 4:
@@ -65,11 +72,11 @@ sudo ./script/start_joylaunch.sh
 Start policy manually:
 
 ```bash
-ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
 ```
 
 
-> Note: real-robot driver startup is robot-specific. The README driver command above is **JC01-only**. For other robots (for example Unitree G1), replace Terminal 1 with that robot vendor/SDK driver startup procedure in a dedicated driver terminal.
+> Note: real-robot driver startup is robot-specific. JC01 uses the local shared-memory driver script. Unitree G1 uses `unitree_g1_bridge`, which expects the official Unitree ROS 2 low-level stack (`unitree_hg`, `lowstate`, `/lowcmd`) to be sourced and reachable.
 
 > Before startup, set model-related variables in `rl_cfg_*.yaml` (`path_variables`) and avoid hard-coded absolute paths.
 ### MuJoCo sim2sim (Python viewer fdrontend)
@@ -87,14 +94,14 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
 Start policy manually:
 
 ```bash
-ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
 ```
 
 ## What Lives Here
 
-- `src/humanoid_rl_controller/rl_master`: fused runtime, policy adapter, observation builder, deploy mode/profile registry
-- `src/humanoid_sim2sim/mujoco_sim2sim`: fused MuJoCo backend and Python viewer frontend path
-- `src/humanoid_rl_controller/joint_motor_test`: standalone joint/motor trajectory verification tooling
+- `src/omnimorph_rl_controller/rl_master`: fused runtime, policy adapter, observation builder, deploy mode/profile registry
+- `src/omnimorph_sim2sim/mujoco_sim2sim`: fused MuJoCo backend and Python viewer frontend path
+- `src/omnimorph_rl_controller/joint_motor_test`: standalone joint/motor trajectory verification tooling
 - `script/`: low-level helpers for environment setup, operator tools, IMU, and mode control
 
 ## Runtime Principles
@@ -109,19 +116,21 @@ ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}
 
 | Purpose | Command |
 | --- | --- |
-| Start solver directly | `ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=<N>` |
+| Start solver | `./script/start_rl_solver.sh --ros-args -p startup_mode_id:=<N>` |
+| Start JC01 driver | `sudo ./script/start_driver_jc01.sh` |
+| Start Unitree G1 bridge | `./script/start_unitree_g1_bridge.sh` |
 | Start MuJoCo Python frontend | `ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args -p model_path:="${MUJOCO_MODEL_PATH}" -p enable_viewer:=true -p viewer_fps:=500.0` |
 | Start MuJoCo fused backend (optional) | `./script/sim2sim_runtime.sh --model-path "${MUJOCO_MODEL_PATH}" --mode-id <N>` |
-| Start policy | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000 + N}"` |
-| Switch mode only | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 2000 + N}"` |
-| Stop policy | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 11}"` |
+| Start policy | `ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000 + N}"` |
+| Switch mode only | `ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 2000 + N}"` |
+| Stop policy | `ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 11}"` |
 
 ## Documentation
 
 - Runtime/controller docs:
-  [src/humanoid_rl_controller/rl_master/docs/README.md](./src/humanoid_rl_controller/rl_master/docs/README.md)
+  [src/omnimorph_rl_controller/rl_master/docs/README.md](./src/omnimorph_rl_controller/rl_master/docs/README.md)
 - Sim2sim docs:
-  [src/humanoid_sim2sim/mujoco_sim2sim/docs/README.md](./src/humanoid_sim2sim/mujoco_sim2sim/docs/README.md)
+  [src/omnimorph_sim2sim/mujoco_sim2sim/docs/README.md](./src/omnimorph_sim2sim/mujoco_sim2sim/docs/README.md)
 - Script usage:
   [script/README.md](./script/README.md)
 

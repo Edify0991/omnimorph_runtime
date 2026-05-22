@@ -13,7 +13,7 @@ source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 This prepares the shell by:
 
 - sourcing ROS2 and this workspace
-- exporting `JC01_DEPLOY_ROOT`
+- exporting `OMNIMORPH_RUNTIME_ROOT` (and legacy `JC01_DEPLOY_ROOT`)
 - exporting `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` by default
 - exporting a writable `ROS_LOG_DIR`
 - preferring system/ROS runtime libraries before Conda copies in `LD_LIBRARY_PATH`
@@ -24,7 +24,14 @@ Terminal 1:
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-sudo ./script/driver.sh
+sudo ./script/start_driver_jc01.sh
+```
+
+For Unitree G1, use the vendor bridge terminal instead:
+
+```bash
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
+./script/start_unitree_g1_bridge.sh
 ```
 
 Terminal 2:
@@ -38,7 +45,7 @@ Terminal 3:
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=0
+./script/start_rl_solver.sh --ros-args -p startup_mode_id:=0
 ```
 
 Terminal 4:
@@ -65,18 +72,20 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
 
 ### Manual runtime building blocks
 
-- `start_rl_solver.sh`: wrapper around `ros2 run rl_master RL_solver`
+- `start_rl_solver.sh`: wrapper around the installed `RL_solver` executable
+- `start_driver_jc01.sh`: JC01 local driver wrapper
+- `start_unitree_g1_bridge.sh`: Unitree G1 low-level ROS 2 bridge wrapper
 - `start_imu_yesense.sh`: IMU node launcher
 - `start_joylaunch.sh`: joystick/operator helper entry
 - `joyLaunch.py`: joystick/operator implementation
-- `publish_mode_control.sh`: helper around direct `/humanoid/rl/mode_control` publishing
+- `publish_mode_control.sh`: helper around direct `/omnimorph/rl/mode_control` publishing
 
 `joyLaunch.py` runtime mode semantics:
 
 - launching `start_rl_solver.sh` from the hand controller passes
   `--mode-id <primary_mode_id>`
 - `primary_mode_id` and `secondary_mode_id` are local joystick-side defaults
-- the hand controller publishes lifecycle/mode words to `/humanoid/rl/mode_control`
+- the hand controller publishes lifecycle/mode words to `/omnimorph/rl/mode_control`
 - it does not automatically inherit mode selection from a separately launched
   manual solver process
 
@@ -108,7 +117,7 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
 - `start_realsense_bridge.sh`
 - `start_realsense_driver.sh`
 - `start_realsense_stack.sh`
-- `start_humanoid_ops_gui.sh`
+- `start_omnimorph_ops_gui.sh`
 - `joy_axis_probe.py`
 - `receiver.py`
 
@@ -126,15 +135,15 @@ See the terminal-by-terminal commands above.
 
 The fused runtime still listens to the same operator topics:
 
-- `/humanoid/rl/teleop` (`geometry_msgs/msg/Twist`)
-- `/humanoid/rl/mode_control` (`std_msgs/msg/Int32`)
+- `/omnimorph/rl/teleop` (`geometry_msgs/msg/Twist`)
+- `/omnimorph/rl/mode_control` (`std_msgs/msg/Int32`)
 
 Useful helper:
 
 ```bash
-ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
-ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 2001}"
-ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 11}"
+ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 2001}"
+ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 11}"
 ```
 
 Typical joystick combos:
@@ -182,7 +191,7 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
   model_path:=${ROBOT_ASSETS_DIR}/jingchu01_legs.xml \
   backend:=python_frontend \
   mode_id:=0 \
-  bridge_config:=${OMNIMORPH_RUNTIME_ROOT}/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
+  bridge_config:=${OMNIMORPH_RUNTIME_ROOT}/src/omnimorph_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
   enable_viewer:=true
 ```
 
@@ -194,4 +203,4 @@ This preset assumes the MuJoCo XML exposes:
 
 For environment troubleshooting around ROS setup, Conda, FastDDS, ONNX Runtime, and launch commands, see:
 
-- [Sim2Sim Runtime Environment Notes](../src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_runtime_environment_notes.md)
+- [Sim2Sim Runtime Environment Notes](../src/omnimorph_sim2sim/mujoco_sim2sim/docs/sim2sim_runtime_environment_notes.md)

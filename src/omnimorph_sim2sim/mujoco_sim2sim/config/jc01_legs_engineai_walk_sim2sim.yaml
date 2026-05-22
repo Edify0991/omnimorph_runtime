@@ -1,0 +1,124 @@
+mujoco_sim_bridge:
+  ros__parameters:
+    model_path: "${jc01_legs_xml}"
+
+    # JC01 legs-only MuJoCo contract.
+    base_body_name: "Body"
+    # Leave empty to auto-discover the base free joint attached to Body.
+    base_free_joint_name: ""
+
+    # C++ sim2sim no longer uses this field to override joint order.
+    # The effective controlled joint order comes only from
+    # rl_master.robot_global_joint_order / ModeProfileRegistry::jointOrder().
+    # Keep this block aligned with the registry order for model mapping and
+    # diagnostics. It is no longer a backend-specific override.
+    joint_names:
+      - "right_hip_roll"
+      - "right_hip_yaw"
+      - "right_hip_pitch"
+      - "right_knee_pitch"
+      - "right_ankle_pitch"
+      - "right_ankle_roll"
+      - "left_hip_roll"
+      - "left_hip_yaw"
+      - "left_hip_pitch"
+      - "left_knee_pitch"
+      - "left_ankle_pitch"
+      - "left_ankle_roll"
+
+    actuator_names:
+      - "motor_right_hip_roll"
+      - "motor_right_hip_yaw"
+      - "motor_right_hip_pitch"
+      - "motor_right_knee_pitch"
+      - "motor_right_ankle_pitch"
+      - "motor_right_ankle_roll"
+      - "motor_left_hip_roll"
+      - "motor_left_hip_yaw"
+      - "motor_left_hip_pitch"
+      - "motor_left_knee_pitch"
+      - "motor_left_ankle_pitch"
+      - "motor_left_ankle_roll"
+
+    # This XML exposes only the 12 leg joints.
+    hold_kp:
+      right_hip_roll: 394.213
+      right_hip_yaw: 99.511
+      right_hip_pitch: 394.213
+      right_knee_pitch: 300.0
+      right_ankle_pitch: 138.023
+      right_ankle_roll: 138.023
+      left_hip_roll: 394.213
+      left_hip_yaw: 99.511
+      left_hip_pitch: 394.213
+      left_knee_pitch: 300.0
+      left_ankle_pitch: 138.023
+      left_ankle_roll: 138.023
+    hold_kd:
+      right_hip_roll: 23.005
+      right_hip_yaw: 5.807
+      right_hip_pitch: 23.005
+      right_knee_pitch: 17.507
+      right_ankle_pitch: 8.055
+      right_ankle_roll: 8.055
+      left_hip_roll: 23.005
+      left_hip_yaw: 5.807
+      left_hip_pitch: 23.005
+      left_knee_pitch: 17.507
+      left_ankle_pitch: 8.055
+      left_ankle_roll: 8.055
+    hold_torque_limit:
+      right_hip_roll: 130.0
+      right_hip_yaw: 130.0
+      right_hip_pitch: 130.0
+      right_knee_pitch: 130.0
+      right_ankle_pitch: 130.0
+      right_ankle_roll: 130.0
+      left_hip_roll: 130.0
+      left_hip_yaw: 130.0
+      left_hip_pitch: 130.0
+      left_knee_pitch: 130.0
+      left_ankle_pitch: 130.0
+      left_ankle_roll: 130.0
+
+    control_hz: 500.0
+    sim_dt: 0.001
+    command_timeout_sec: 0.1
+    open_rl_enable_threshold: 1.0
+    pause_when_no_command: false
+    no_command_behavior: "hold_position"
+    fix_base: false
+    # Align the fixed-base RUNNING entry with the BeyondMimic play/H5 motion
+    # segment used by beyondmimic_leg12_strict_walk2 (time_step_start=12250).
+    # The zero pose is the H5 current robot state, not the reference command;
+    # this height puts the support foot near contact before release.
+    fixed_base_height: 0.92
+    enable_fixed_base_zeroing: true
+    enable_fixed_base_hold_after_zeroing: true
+    enable_release_before_running: true
+    # Tracking policies expect RUNNING to start from the locked reference pose.
+    # Waiting after base release lets the unsupported pose sag before policy starts.
+    post_release_settle_ticks: 0
+    enable_prepose_snap: false
+    # Keep the RUNNING first observation consistent with the zeroed current
+    # robot state from the H5/play distribution instead of snapping joints to
+    # the reference command after the first policy inference.
+    sim_sync_running_start_to_reference: false
+
+    enable_viewer: false
+    enable_python_viewer_stream: false
+    viewer_frame_topic: "/omnimorph/sim2sim/mujoco_viewer_frame"
+    enable_python_viewer_inspector: false
+    viewer_inspector_topic: "/omnimorph/sim2sim/mujoco_viewer_inspector"
+    viewer_fps: 60.0
+    viewer_inspector_hz: 10.0
+    viewer_width: 1280
+    viewer_height: 720
+    viewer_title: "MuJoCo Sim2Sim Viewer"
+    enable_state_telemetry: true
+    state_telemetry_hz: 50.0
+    show_left_ui: true
+    show_right_ui: true
+
+    use_command_torque_ff: false
+    sim_only_force_policy_csp: false

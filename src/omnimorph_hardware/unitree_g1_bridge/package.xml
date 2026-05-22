@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>unitree_g1_bridge</name>
+  <version>0.1.0</version>
+  <description>Optional Unitree G1 low-level bridge for the OmniMorph sim2real shared-memory contract.</description>
+  <maintainer email="maintainer@example.com">OmniMorph Runtime Maintainers</maintainer>
+  <license>Proprietary</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rclcpp</depend>
+  <depend>SharedMemory</depend>
+  <depend>rl_master</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

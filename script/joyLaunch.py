@@ -113,8 +113,8 @@ class DdsCommandWriter:
             self._owns_rclpy_context = True
 
         self._node = rclpy.create_node("joylaunch_dds_writer")
-        self._cmd_pub = self._node.create_publisher(Twist, "/humanoid/rl/teleop", 20)
-        self._mode_control_pub = self._node.create_publisher(Int32, "/humanoid/rl/mode_control", 20)
+        self._cmd_pub = self._node.create_publisher(Twist, "/omnimorph/rl/teleop", 20)
+        self._mode_control_pub = self._node.create_publisher(Int32, "/omnimorph/rl/mode_control", 20)
 
     @property
     def arm_enabled(self) -> bool:
@@ -620,7 +620,7 @@ def parse_args() -> RuntimeConfig:
     file_script_dir = Path(__file__).resolve().parent
     default_workspace = file_script_dir.parent
 
-    parser = argparse.ArgumentParser(description="Joystick launcher for humanoid RL deployment")
+    parser = argparse.ArgumentParser(description="Joystick launcher for OmniMorph deployment")
     parser.add_argument("--workspace", type=Path, default=default_workspace)
 
     parser.add_argument("--max-vx", type=float, default=1.2)

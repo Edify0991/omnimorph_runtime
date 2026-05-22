@@ -1,0 +1,172 @@
+# Sim2Real Deploy Guide (Single-Process Runtime)
+
+## 1. What Changed
+
+The standard real-robot deploy path is no longer:
+
+```text
+RL_controller -> DDS -> RL_solver -> motor SHM
+```
+
+It is now:
+
+```text
+RL_solver (single process)
+  |- read motor state via SHM
+  |- read IMU / teleop / mode_control via DDS
+  |- run RL_controller::step(...)
+  |- write motor command via SHM
+```
+
+DDS is still used for operator input and observability, but not for internal controller-to-solver command transport.
+
+## 2. Terminal Startup Order
+
+Terminal 1:
+
+```bash
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
+sudo ./script/driver.sh
+```
+
+Terminal 2:
+
+```bash
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
+sudo ./script/start_imu_yesense.sh
+```
+
+Terminal 3:
+
+```bash
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
+./script/start_rl_solver.sh --ros-args -p startup_mode_id:=0
+```
+
+Terminal 4:
+
+```bash
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
+sudo /usr/bin/python3 ${OMNIMORPH_RUNTIME_ROOT}/script/joyLaunch.py \
+  --workspace ${OMNIMORPH_RUNTIME_ROOT}
+```
+
+Manual start word after bringup:
+
+```bash
+ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+```
+
+## 3. External Topics Still Used
+
+### 3.1 Inputs
+
+- `/omnimorph/rl/teleop` (`geometry_msgs/msg/Twist`)
+- `/omnimorph/rl/mode_control` (`std_msgs/msg/Int32`)
+- `/imu/yesense` (`sensor_msgs/msg/Imu`)
+
+### 3.2 Optional debug output
+
+- `/omnimorph/rl/state` (`std_msgs/msg/Float32MultiArray`)
+
+This topic is still published so external tools can inspect state, but the controller no longer depends on reading it back through DDS in the standard path.
+It is now asynchronous low-frequency telemetry rather than a real-time control-path message.
+
+## 4. Mode / Lifecycle Control Words
+
+Supported control words are unchanged:
+
+- `1000 + mode_id`: switch mode and start policy
+- `2000 + mode_id`: switch mode only
+- `10`: `START_POLICY`
+- `11`: `STOP_POLICY`
+- `12`: `ZEROING`
+- `13`: `ESTOP`
+
+Helper examples:
+
+```bash
+ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 2001}"
+ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 11}"
+```
+
+## 5. Internal Function Chain
+
+Real-robot runtime path:
+
+1. `main()` in `rl_solver.cpp`
+2. `ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk")`
+3. `mode_registry->specForMode(startup_mode_id, true)`
+4. `mode_registry->cfgForMode(startup_mode_id, true)`
+5. configure realtime from the selected startup cfg
+6. `RobotSolver::create(startup_mode_id, mode_registry)`
+7. `RobotSolver::switchToModeConfig(startup_mode_id, true)`
+8. `RobotSolver::initialize()`
+9. `RobotSolver::initializeController()`
+10. `IntegratedControllerRuntime::setModeProfileRegistry(mode_registry_)`
+11. `IntegratedControllerRuntime::initialize(startup_mode_id)`
+12. `RL_controller::RL_controller_Init(startup_mode_id)`
+13. `RL_controller::initModeProfiles()`
+14. `SolverDdsBridge` starts dedicated ROS input executor thread
+15. `SolverDdsBridge` starts asynchronous low-frequency state telemetry thread
+16. `RobotSolver::run()` loop
+17. `motor_shm_io_.readFeedback(...)`
+18. sample cached teleop / mode_control / imu
+19. `dds_bridge_.buildRobotStateData(...)`
+20. `IntegratedControllerRuntime::step(...)`
+21. `RL_controller::step(...)`
+22. `RobotSolver::applyRuntimeCommand(...)`
+23. `dds_bridge_.mirrorRobotState(...)`
+24. `sendMotorCmd()`
+
+Important details:
+
+- `solver` and `controller` now share the same cached mode/profile registry
+- runtime mode switching uses already-built in-memory profiles
+- switching mode no longer depends on both sides separately re-reading `rl_cfg_jc01.yaml`
+- ROS input callbacks and `/omnimorph/rl/state` publish are kept off the control loop thread
+
+## 6. Why This Is Better
+
+Compared with the old two-process runtime, this path:
+
+- removes one internal DDS hop on the critical control path
+- keeps the same deploy state machine and observation logic
+- keeps the same operator topics and tooling
+- makes sim2real behavior closer to fused sim2sim behavior
+
+## 7. Debugging Tips
+
+### 7.1 Verify mode input
+
+```bash
+ros2 topic echo /omnimorph/rl/mode_control --once
+```
+
+### 7.2 Verify teleop input
+
+```bash
+ros2 topic echo /omnimorph/rl/teleop --once
+```
+
+### 7.3 Verify solver-side state publish
+
+```bash
+ros2 topic echo /omnimorph/rl/state --once
+```
+
+### 7.4 If policy does not start
+
+Check these in order:
+
+1. `mode_control` control word was actually published
+2. selected `mode_id` exists in `deploy_mode_profiles`
+3. deploy precheck passes for that mode
+4. IMU topic is alive on real robot path
+
+## 8. Compatibility
+
+The old standalone `RL_controller` executable and its split-runtime path have been removed.
+
+The standard supported deploy path is now only the fused `RL_solver` runtime.

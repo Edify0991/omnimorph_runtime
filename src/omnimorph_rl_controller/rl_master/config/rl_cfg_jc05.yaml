@@ -1,0 +1,118 @@
+# Placeholder root config for a future JC05 quadruped deploy.
+# The policy/profile path is intentionally a stub; replace it when the real
+# quadruped policy, URDF/XML, and hardware bridge are available.
+
+omnimorph_root_dir: ..
+
+robot_identity:
+  id: jc05
+  morphology: quadruped
+  vendor: jingchu
+  kinematics_adapter: jc05_quadruped
+  external_hardware_bridge: jc05_vendor_bridge
+
+robot_global_joint_order:
+  - front_left_hip_roll
+  - front_left_hip_pitch
+  - front_left_knee_pitch
+  - front_right_hip_roll
+  - front_right_hip_pitch
+  - front_right_knee_pitch
+  - rear_left_hip_roll
+  - rear_left_hip_pitch
+  - rear_left_knee_pitch
+  - rear_right_hip_roll
+  - rear_right_hip_pitch
+  - rear_right_knee_pitch
+
+robot_global_motor_order:
+  - front_left_hip_roll
+  - front_left_hip_pitch
+  - front_left_knee_pitch
+  - front_right_hip_roll
+  - front_right_hip_pitch
+  - front_right_knee_pitch
+  - rear_left_hip_roll
+  - rear_left_hip_pitch
+  - rear_left_knee_pitch
+  - rear_right_hip_roll
+  - rear_right_hip_pitch
+  - rear_right_knee_pitch
+
+joint_groups:
+  leg:
+    - front_left_hip_roll
+    - front_left_hip_pitch
+    - front_left_knee_pitch
+    - front_right_hip_roll
+    - front_right_hip_pitch
+    - front_right_knee_pitch
+    - rear_left_hip_roll
+    - rear_left_hip_pitch
+    - rear_left_knee_pitch
+    - rear_right_hip_roll
+    - rear_right_hip_pitch
+    - rear_right_knee_pitch
+  waist: []
+  arm: []
+
+robot_kinematics_adapter: jc05_quadruped
+
+deploy_mode_profiles:
+  - mode_id: 0
+    config_section: jc05_quadruped_placeholder
+    tag: jc05_placeholder
+
+config_files:
+  jc05_quadruped_placeholder: profiles/jc05_quadruped_placeholder.yaml
+
+path_variables:
+  robot_assets_dir: ${ROBOT_ASSETS_DIR}
+  jc05_pinocchio_urdf: ${robot_assets_dir}/jc05_placeholder.urdf
+  jc05_scene_xml: ${robot_assets_dir}/jc05_placeholder.xml
+
+runtime_process:
+  controller:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
+  solver:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 2
+    use_fifo: true
+    fifo_priority: 90
+
+logging:
+  enabled: true
+  backend: mcap
+  output_dir: data/runtime_logs
+  session_name_policy: timestamp_policy
+  custom_session_name: ''
+  writer:
+    queue_capacity: 256
+    flush_period_ms: 250
+    compression: zstd
+    chunk_size_kb: 1024
+  tick:
+    enabled: true
+    decimation: 1
+    include_observation: true
+    include_policy_action: true
+    include_motor_io: true
+    include_joint_targets: true
+    include_external_observations: false
+  events:
+    enabled: true
+  reference_motion:
+    enabled: false
+  source_samples:
+    enabled: true
+    include_base_imu: true
+    include_external_observations: false
+  export:
+    default_format: none

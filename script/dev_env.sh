@@ -5,7 +5,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   exit 1
 fi
 
-__jc01_saved_shell_opts="$(set +o)"
+__omnimorph_saved_shell_opts="$(set +o)"
 set +e +u
 set +o pipefail
 
@@ -13,8 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common.sh"
 
-eval "${__jc01_saved_shell_opts}"
-unset __jc01_saved_shell_opts
+eval "${__omnimorph_saved_shell_opts}"
+unset __omnimorph_saved_shell_opts
 
 restore_nounset=0
 if [[ -o nounset ]]; then
@@ -28,7 +28,8 @@ if [[ "${restore_nounset}" -eq 1 ]]; then
   set -u
 fi
 
-export JC01_DEPLOY_ROOT="${WORKSPACE_DIR}"
+export OMNIMORPH_RUNTIME_ROOT="${WORKSPACE_DIR}"
+export JC01_DEPLOY_ROOT="${OMNIMORPH_RUNTIME_ROOT}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export ROS_LOG_DIR="${ROS_LOG_DIR:-${WORKSPACE_DIR}/log/ros2}"
@@ -73,7 +74,7 @@ if [[ -n "${CONDA_PREFIX:-}" ]]; then
 fi
 
 log_info "Environment ready"
-log_info "JC01_DEPLOY_ROOT=${JC01_DEPLOY_ROOT}"
+log_info "OMNIMORPH_RUNTIME_ROOT=${OMNIMORPH_RUNTIME_ROOT}"
 log_info "ROS setup: ${ROS_DISTRO:-unknown}"
 log_info "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}"
 log_info "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"

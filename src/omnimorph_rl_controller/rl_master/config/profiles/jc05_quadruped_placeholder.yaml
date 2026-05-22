@@ -1,0 +1,184 @@
+jc05_quadruped_placeholder:
+  policy_name: jc05_quadruped_placeholder
+  policy_family: custom
+  policy_adapter: onnx
+  obs_stack_N: 1
+  cycle_time: 1.0
+  kps:
+    front_left_hip_roll: 40.0
+    front_left_hip_pitch: 40.0
+    front_left_knee_pitch: 40.0
+    front_right_hip_roll: 40.0
+    front_right_hip_pitch: 40.0
+    front_right_knee_pitch: 40.0
+    rear_left_hip_roll: 40.0
+    rear_left_hip_pitch: 40.0
+    rear_left_knee_pitch: 40.0
+    rear_right_hip_roll: 40.0
+    rear_right_hip_pitch: 40.0
+    rear_right_knee_pitch: 40.0
+  kds:
+    front_left_hip_roll: 1.0
+    front_left_hip_pitch: 1.0
+    front_left_knee_pitch: 1.0
+    front_right_hip_roll: 1.0
+    front_right_hip_pitch: 1.0
+    front_right_knee_pitch: 1.0
+    rear_left_hip_roll: 1.0
+    rear_left_hip_pitch: 1.0
+    rear_left_knee_pitch: 1.0
+    rear_right_hip_roll: 1.0
+    rear_right_hip_pitch: 1.0
+    rear_right_knee_pitch: 1.0
+  tau_limit:
+    front_left_hip_roll: 60.0
+    front_left_hip_pitch: 60.0
+    front_left_knee_pitch: 60.0
+    front_right_hip_roll: 60.0
+    front_right_hip_pitch: 60.0
+    front_right_knee_pitch: 60.0
+    rear_left_hip_roll: 60.0
+    rear_left_hip_pitch: 60.0
+    rear_left_knee_pitch: 60.0
+    rear_right_hip_roll: 60.0
+    rear_right_hip_pitch: 60.0
+    rear_right_knee_pitch: 60.0
+  clip_observations: 100.0
+  clip_actions: 100.0
+  action_scale: 0.25
+  device_id: 0
+  obs_dim: 47
+  action_dim: 12
+  motor_N: 12
+  RL_control_f: 50
+  solver_control_hz: 500
+  installed_joint_run_modes:
+    front_left_hip_roll: cst
+    front_left_hip_pitch: cst
+    front_left_knee_pitch: cst
+    front_right_hip_roll: cst
+    front_right_hip_pitch: cst
+    front_right_knee_pitch: cst
+    rear_left_hip_roll: cst
+    rear_left_hip_pitch: cst
+    rear_left_knee_pitch: cst
+    rear_right_hip_roll: cst
+    rear_right_hip_pitch: cst
+    rear_right_knee_pitch: cst
+  action_joint_order:
+    - front_left_hip_roll
+    - front_left_hip_pitch
+    - front_left_knee_pitch
+    - front_right_hip_roll
+    - front_right_hip_pitch
+    - front_right_knee_pitch
+    - rear_left_hip_roll
+    - rear_left_hip_pitch
+    - rear_left_knee_pitch
+    - rear_right_hip_roll
+    - rear_right_hip_pitch
+    - rear_right_knee_pitch
+  obs_joint_order:
+    - front_left_hip_roll
+    - front_left_hip_pitch
+    - front_left_knee_pitch
+    - front_right_hip_roll
+    - front_right_hip_pitch
+    - front_right_knee_pitch
+    - rear_left_hip_roll
+    - rear_left_hip_pitch
+    - rear_left_knee_pitch
+    - rear_right_hip_roll
+    - rear_right_hip_pitch
+    - rear_right_knee_pitch
+  observation_manifest_file: observation_manifest.yaml
+  enable_reference_motion: false
+  source_contract:
+    imu_input:
+      payload: euler_compat
+      euler_order: [roll, pitch, yaw]
+      euler_unit: rad
+      quat_order: xyzw
+      ang_vel_order: [x, y, z]
+      frame_alignment_rpy: [0.0, 0.0, 0.0]
+    sim_base:
+      quat_source_order: wxyz
+  observation_contract:
+    canonical:
+      joint_order: robot_global_joint_order
+      quat_order: xyzw
+      quat_representation: quat
+      body_quat_frame: world
+      body_orientation_representation: rot6
+  policy_io:
+    obs_input_name: obs
+    action_output_name: actions
+    strict_model_io: false
+  control_mode: sim2real
+  action_filter: 0.0
+  startup_completion_action: hold
+  zeroing_duration_s: 2.0
+  zeroing_position_tolerance: 0.2
+  zeroing_velocity_tolerance: 0.5
+  robot:
+    default_joint_angles:
+      front_left_hip_roll: 0.0
+      front_left_hip_pitch: 0.8
+      front_left_knee_pitch: -1.6
+      front_right_hip_roll: 0.0
+      front_right_hip_pitch: 0.8
+      front_right_knee_pitch: -1.6
+      rear_left_hip_roll: 0.0
+      rear_left_hip_pitch: 0.8
+      rear_left_knee_pitch: -1.6
+      rear_right_hip_roll: 0.0
+      rear_right_hip_pitch: 0.8
+      rear_right_knee_pitch: -1.6
+    zero_joint_angles:
+      front_left_hip_roll: 0.0
+      front_left_hip_pitch: 0.8
+      front_left_knee_pitch: -1.6
+      front_right_hip_roll: 0.0
+      front_right_hip_pitch: 0.8
+      front_right_knee_pitch: -1.6
+      rear_left_hip_roll: 0.0
+      rear_left_hip_pitch: 0.8
+      rear_left_knee_pitch: -1.6
+      rear_right_hip_roll: 0.0
+      rear_right_hip_pitch: 0.8
+      rear_right_knee_pitch: -1.6
+    joint_limit_range:
+      front_left_hip_roll: [-0.8, 0.8]
+      front_left_hip_pitch: [-1.5, 1.5]
+      front_left_knee_pitch: [-2.7, -0.2]
+      front_right_hip_roll: [-0.8, 0.8]
+      front_right_hip_pitch: [-1.5, 1.5]
+      front_right_knee_pitch: [-2.7, -0.2]
+      rear_left_hip_roll: [-0.8, 0.8]
+      rear_left_hip_pitch: [-1.5, 1.5]
+      rear_left_knee_pitch: [-2.7, -0.2]
+      rear_right_hip_roll: [-0.8, 0.8]
+      rear_right_hip_pitch: [-1.5, 1.5]
+      rear_right_knee_pitch: [-2.7, -0.2]
+    motor_torque_limit:
+      front_left_hip_roll: 60.0
+      front_left_hip_pitch: 60.0
+      front_left_knee_pitch: 60.0
+      front_right_hip_roll: 60.0
+      front_right_hip_pitch: 60.0
+      front_right_knee_pitch: 60.0
+      rear_left_hip_roll: 60.0
+      rear_left_hip_pitch: 60.0
+      rear_left_knee_pitch: 60.0
+      rear_right_hip_roll: 60.0
+      rear_right_hip_pitch: 60.0
+      rear_right_knee_pitch: 60.0
+  scales:
+    lin_vel: 2.0
+    ang_vel: 0.25
+    command_lin_vel: 2.0
+    command_ang_vel: 0.25
+    dof_pos: 1.0
+    dof_vel: 0.05
+    quat: 1.0
+    height_measurements: 1.0

@@ -1,0 +1,164 @@
+omnimorph_root_dir: ..
+
+robot_identity:
+  id: unitree_g1
+  morphology: humanoid
+  vendor: unitree
+  kinematics_adapter: unitree_g1
+  external_hardware_bridge: unitree_sdk_bridge
+
+robot_global_joint_order:
+  - left_hip_pitch_joint
+  - left_hip_roll_joint
+  - left_hip_yaw_joint
+  - left_knee_joint
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  - right_hip_pitch_joint
+  - right_hip_roll_joint
+  - right_hip_yaw_joint
+  - right_knee_joint
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  - waist_yaw_joint
+  - waist_roll_joint
+  - waist_pitch_joint
+  - left_shoulder_pitch_joint
+  - left_shoulder_roll_joint
+  - left_shoulder_yaw_joint
+  - left_elbow_joint
+  - left_wrist_roll_joint
+  - left_wrist_pitch_joint
+  - left_wrist_yaw_joint
+  - right_shoulder_pitch_joint
+  - right_shoulder_roll_joint
+  - right_shoulder_yaw_joint
+  - right_elbow_joint
+  - right_wrist_roll_joint
+  - right_wrist_pitch_joint
+  - right_wrist_yaw_joint
+
+robot_global_motor_order:
+  - left_hip_pitch_joint
+  - left_hip_roll_joint
+  - left_hip_yaw_joint
+  - left_knee_joint
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  - right_hip_pitch_joint
+  - right_hip_roll_joint
+  - right_hip_yaw_joint
+  - right_knee_joint
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  - waist_yaw_joint
+  - waist_roll_joint
+  - waist_pitch_joint
+  - left_shoulder_pitch_joint
+  - left_shoulder_roll_joint
+  - left_shoulder_yaw_joint
+  - left_elbow_joint
+  - left_wrist_roll_joint
+  - left_wrist_pitch_joint
+  - left_wrist_yaw_joint
+  - right_shoulder_pitch_joint
+  - right_shoulder_roll_joint
+  - right_shoulder_yaw_joint
+  - right_elbow_joint
+  - right_wrist_roll_joint
+  - right_wrist_pitch_joint
+  - right_wrist_yaw_joint
+
+joint_groups:
+  leg:
+    - left_hip_pitch_joint
+    - left_hip_roll_joint
+    - left_hip_yaw_joint
+    - left_knee_joint
+    - left_ankle_pitch_joint
+    - left_ankle_roll_joint
+    - right_hip_pitch_joint
+    - right_hip_roll_joint
+    - right_hip_yaw_joint
+    - right_knee_joint
+    - right_ankle_pitch_joint
+    - right_ankle_roll_joint
+  waist:
+    - waist_yaw_joint
+    - waist_roll_joint
+    - waist_pitch_joint
+  arm:
+    - left_shoulder_pitch_joint
+    - left_shoulder_roll_joint
+    - left_shoulder_yaw_joint
+    - left_elbow_joint
+    - left_wrist_roll_joint
+    - left_wrist_pitch_joint
+    - left_wrist_yaw_joint
+    - right_shoulder_pitch_joint
+    - right_shoulder_roll_joint
+    - right_shoulder_yaw_joint
+    - right_elbow_joint
+    - right_wrist_roll_joint
+    - right_wrist_pitch_joint
+    - right_wrist_yaw_joint
+
+robot_kinematics_adapter: unitree_g1
+
+deploy_mode_profiles:
+  - mode_id: 0
+    config_section: beyondmimic_g1_walk_full_body_w_state_estimation
+    tag: g1_beyondmimic
+
+config_files:
+  beyondmimic_g1_walk_full_body_w_state_estimation: profiles/beyondmimic_g1_walk_full_body_w_state_estimation.yaml
+path_variables:
+  robot_assets_dir: ${ROBOT_ASSETS_DIR}
+  g1_pinocchio_urdf: ${robot_assets_dir}/g1_29dof.urdf
+  g1_scene_xml: ${robot_assets_dir}/scene_29dof.xml
+
+runtime_process:
+  controller:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
+  solver:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 2
+    use_fifo: true
+    fifo_priority: 90
+
+logging:
+  enabled: true
+  backend: mcap
+  output_dir: data/runtime_logs
+  session_name_policy: timestamp_policy
+  custom_session_name: ''
+  writer:
+    queue_capacity: 256
+    flush_period_ms: 250
+    compression: zstd
+    chunk_size_kb: 1024
+  tick:
+    enabled: true
+    decimation: 1
+    include_observation: true
+    include_policy_action: true
+    include_motor_io: true
+    include_joint_targets: true
+    include_external_observations: false
+  events:
+    enabled: true
+  reference_motion:
+    enabled: false
+  source_samples:
+    enabled: true
+    include_base_imu: true
+    include_external_observations: false
+  export:
+    default_format: none

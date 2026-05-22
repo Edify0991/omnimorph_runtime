@@ -18,7 +18,7 @@ Purpose:
 
 Examples:
   script/reference_pose_replay_test.sh \
-    --params-file /home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
+    --params-file ${OMNIMORPH_RUNTIME_ROOT}/src/omnimorph_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
     -- -p startup_mode_id:=2 -p enable_viewer:=false
 
 Notes:
