@@ -30,30 +30,62 @@ It is already being used for:
 - RL / AMP / BeyondMimic style policies
 - future diffusion or flow-matching style generative policies
 
-## Start Here
+## Terminal Workflow
 
 ### Real robot
 
+Terminal 1:
+
 ```bash
-./script/sim2real_engineai.sh --mode-id 0
+source ./script/dev_env.sh
+sudo ./script/driver.sh
 ```
 
-### MuJoCo sim2sim
+Terminal 2:
 
 ```bash
-./script/sim2sim_engineai.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --auto-start-mode
+source ./script/dev_env.sh
+sudo ./script/start_imu_yesense.sh
 ```
 
-### MuJoCo Python viewer frontend
+Terminal 3:
 
 ```bash
-./script/sim2sim_engineai_python.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --auto-start-mode
+source ./script/dev_env.sh
+ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=0
+```
+
+Terminal 4:
+
+```bash
+source ./script/dev_env.sh
+sudo 
+```
+
+Start policy manually:
+
+```bash
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+```
+
+### MuJoCo sim2sim (Python viewer fdrontend)
+
+Terminal 1:
+
+```bash
+source ./script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/abs/path/to/robot.xml \
+  backend:=cpp \
+  mode_id:=0 \
+  control_hz:=100.0 \
+  enable_viewer:=true
+```
+
+Start policy manually:
+
+```bash
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
 ```
 
 ## What Lives Here
@@ -61,7 +93,7 @@ It is already being used for:
 - `src/humanoid_rl_controller/rl_master`: fused runtime, policy adapter, observation builder, deploy mode/profile registry
 - `src/humanoid_sim2sim/mujoco_sim2sim`: fused MuJoCo backend and Python viewer frontend path
 - `src/humanoid_rl_controller/joint_motor_test`: standalone joint/motor trajectory verification tooling
-- `script/`: practical operator entry points for sim2real, sim2sim, IMU, joystick, and mode control
+- `script/`: low-level helpers for environment setup, operator tools, IMU, and mode control
 
 ## Runtime Principles
 
@@ -71,15 +103,16 @@ It is already being used for:
 - Keep sim2sim and sim2real as close as possible at runtime boundaries
 - Remove split-runtime and hidden legacy paths when they stop paying for themselves
 
-## Operator Entry Points
+## Common Runtime Commands
 
-| Path | Recommended entry |
+| Purpose | Command |
 | --- | --- |
-| Real robot fused runtime | `./script/sim2real_engineai.sh --mode-id <N>` |
-| MuJoCo fused runtime | `./script/sim2sim_engineai.sh --model-path <xml> --mode-id <N>` |
-| MuJoCo Python GUI path | `./script/sim2sim_engineai_python.sh --model-path <xml> --mode-id <N>` |
-| Mode control helper | `./script/publish_mode_control.sh start --mode-id <N>` |
-| Joystick launcher | `./script/start_joylaunch.sh` |
+| Start solver directly | `ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=<N>` |
+| Start MuJoCo fused backend | `ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py model_path:=<xml> backend:=cpp mode_id:=<N>` |
+| Start MuJoCo Python frontend path | `ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py model_path:=<xml> backend:=python_frontend mode_id:=<N>` |
+| Start policy | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000 + N}"` |
+| Switch mode only | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 2000 + N}"` |
+| Stop policy | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 11}"` |
 
 ## Documentation
 
@@ -90,8 +123,7 @@ It is already being used for:
 - Script usage:
   [script/README.md](./script/README.md)
 
-## License Status
+## License
 
-Repository-wide license selection is still pending maintainer confirmation.
-Package-level manifests are not fully normalized yet, so pick the final
-repository `LICENSE` deliberately before publishing externally.
+This project is licensed under the MIT License.
+See the [LICENSE](./LICENSE) file for the full text.

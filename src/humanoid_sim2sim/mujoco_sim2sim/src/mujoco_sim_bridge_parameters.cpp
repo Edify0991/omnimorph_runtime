@@ -98,6 +98,32 @@ void MujocoSimBridge::loadParameters()
     enable_state_telemetry_ = this->get_parameter("enable_state_telemetry").as_bool();
     state_telemetry_hz_ = std::max(0.0, this->get_parameter("state_telemetry_hz").as_double());
 
+    if (!model_path_.empty())
+    {
+        try
+        {
+            const RootConfigDocument root_doc = loadRootConfigDocument(rl_cfg_path_);
+            const std::map<std::string, std::string> path_variables =
+                loadPathVariablesFromRootDocument(root_doc);
+            const std::string expanded_model_path =
+                expandPathVariables(model_path_, path_variables, true);
+            std::filesystem::path resolved_model_path = std::filesystem::path(expanded_model_path);
+            if (resolved_model_path.is_relative())
+            {
+                const std::filesystem::path resolved_root_dir =
+                    resolveConfiguredHumanoidRlRootDir(root_doc.root, root_doc.root_dir);
+                resolved_model_path = resolved_root_dir / resolved_model_path;
+            }
+            model_path_ = std::filesystem::absolute(resolved_model_path).lexically_normal().string();
+        }
+        catch (const std::exception &e)
+        {
+            throw std::runtime_error(
+                "failed to resolve MuJoCo model_path '" + model_path_ +
+                "' using rl_cfg '" + rl_cfg_path_ + "': " + e.what());
+        }
+    }
+
     joint_names_ = canonical_names;
 
     std::vector<std::string> actuator_names_param;

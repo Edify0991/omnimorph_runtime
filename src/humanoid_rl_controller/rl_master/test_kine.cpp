@@ -3,7 +3,6 @@
 #include <iostream>
 #include <tuple>
 
-// C++17 缁撴瀯鍖栫粦瀹?+ 閫氱敤鎵撳嵃锛堜竴琛屼唬鐮侊級
 #define PRINT_TUPLE(t) \
     do { \
         auto [a,b,c] = t; \
@@ -13,12 +12,12 @@
 
 int main() {
     // Ankle_Kinematics AnkleKinematics;
-    // // double leftMotorLen = 313.76;
-    // // double rightMotorLen = 305.76;
-    // // AnkleKinematics.Ankle_forward_Kinematics(leftMotorLen, rightMotorLen);
+    // double leftMotorLen = 313.76;
+    // double rightMotorLen = 305.76;
+    // AnkleKinematics.Ankle_forward_Kinematics(leftMotorLen, rightMotorLen);
 
-    // // double pitch = -1.15;
-    // // double roll = -10.39;    
+    // double pitch = -1.15;
+    // double roll = -10.39;    
     // double pitch = -0.24*1;
     // double roll = 0.24*0;
     // auto result = AnkleKinematics.Ankle_inverse_Kinematics(pitch, roll, false);

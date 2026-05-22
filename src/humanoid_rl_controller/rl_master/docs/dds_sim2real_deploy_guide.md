@@ -20,33 +20,42 @@ RL_solver (single process)
 
 DDS is still used for operator input and observability, but not for internal controller-to-solver command transport.
 
-## 2. Standard Startup
+## 2. Terminal Startup Order
 
-### 2.1 One-command startup
-
-```bash
-./script/sim2real_engineai.sh --mode-id 0
-```
-
-Optional auto-start after bringup:
+Terminal 1:
 
 ```bash
-./script/sim2real_engineai.sh --mode-id 0 --auto-start-mode
-```
-
-### 2.2 Manual startup order
-
-```bash
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
 sudo ./script/driver.sh
-sudo ./script/start_imu_yesense.sh
-./script/start_rl_solver.sh --mode-id 0
-sudo ./script/start_joylaunch.sh
 ```
 
-Notes:
+Terminal 2:
 
-- `start_rl_solver.sh` launches the standard fused runtime.
-- the old standalone controller launcher has been removed.
+```bash
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+sudo ./script/start_imu_yesense.sh
+```
+
+Terminal 3:
+
+```bash
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=0
+```
+
+Terminal 4:
+
+```bash
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+sudo /usr/bin/python3 /home/edify/Code/jc01_deploy/script/joyLaunch.py \
+  --workspace /home/edify/Code/jc01_deploy
+```
+
+Manual start word after bringup:
+
+```bash
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+```
 
 ## 3. External Topics Still Used
 
@@ -77,9 +86,9 @@ Supported control words are unchanged:
 Helper examples:
 
 ```bash
-./script/publish_mode_control.sh start --mode-id 0
-./script/publish_mode_control.sh switch --mode-id 1
-./script/publish_mode_control.sh stop
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 2001}"
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 11}"
 ```
 
 ## 5. Internal Function Chain

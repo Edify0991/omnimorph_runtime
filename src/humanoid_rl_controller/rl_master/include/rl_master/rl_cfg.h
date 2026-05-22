@@ -141,6 +141,148 @@ inline RootConfigDocument loadRootConfigDocument(const std::string &yaml_file)
     return out;
 }
 
+inline bool containsPathVariablePlaceholder(const std::string &raw)
+{
+    return raw.find("${") != std::string::npos;
+}
+
+inline std::string expandPathVariables(
+    const std::string &raw,
+    const std::map<std::string, std::string> &variables,
+    bool strict = true)
+{
+    std::string out = raw;
+    size_t search_pos = 0;
+    while (true)
+    {
+        const size_t open = out.find("${", search_pos);
+        if (open == std::string::npos)
+        {
+            break;
+        }
+        const size_t close = out.find('}', open + 2);
+        if (close == std::string::npos)
+        {
+            if (strict)
+            {
+                throw std::runtime_error("unterminated path variable placeholder in: " + raw);
+            }
+            break;
+        }
+        const std::string key = out.substr(open + 2, close - (open + 2));
+        const auto it = variables.find(key);
+        if (it == variables.end())
+        {
+            if (strict)
+            {
+                throw std::runtime_error("unknown path variable '${" + key + "}' in: " + raw);
+            }
+            search_pos = close + 1;
+            continue;
+        }
+        out.replace(open, close - open + 1, it->second);
+        search_pos = open + it->second.size();
+    }
+    return out;
+}
+
+inline std::filesystem::path resolveConfiguredHumanoidRlRootDir(
+    const YAML::Node &root,
+    const std::filesystem::path &cfg_parent_dir)
+{
+    const std::string configured_root_raw = yamlReadOr<std::string>(root, "humanoid_rl_root_dir", "");
+    const std::filesystem::path default_root_path = std::filesystem::path(RL_MASTER_ROOT_DIR);
+    if (configured_root_raw.empty())
+    {
+        return default_root_path;
+    }
+
+    std::filesystem::path candidate = std::filesystem::path(configured_root_raw);
+    if (candidate.is_relative())
+    {
+        candidate = cfg_parent_dir / candidate;
+    }
+    std::error_code candidate_exists_ec;
+    if (std::filesystem::exists(candidate, candidate_exists_ec))
+    {
+        return std::filesystem::absolute(candidate);
+    }
+    return default_root_path;
+}
+
+inline std::map<std::string, std::string> loadPathVariablesFromRootDocument(
+    const RootConfigDocument &root_doc)
+{
+    std::map<std::string, std::string> variables;
+    const std::filesystem::path resolved_root =
+        resolveConfiguredHumanoidRlRootDir(root_doc.root, root_doc.root_dir);
+    variables["humanoid_rl_root_dir"] = resolved_root.string();
+    variables["rl_cfg_dir"] = root_doc.root_dir.string();
+
+    const YAML::Node path_variables_node = root_doc.root["path_variables"];
+    if (!path_variables_node)
+    {
+        return variables;
+    }
+    if (!path_variables_node.IsMap())
+    {
+        throw std::runtime_error("path_variables must be a map");
+    }
+
+    std::map<std::string, std::string> pending;
+    for (auto it = path_variables_node.begin(); it != path_variables_node.end(); ++it)
+    {
+        const std::string key = it->first.as<std::string>();
+        const std::string value = it->second.as<std::string>();
+        if (key.empty())
+        {
+            throw std::runtime_error("path_variables contains an empty key");
+        }
+        if (value.empty())
+        {
+            throw std::runtime_error("path_variables['" + key + "'] must not be empty");
+        }
+        pending[key] = value;
+    }
+
+    for (size_t pass = 0; pass < pending.size() + 2 && !pending.empty(); ++pass)
+    {
+        bool progress = false;
+        for (auto it = pending.begin(); it != pending.end();)
+        {
+            const std::string expanded = expandPathVariables(it->second, variables, false);
+            if (containsPathVariablePlaceholder(expanded))
+            {
+                ++it;
+                continue;
+            }
+
+            std::filesystem::path value_path = std::filesystem::path(expanded);
+            if (value_path.is_relative())
+            {
+                value_path = root_doc.root_dir / value_path;
+            }
+            variables[it->first] = value_path.lexically_normal().string();
+            it = pending.erase(it);
+            progress = true;
+        }
+        if (!progress)
+        {
+            break;
+        }
+    }
+
+    if (!pending.empty())
+    {
+        auto first = pending.begin();
+        throw std::runtime_error(
+            "failed to resolve path_variables entry '" + first->first +
+            "': unresolved placeholder chain in '" + first->second + "'");
+    }
+
+    return variables;
+}
+
 inline std::map<std::string, std::string> loadConfigFileMapFromRoot(const YAML::Node &root)
 {
     if (!root || !root["config_files"])
@@ -847,51 +989,36 @@ public:
             gait = GaitConfig{};
             logging = RuntimeLoggingConfig{};
 
-            const std::string configured_root_raw = yamlReadOr<std::string>(config, "humanoid_rl_root_dir", "");
             const std::filesystem::path cfg_parent_dir = config_doc.root_doc.root_dir;
             const std::filesystem::path default_root_path = std::filesystem::path(RL_MASTER_ROOT_DIR);
-            std::filesystem::path resolved_root_path = default_root_path;
-            if (!configured_root_raw.empty())
-            {
-                std::filesystem::path candidate = std::filesystem::path(configured_root_raw);
-                if (candidate.is_relative())
-                {
-                    candidate = cfg_parent_dir / candidate;
-                }
-                std::error_code candidate_exists_ec;
-                if (std::filesystem::exists(candidate, candidate_exists_ec))
-                {
-                    resolved_root_path = candidate;
-                }
-                else
-                {
-                    std::cerr << "[Sim2realCfg] warning: configured humanoid_rl_root_dir does not exist"
-                              << (candidate_exists_ec ? " or is not accessible" : "")
-                              << ": "
-                              << candidate
-                              << (candidate_exists_ec ? " (" + candidate_exists_ec.message() + ")" : "")
-                              << ", fallback to RL_MASTER_ROOT_DIR: "
-                              << default_root_path << std::endl;
-                }
-            }
-            else
+            const std::filesystem::path resolved_root_path =
+                resolveConfiguredHumanoidRlRootDir(config_doc.root_doc.root, cfg_parent_dir);
+            if (!config["humanoid_rl_root_dir"])
             {
                 std::cerr << "[Sim2realCfg] warning: missing humanoid_rl_root_dir, fallback to RL_MASTER_ROOT_DIR: "
                           << default_root_path << std::endl;
             }
+            else if (resolved_root_path == default_root_path)
+            {
+                std::cerr << "[Sim2realCfg] warning: configured humanoid_rl_root_dir is invalid or inaccessible, "
+                          << "fallback to RL_MASTER_ROOT_DIR: " << default_root_path << std::endl;
+            }
             humanoid_rl_root_dir = resolved_root_path.string();
+            const std::map<std::string, std::string> path_variables =
+                loadPathVariablesFromRootDocument(config_doc.root_doc);
 
             auto resolvePath = [&](const std::string &raw) -> std::string {
                 if (raw.empty())
                 {
                     return "";
                 }
-                const std::filesystem::path p(raw);
+                const std::string expanded = expandPathVariables(raw, path_variables, true);
+                const std::filesystem::path p(expanded);
                 if (p.is_absolute())
                 {
-                    return raw;
+                    return p.lexically_normal().string();
                 }
-                return (std::filesystem::path(humanoid_rl_root_dir) / p).string();
+                return (std::filesystem::path(humanoid_rl_root_dir) / p).lexically_normal().string();
             };
 
             const YAML::Node logging_cfg = config["logging"];

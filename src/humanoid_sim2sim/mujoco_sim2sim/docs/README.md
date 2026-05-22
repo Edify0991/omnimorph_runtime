@@ -3,7 +3,7 @@
 This folder contains the active documentation for the fused MuJoCo sim2sim
 runtime centered on `mujoco_sim_bridge`.
 
-## Start Here
+## Core Guides
 
 - Main deployment guide:
   [sim2sim_mujoco_deploy_guide.md](./sim2sim_mujoco_deploy_guide.md)

@@ -149,7 +149,7 @@ beyondmimic_jc01_walk_lower_body_w_state_estimation:
     - left_knee_pitch
     - left_ankle_pitch
     - left_ankle_roll
-  pinocchio_urdf_path: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF.urdf
+  pinocchio_urdf_path: ${jc01_pinocchio_urdf}
   reference_joint_order:
     - left_hip_roll
     - right_hip_roll

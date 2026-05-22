@@ -139,20 +139,29 @@ python3 src/humanoid_rl_controller/rl_master/tools/analysis/validate_deploy_conf
 Use `--config-section <name>` if you want to validate a config entry that is
 not currently attached to an active `mode_id`.
 
-## 8. Standard Runtime Entry Points
+## 8. Standard Runtime Commands
 
 ### Real robot
 
 ```bash
-./script/sim2real_engineai.sh --mode-id <mode_id>
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=<mode_id>
+```
+
+Start the selected mode manually:
+
+```bash
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000 + <mode_id>}"
 ```
 
 ### MuJoCo sim2sim
 
 ```bash
-./script/sim2sim_engineai.sh \
-  --model-path /abs/path/to/model.xml \
-  --mode-id <mode_id>
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/abs/path/to/model.xml \
+  backend:=cpp \
+  mode_id:=<mode_id>
 ```
 
 ## 9. Mode Switching And Hot Switch Constraints

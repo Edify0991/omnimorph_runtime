@@ -14,13 +14,16 @@ It embeds the same `IntegratedControllerRuntime` used by the real-robot `RL_solv
 - policy switching
 - command interpretation
 
-Standard startup:
+Manual terminal startup:
 
 ```bash
-./script/sim2sim_engineai.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --auto-start-mode
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/abs/path/to/robot.xml \
+  backend:=cpp \
+  mode_id:=0 \
+  control_hz:=100.0 \
+  enable_viewer:=true
 ```
 
 The standard Python GUI path is the `python_frontend` viewer client layered on

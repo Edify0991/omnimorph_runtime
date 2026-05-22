@@ -23,16 +23,11 @@ Check that it passes for the exact mode you intend to start.
 3. correct `mode_id` exists in `deploy_mode_profiles`
 4. ONNX file exists
 5. manifest path exists
-6. startup script runs:
+6. solver starts cleanly:
 
 ```bash
-./script/sim2real_engineai.sh --mode-id 0
-```
-
-Optional auto-start:
-
-```bash
-./script/sim2real_engineai.sh --mode-id 0 --auto-start-mode
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=0
 ```
 
 ## 3. Sim2Sim Bringup Checklist
@@ -42,19 +37,18 @@ Optional auto-start:
 3. fused bridge starts:
 
 ```bash
-./script/sim2sim_engineai.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --enable-viewer true
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/abs/path/to/robot.xml \
+  backend:=cpp \
+  mode_id:=0 \
+  enable_viewer:=true
 ```
 
-4. if needed, auto-start policy:
+4. if needed, start policy manually:
 
 ```bash
-./script/sim2sim_engineai.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --auto-start-mode
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
 ```
 
 ## 4. Runtime Smoke Checks
@@ -75,9 +69,9 @@ ros2 topic echo /humanoid/rl/state --once
 ### Manual mode control
 
 ```bash
-./script/publish_mode_control.sh start --mode-id 0
-./script/publish_mode_control.sh stop
-./script/publish_mode_control.sh switch --mode-id 1
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 11}"
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 2001}"
 ```
 
 ## 5. If the Policy Does Not Move
@@ -103,7 +97,12 @@ The supported runtime is now single-process in both paths:
 If you specifically want the Python MuJoCo GUI, run:
 
 ```bash
-./script/sim2sim_engineai_python.sh --model-path /abs/path/to/robot.xml --mode-id 0
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/abs/path/to/robot.xml \
+  backend:=python_frontend \
+  mode_id:=0 \
+  enable_viewer:=true
 ```
 
 This now runs the fused C++ runtime with a separate Python MuJoCo viewer frontend.

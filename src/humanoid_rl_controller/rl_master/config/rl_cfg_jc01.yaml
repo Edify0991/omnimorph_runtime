@@ -2,8 +2,6 @@
 # Keep the default rl_cfg_jc01.yaml on the current 12-DoF leg setup; use this root
 # when the full-body MuJoCo/real joint interface is ready.
 
-humanoid_rl_root_dir: /home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master
-legged_gym_root_dir: /path/to/legged_gym_root_dir
 robot_global_joint_order:
 - right_hip_roll
 - right_hip_yaw
@@ -131,6 +129,12 @@ config_files:
   jingchu01_dcmotor_newpd_baseline: profiles/jingchu01_dcmotor_newpd_baseline.yaml
   jingchu01_pacedcmotor_group_delay_qdq_newpd: profiles/jingchu01_pacedcmotor_group_delay_qdq_newpd.yaml
   amp_tienkunglab_jc01_walk_full_body: profiles/amp_tienkunglab_jc01_walk_full_body.yaml
+path_variables:
+  jc01_pinocchio_urdf: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF.urdf
+  jc01_scene_xml: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/scene_jingchu01.xml
+  jc01_legs_xml: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_legs.xml
+  jc01_fullbody_engineai_walk_xml: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jc01_fullbody_engineai_walk_sim2sim.xml
+  jc01_default_sim_xml: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_new_0304.xml
 runtime_process:
   controller:
     enabled: true

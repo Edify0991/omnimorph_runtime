@@ -1,6 +1,3 @@
-humanoid_rl_root_dir: /home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master
-legged_gym_root_dir: /path/to/legged_gym_root_dir
-
 robot_global_joint_order:
   - left_hip_pitch_joint
   - left_hip_roll_joint
@@ -104,6 +101,9 @@ deploy_mode_profiles:
 
 config_files:
   beyondmimic_g1_walk_full_body_w_state_estimation: profiles/beyondmimic_g1_walk_full_body_w_state_estimation.yaml
+path_variables:
+  g1_pinocchio_urdf: /home/edify/Code/unitree_rl_gym/resources/robots/g1_description/g1_29dof.urdf
+  g1_scene_xml: /home/edify/Code/unitree_mujoco/unitree_robots/g1/scene_29dof.xml
 
 runtime_process:
   controller:

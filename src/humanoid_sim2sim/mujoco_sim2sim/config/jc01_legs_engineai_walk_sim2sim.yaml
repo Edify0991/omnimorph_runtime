@@ -1,6 +1,6 @@
 mujoco_sim_bridge:
   ros__parameters:
-    model_path: "/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_legs.xml"
+    model_path: "${jc01_legs_xml}"
 
     # JC01 legs-only MuJoCo contract.
     base_body_name: "Body"

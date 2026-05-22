@@ -23,25 +23,24 @@ This replaces the old standard path:
 RL_controller -> DDS -> mujoco_sim_bridge
 ```
 
-## 2. Standard Startup
+## 2. Terminal Startup
+
+Bring up the backend first:
 
 ```bash
-./script/sim2sim_engineai.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --enable-viewer true \
-  --auto-start-mode
-```
-
-Equivalent raw launch command:
-
-```bash
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
 ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
   model_path:=/abs/path/to/robot.xml \
   backend:=cpp \
   mode_id:=0 \
   control_hz:=100.0 \
   enable_viewer:=true
+```
+
+Then start the policy explicitly:
+
+```bash
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
 ```
 
 ## 3. Launch Arguments
@@ -139,10 +138,12 @@ If you see DDS socket errors such as `TRANSPORT_UDP Error` inside a restricted s
 If you need the friendlier Python MuJoCo GUI, use:
 
 ```bash
-./script/sim2sim_engineai_python.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --auto-start-mode
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/abs/path/to/robot.xml \
+  backend:=python_frontend \
+  mode_id:=0 \
+  enable_viewer:=true
 ```
 
 Current topology:
@@ -168,11 +169,13 @@ For a complete topic summary across fused and Python frontend paths, see:
 For the JC01 legs-only `engineai_walk` policy with Python GUI frontend, use:
 
 ```bash
-./script/sim2sim_engineai_python.sh \
-  --model-path /home/edify/Code/jingchu01/jingchu01_legs.xml \
-  --mode-id 0 \
-  --bridge-config /home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
-  --auto-start-mode
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/home/edify/Code/jingchu01/jingchu01_legs.xml \
+  backend:=python_frontend \
+  mode_id:=0 \
+  bridge_config:=/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
+  enable_viewer:=true
 ```
 
 This preset is intentionally narrow:

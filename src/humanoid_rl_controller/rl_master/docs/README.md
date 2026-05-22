@@ -3,7 +3,7 @@
 This folder contains the active deployment/runtime documentation for the fused
 `RL_solver` + `RL_controller` stack.
 
-## Start Here
+## Core Guides
 
 - Real-robot deployment:
   [dds_sim2real_deploy_guide.md](./dds_sim2real_deploy_guide.md)

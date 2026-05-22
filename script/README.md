@@ -1,6 +1,6 @@
 # Scripts Guide
 
-## Standard Entry Points
+## Terminal-First Usage
 
 ### New Terminal Setup
 
@@ -20,53 +20,67 @@ This prepares the shell by:
 
 ### Real Robot
 
-Use the fused single-process runtime:
+Terminal 1:
 
 ```bash
-./script/sim2real_engineai.sh --mode-id 0
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+sudo ./script/driver.sh
 ```
 
-This starts only `RL_solver`, which already embeds:
+Terminal 2:
 
-- `RL_controller`
-- deploy state machine
-- observation pipeline
-- ONNX inference
-- solver-side motor SHM I/O
+```bash
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+sudo ./script/start_imu_yesense.sh
+```
+
+Terminal 3:
+
+```bash
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=0
+```
+
+Terminal 4:
+
+```bash
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+sudo /usr/bin/python3 /home/edify/Code/jc01_deploy/script/joyLaunch.py \
+  --workspace /home/edify/Code/jc01_deploy
+```
 
 ### MuJoCo Sim2Sim
 
-Use the fused C++ bridge runtime:
+Terminal 1:
 
 ```bash
-./script/sim2sim_engineai.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --auto-start-mode
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/abs/path/to/robot.xml \
+  backend:=cpp \
+  mode_id:=0 \
+  control_hz:=100.0 \
+  enable_viewer:=true
 ```
-
-This starts only `mujoco_sim_bridge` with `backend:=cpp`.
 
 ## Script Layout
 
-### Standard entry points
+### Manual runtime building blocks
 
-- `sim2real_engineai.sh`: recommended one-command real-robot startup
-- `sim2sim_engineai.sh`: recommended one-command MuJoCo fused sim2sim startup
-- `sim2sim_engineai_python.sh`: recommended Python GUI frontend for fused sim2sim
-- `start_rl_solver.sh`: launcher for `rl_master/RL_solver`
+- `start_rl_solver.sh`: wrapper around `ros2 run rl_master RL_solver`
 - `start_imu_yesense.sh`: IMU node launcher
-- `start_joylaunch.sh`: joystick/operator launcher wrapper
+- `start_joylaunch.sh`: joystick/operator helper entry
 - `joyLaunch.py`: joystick/operator implementation
+- `publish_mode_control.sh`: helper around direct `/humanoid/rl/mode_control` publishing
 
 `joyLaunch.py` runtime mode semantics:
 
-- launching `start_rl_solver.sh` from the hand controller now passes
+- launching `start_rl_solver.sh` from the hand controller passes
   `--mode-id <primary_mode_id>`
 - `primary_mode_id` and `secondary_mode_id` are local joystick-side defaults
 - the hand controller publishes lifecycle/mode words to `/humanoid/rl/mode_control`
 - it does not automatically inherit mode selection from a separately launched
-  `sim2real_engineai.sh` process
+  manual solver process
 
 ### Common helpers
 
@@ -100,26 +114,15 @@ This starts only `mujoco_sim_bridge` with `backend:=cpp`.
 - `joy_axis_probe.py`
 - `receiver.py`
 
-## Recommended Runtime Order
+## Suggested Runtime Order
 
 ### Real Robot
 
-```bash
-sudo ./script/driver.sh
-sudo ./script/start_imu_yesense.sh
-./script/sim2real_engineai.sh --mode-id 0
-sudo ./script/start_joylaunch.sh
-```
+See the terminal-by-terminal commands above.
 
 ### Sim2Sim
 
-```bash
-./script/sim2sim_engineai.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --enable-viewer true \
-  --auto-start-mode
-```
+See the terminal-by-terminal commands above.
 
 ## Mode Control
 
@@ -131,9 +134,9 @@ The fused runtime still listens to the same operator topics:
 Useful helper:
 
 ```bash
-./script/publish_mode_control.sh start --mode-id 0
-./script/publish_mode_control.sh switch --mode-id 1
-./script/publish_mode_control.sh stop
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 2001}"
+ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 11}"
 ```
 
 Typical joystick combos:
@@ -156,10 +159,13 @@ Typical joystick combos:
 If you want the friendlier Python MuJoCo GUI while still keeping the fused C++ runtime for control and physics, use:
 
 ```bash
-./script/sim2sim_engineai_python.sh \
-  --model-path /abs/path/to/robot.xml \
-  --mode-id 0 \
-  --auto-start-mode
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/abs/path/to/robot.xml \
+  backend:=python_frontend \
+  mode_id:=0 \
+  control_hz:=100.0 \
+  enable_viewer:=true
 ```
 
 This path uses:
@@ -175,11 +181,13 @@ It is the only supported Python GUI path now.
 For the JC01 legs-only `engineai_walk` policy preset, use:
 
 ```bash
-./script/sim2sim_engineai_python.sh \
-  --model-path /home/edify/Code/jingchu01/jingchu01_legs.xml \
-  --mode-id 0 \
-  --bridge-config /home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
-  --auto-start-mode
+source /home/edify/Code/jc01_deploy/script/dev_env.sh
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/home/edify/Code/jingchu01/jingchu01_legs.xml \
+  backend:=python_frontend \
+  mode_id:=0 \
+  bridge_config:=/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
+  enable_viewer:=true
 ```
 
 This preset assumes the MuJoCo XML exposes:

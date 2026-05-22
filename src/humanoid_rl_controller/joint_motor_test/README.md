@@ -6,7 +6,7 @@ See full guide:
 
 - `docs/joint_motor_test_guide.md`
 
-Quick launch:
+Manual run:
 
 ```bash
 ros2 launch joint_motor_test joint_motor_test.launch.py
