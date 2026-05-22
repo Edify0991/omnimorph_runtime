@@ -17,15 +17,21 @@
 #include "rl_master/RL_controller.h"
 #include "rl_master/command_runtime_mode.h"
 #include "rl_master/deploy_state_machine.h"
+#include "rl_master/kinematics_adapter.h"
 #include "rl_master/rl_protocol.h"
 
 namespace rl_master::solver
 {
 namespace
 {
-bool usesJc01KinematicsAdapter(const rl_master::Sim2realCfg &cfg)
+bool usesKinConvAdapter(const rl_master::Sim2realCfg &cfg)
 {
-    return cfg.robot_kinematics_adapter.empty() || cfg.robot_kinematics_adapter == "jc01";
+    const std::string adapter = rl_master::normalizeKinematicsAdapter(cfg.robot_kinematics_adapter);
+    if (!rl_master::isKnownKinematicsAdapter(adapter))
+    {
+        throw std::runtime_error("unknown robot_kinematics_adapter: " + adapter);
+    }
+    return rl_master::adapterRequiresKinConv(adapter);
 }
 
 constexpr long kNanosecondsPerSecond = 1'000'000'000L;
@@ -808,7 +814,7 @@ void RobotSolver::getMotorState()
     }
     joint_state_ = raw_joint_state;
 
-    if (usesJc01KinematicsAdapter(sim2real_cfg_))
+    if (usesKinConvAdapter(sim2real_cfg_))
     {
     const auto &leg_indices = kin_conv_.legGlobalIndices();
     if (!leg_indices.empty())
@@ -874,7 +880,7 @@ void RobotSolver::sendMotorCmd()
         }
         motor_cmd_[motor_idx] = joint_cmd_[joint_it->second];
     }
-    if (usesJc01KinematicsAdapter(sim2real_cfg_))
+    if (usesKinConvAdapter(sim2real_cfg_))
     {
     const auto &leg_indices = kin_conv_.legGlobalIndices();
     if (!leg_indices.empty())

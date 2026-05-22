@@ -1,0 +1,186 @@
+# Placeholder config for quadruped jc05.
+# TODO: replace joint/motor order and mode profiles with real jc05 deployment data.
+# Alternate root config for the AMP_mjlab Jingchu01 full-body policy.
+# Keep the default rl_cfg_jc01.yaml on the current 12-DoF leg setup; use this root
+# when the full-body MuJoCo/real joint interface is ready.
+
+robot_global_joint_order:
+- right_hip_roll
+- right_hip_yaw
+- right_hip_pitch
+- right_knee_pitch
+- right_ankle_pitch
+- right_ankle_roll
+- left_hip_roll
+- left_hip_yaw
+- left_hip_pitch
+- left_knee_pitch
+- left_ankle_pitch
+- left_ankle_roll
+- waist_roll
+- waist_yaw
+- right_shoulder_pitch
+- right_shoulder_roll
+- right_shoulder_yaw
+- right_elbow_pitch
+- right_elbow_yaw
+- right_wrist_pitch
+- right_wrist_roll
+- left_shoulder_pitch
+- left_shoulder_roll
+- left_shoulder_yaw
+- left_elbow_pitch
+- left_elbow_yaw
+- left_wrist_pitch
+- left_wrist_roll
+robot_global_motor_order:
+- right_hip_roll
+- right_hip_yaw
+- right_hip_pitch
+- right_knee_pitch
+- right_ankle_pitch
+- right_ankle_roll
+- left_hip_roll
+- left_hip_yaw
+- left_hip_pitch
+- left_knee_pitch
+- left_ankle_pitch
+- left_ankle_roll
+- waist_yaw
+- waist_roll
+- __ignore__right_gripper
+- right_wrist_roll
+- right_wrist_pitch
+- right_elbow_yaw
+- right_elbow_pitch
+- right_shoulder_yaw
+- right_shoulder_roll
+- right_shoulder_pitch
+- __ignore__left_gripper
+- left_wrist_roll
+- left_wrist_pitch
+- left_elbow_yaw
+- left_elbow_pitch
+- left_shoulder_yaw
+- left_shoulder_roll
+- left_shoulder_pitch
+
+joint_groups:
+  leg:
+  - right_hip_roll
+  - right_hip_yaw
+  - right_hip_pitch
+  - right_knee_pitch
+  - right_ankle_pitch
+  - right_ankle_roll
+  - left_hip_roll
+  - left_hip_yaw
+  - left_hip_pitch
+  - left_knee_pitch
+  - left_ankle_pitch
+  - left_ankle_roll
+  waist:
+  - waist_roll
+  - waist_yaw
+  arm:
+  - right_shoulder_pitch
+  - right_shoulder_roll
+  - right_shoulder_yaw
+  - right_elbow_pitch
+  - right_elbow_yaw
+  - right_wrist_pitch
+  - right_wrist_roll
+  - left_shoulder_pitch
+  - left_shoulder_roll
+  - left_shoulder_yaw
+  - left_elbow_pitch
+  - left_elbow_yaw
+  - left_wrist_pitch
+  - left_wrist_roll
+robot_kinematics_adapter: jc05
+
+deploy_mode_profiles:
+- mode_id: 0
+  config_section: amp_tienkunglab_jc01_walk_full_body
+  tag: tienkung_amp
+- mode_id: 1
+  config_section: amp_mjlab_jc01_walkrun_full_body
+  tag: amp_mjlab_jc01_walkrun_full_body
+- mode_id: 2
+  config_section: engineaigym_walk_lower_body
+  tag: vel_walk
+- mode_id: 3
+  config_section: engineaigym_stand_lower_body
+  tag: stand
+- mode_id: 4
+  config_section: jingchu01_dcmotor_newpd_baseline
+  tag: jc01_dcmotor_newpd
+- mode_id: 5
+  config_section: jingchu01_pacedcmotor_group_delay_qdq_newpd
+  tag: jc01_pacedc_group_delay_qdq_newpd
+- mode_id: 6
+  config_section: beyondmimic_jc01_walk_lower_body_w_state_estimation
+  tag: beyondmimic_jc01_walk_lower_body_w_state_estimation
+- mode_id: 7
+  config_section: beyondmimic_jc01_dance_full_body_wo_state_estimation
+  tag: beyondmimic_jc01_dance_full_body_wo_state_estimation
+config_files:
+  amp_mjlab_jc01_walkrun_full_body: profiles/amp_mjlab_jc01_walkrun_full_body.yaml
+  beyondmimic_jc01_walk_lower_body_w_state_estimation: profiles/beyondmimic_jc01_walk_lower_body_w_state_estimation.yaml
+  beyondmimic_jc01_dance_full_body_wo_state_estimation: profiles/beyondmimic_jc01_dance_full_body_wo_state_estimation.yaml
+  engineaigym_walk_lower_body: profiles/engineaigym_walk_lower_body.yaml
+  engineaigym_stand_lower_body: profiles/engineaigym_stand_lower_body.yaml
+  jingchu01_dcmotor_newpd_baseline: profiles/jingchu01_dcmotor_newpd_baseline.yaml
+  jingchu01_pacedcmotor_group_delay_qdq_newpd: profiles/jingchu01_pacedcmotor_group_delay_qdq_newpd.yaml
+  amp_tienkunglab_jc01_walk_full_body: profiles/amp_tienkunglab_jc01_walk_full_body.yaml
+path_variables:
+  robot_assets_dir: ${ROBOT_ASSETS_DIR}
+  jc01_pinocchio_urdf: ${robot_assets_dir}/JC01-URDF.urdf
+  jc01_scene_xml: ${robot_assets_dir}/scene_jingchu01.xml
+  jc01_legs_xml: ${robot_assets_dir}/jingchu01_legs.xml
+  jc01_fullbody_engineai_walk_xml: ${robot_assets_dir}/jc01_fullbody_engineai_walk_sim2sim.xml
+  jc01_default_sim_xml: ${robot_assets_dir}/jingchu01_new_0304.xml
+runtime_process:
+  controller:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
+  solver:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 2
+    use_fifo: true
+    fifo_priority: 90
+logging:
+  enabled: true
+  backend: mcap
+  output_dir: data/runtime_logs
+  session_name_policy: timestamp_policy
+  custom_session_name: ''
+  writer:
+    queue_capacity: 256
+    flush_period_ms: 250
+    compression: zstd
+    chunk_size_kb: 1024
+  tick:
+    enabled: true
+    decimation: 1
+    include_observation: true
+    include_policy_action: true
+    include_motor_io: true
+    include_joint_targets: true
+    include_external_observations: false
+  events:
+    enabled: true
+  reference_motion:
+    enabled: false
+  source_samples:
+    enabled: true
+    include_base_imu: true
+    include_external_observations: false
+  export:
+    default_format: none
