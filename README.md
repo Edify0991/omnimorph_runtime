@@ -90,32 +90,6 @@ It is already being used for:
 - Script usage:
   [script/README.md](./script/README.md)
 
-## Recent Cleanup Direction
-
-- `sim2real` and `sim2sim` are both centered on fused runtimes now
-- legacy `python_interactive` MuJoCo backend is removed
-- `joint_motor_test` now injects through `/humanoid/rl/runtime_command`
-- old `/humanoid/rl/command` legacy hop is removed
-
-## GitHub Rename Suggestion
-
-If you want the public repository name to match the broader direction of the
-project, a good candidate is `omnimorph-runtime`.
-
-GitHub-side rename:
-
-1. Open repository `Settings`
-2. Change the repository name
-3. Update your local remote
-
-```bash
-git remote set-url origin <new-repo-url>
-```
-
-The branding can change independently from ROS package names. The package names
-in this workspace are intentionally left unchanged for now to avoid a risky
-cross-package rename.
-
 ## License Status
 
 Repository-wide license selection is still pending maintainer confirmation.
