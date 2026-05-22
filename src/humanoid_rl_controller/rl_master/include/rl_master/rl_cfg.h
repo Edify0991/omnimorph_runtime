@@ -844,6 +844,7 @@ public:
     };
 
     std::string humanoid_rl_root_dir;
+    std::string robot_kinematics_adapter = "jc01";
     std::string policy_name;
     std::string policy_family = "amp"; // amp / beyondmimic / custom
     std::string policy_adapter = "onnx";
@@ -1004,6 +1005,7 @@ public:
                           << "fallback to RL_MASTER_ROOT_DIR: " << default_root_path << std::endl;
             }
             humanoid_rl_root_dir = resolved_root_path.string();
+            robot_kinematics_adapter = yamlReadOr<std::string>(config, "robot_kinematics_adapter", "jc01");
             const std::map<std::string, std::string> path_variables =
                 loadPathVariablesFromRootDocument(config_doc.root_doc);
 

@@ -38,7 +38,7 @@ Terminal 1:
 
 ```bash
 source ./script/dev_env.sh
-sudo ./script/driver.sh
+sudo ./script/start_driver_jc01.sh  # JC01 only
 ```
 
 Terminal 2:
@@ -59,7 +59,7 @@ Terminal 4:
 
 ```bash
 source ./script/dev_env.sh
-sudo 
+sudo ./script/start_joylaunch.sh
 ```
 
 Start policy manually:
@@ -68,18 +68,20 @@ Start policy manually:
 ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
 ```
 
+
+> Note: real-robot driver startup is robot-specific. The README driver command above is **JC01-only**. For other robots (for example Unitree G1), replace Terminal 1 with that robot vendor/SDK driver startup procedure in a dedicated driver terminal.
+
+> Before startup, set model-related variables in `rl_cfg_*.yaml` (`path_variables`) and avoid hard-coded absolute paths.
 ### MuJoCo sim2sim (Python viewer fdrontend)
 
 Terminal 1:
 
 ```bash
 source ./script/dev_env.sh
-ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  model_path:=/abs/path/to/robot.xml \
-  backend:=cpp \
-  mode_id:=0 \
-  control_hz:=100.0 \
-  enable_viewer:=true
+ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
+  -p model_path:="${MUJOCO_MODEL_PATH}" \
+  -p enable_viewer:=true \
+  -p viewer_fps:=500.0
 ```
 
 Start policy manually:
@@ -108,8 +110,8 @@ ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}
 | Purpose | Command |
 | --- | --- |
 | Start solver directly | `ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=<N>` |
-| Start MuJoCo fused backend | `ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py model_path:=<xml> backend:=cpp mode_id:=<N>` |
-| Start MuJoCo Python frontend path | `ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py model_path:=<xml> backend:=python_frontend mode_id:=<N>` |
+| Start MuJoCo Python frontend | `ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args -p model_path:="${MUJOCO_MODEL_PATH}" -p enable_viewer:=true -p viewer_fps:=500.0` |
+| Start MuJoCo fused backend (optional) | `./script/sim2sim_runtime.sh --model-path "${MUJOCO_MODEL_PATH}" --mode-id <N>` |
 | Start policy | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000 + N}"` |
 | Switch mode only | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 2000 + N}"` |
 | Stop policy | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 11}"` |

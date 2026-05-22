@@ -23,6 +23,11 @@ namespace rl_master::solver
 {
 namespace
 {
+bool usesJc01KinematicsAdapter(const rl_master::Sim2realCfg &cfg)
+{
+    return cfg.robot_kinematics_adapter.empty() || cfg.robot_kinematics_adapter == "jc01";
+}
+
 constexpr long kNanosecondsPerSecond = 1'000'000'000L;
 
 long resolveControlPeriodNs(const Sim2realCfg &cfg)
@@ -803,6 +808,8 @@ void RobotSolver::getMotorState()
     }
     joint_state_ = raw_joint_state;
 
+    if (usesJc01KinematicsAdapter(sim2real_cfg_))
+    {
     const auto &leg_indices = kin_conv_.legGlobalIndices();
     if (!leg_indices.empty())
     {
@@ -826,6 +833,7 @@ void RobotSolver::getMotorState()
             kin_conv_.waistMotorToJoint(extractJointGroup(motor_state_, waist_motor_indices_)),
             waist_indices,
             &joint_state_);
+    }
     }
     for (size_t i = 0; i < installedJointCount(); ++i)
     {
@@ -866,6 +874,8 @@ void RobotSolver::sendMotorCmd()
         }
         motor_cmd_[motor_idx] = joint_cmd_[joint_it->second];
     }
+    if (usesJc01KinematicsAdapter(sim2real_cfg_))
+    {
     const auto &leg_indices = kin_conv_.legGlobalIndices();
     if (!leg_indices.empty())
     {
@@ -895,6 +905,7 @@ void RobotSolver::sendMotorCmd()
                 extractJointGroup(joint_cmd_, waist_indices)),
             waist_motor_indices_,
             &motor_cmd_);
+    }
     }
 
     for (size_t i = 0; i < motor_count; ++i)
