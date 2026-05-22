@@ -348,7 +348,7 @@ Mode / Config Registry
 
 - [runtime_end_to_end_function_flow.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/runtime_end_to_end_function_flow.md)
   讲当前 runtime 调用链和 mode 切换时序
-- [engineai_gym_policy_deploy_guide.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/engineai_gym_policy_deploy_guide.md)
+- [policy_deploy_and_config_guide.md](./policy_deploy_and_config_guide.md)
   讲 mode / config_section / ModeProfile / policy_group 的配置映射关系
 - [deploy_observation_order_contract_guide.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/deploy_observation_order_contract_guide.md)
   讲 observation 顺序合同与 manifest 校对方法

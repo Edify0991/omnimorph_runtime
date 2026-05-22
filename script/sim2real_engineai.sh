@@ -107,7 +107,7 @@ if [[ "${AUTO_START_MODE}" == "true" ]]; then
   log_info "Scheduled START control word: $((1000 + MODE_ID)) after ${AUTO_START_DELAY}s"
 fi
 
-CMD=("${SCRIPT_DIR}/solver.sh" --mode-id "${MODE_ID}")
+CMD=("${SCRIPT_DIR}/start_rl_solver.sh" --mode-id "${MODE_ID}")
 log_info "Launching fused sim2real runtime ..."
 log_info "${CMD[*]}"
 exec "${CMD[@]}"

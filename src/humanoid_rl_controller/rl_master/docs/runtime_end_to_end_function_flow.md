@@ -11,8 +11,8 @@ It focuses on four things:
 
 For the conceptual distinction between `mode` / `config_section` / `ModeProfile` / `policy_group`, see:
 
-- [engineai_gym_policy_deploy_guide.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/engineai_gym_policy_deploy_guide.md)
-- [policy_runtime_architecture.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/policy_runtime_architecture.md)
+- [policy_deploy_and_config_guide.md](./policy_deploy_and_config_guide.md)
+- [policy_runtime_architecture.md](./policy_runtime_architecture.md)
 
 This document focuses on call flow and runtime sequencing, while the deploy guide explains how those concepts map to configuration.
 

@@ -411,8 +411,8 @@ class JoyLaunchApp:
         sdir = self.cfg.script_dir
 
         self.combo_actions = [
-            (["btn_start"], lambda: self.process_mgr.launch_script(sdir / "solver.sh", use_sudo=True)),
-            (["btn_l1", "btn_x"], lambda: self.process_mgr.launch_script(sdir / "imu.sh", use_sudo=True)),
+            (["btn_start"], lambda: self.process_mgr.launch_script(sdir / "start_rl_solver.sh", use_sudo=True)),
+            (["btn_l1", "btn_x"], lambda: self.process_mgr.launch_script(sdir / "start_imu_yesense.sh", use_sudo=True)),
             (["btn_l1", "btn_r1"], self.process_mgr.stop_all),
             (["lt", "btn_y"], lambda: self.process_mgr.launch_script(sdir / "driver.sh", use_sudo=True)),
             (["btn_l1", "dpad_y:-1"], lambda: self.shared.write_mode_control(2000 + self.cfg.primary_mode_id)),

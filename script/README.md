@@ -49,16 +49,47 @@ This starts only `mujoco_sim_bridge` with `backend:=cpp`.
 
 ## Script Layout
 
-- `common.sh`: shared helpers
-- `run_ros_executable.sh`: generic ROS executable launcher
-- `solver.sh`: low-level launcher for `rl_master/RL_solver`
+### Standard entry points
+
 - `sim2real_engineai.sh`: recommended one-command real-robot startup
 - `sim2sim_engineai.sh`: recommended one-command MuJoCo fused sim2sim startup
 - `sim2sim_engineai_python.sh`: recommended Python GUI frontend for fused sim2sim
+- `start_rl_solver.sh`: launcher for `rl_master/RL_solver`
+- `start_imu_yesense.sh`: IMU node launcher
+- `start_joylaunch.sh`: joystick/operator launcher wrapper
+- `joyLaunch.py`: joystick/operator implementation
+
+### Common helpers
+
+- `common.sh`: shared shell helpers
+- `run_ros_executable.sh`: generic ROS executable launcher
 - `publish_mode_control.sh`: publish lifecycle / mode control words
-- `imu.sh`: IMU node launcher
-- `joyLaunch.py`: joystick bridge publishing teleop + `mode_control`
 - `dds_selfcheck.sh`: DDS topic smoke test for operator-facing topics
+- `plot_runtime_mcap.py`: runtime MCAP plotting helper
+
+### Hardware / test utilities
+
+- `driver.sh`
+- `initial.sh`
+- `combined_test.sh`
+- `joint_test.sh`
+- `motor_test.sh`
+- `motor_test_suite.sh`
+- `move_zero.sh`
+- `run_joint_pos.sh`
+- `run_motor_test_case.sh`
+- `trajectory_test.sh`
+- `receive_test.sh`
+- `reference_pose_replay_test.sh`
+
+### Optional sensor / GUI utilities
+
+- `start_realsense_bridge.sh`
+- `start_realsense_driver.sh`
+- `start_realsense_stack.sh`
+- `start_humanoid_ops_gui.sh`
+- `joy_axis_probe.py`
+- `receiver.py`
 
 ## Recommended Runtime Order
 
@@ -66,9 +97,9 @@ This starts only `mujoco_sim_bridge` with `backend:=cpp`.
 
 ```bash
 sudo ./script/driver.sh
-sudo ./script/imu.sh
+sudo ./script/start_imu_yesense.sh
 ./script/sim2real_engineai.sh --mode-id 0
-sudo python3 ./script/joyLaunch.py
+sudo ./script/start_joylaunch.sh
 ```
 
 ### Sim2Sim

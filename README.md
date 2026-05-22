@@ -86,19 +86,14 @@ What is no longer routed over DDS in the standard deploy path:
 
 ## Important Notes
 
-- `script/controller.sh` and the standalone `rl_master/RL_controller` executable are now explicitly legacy compatibility tools.
-- `sim2sim_mujoco.launch.py` keeps `start_rl_controller` only for the legacy Python interactive backend.
-- The standard sim2sim path is `backend:=cpp`; the Python interactive path remains supported but is still a split two-process topology.
+- The old standalone `rl_master/RL_controller` split-runtime path is no longer a standard entry point.
+- The standard sim2sim path is `backend:=cpp`; the supported Python GUI path is `python_frontend`, which acts only as a viewer client on top of the fused backend.
 
 ## Docs
 
-- Real-robot deploy guide:
-  - `src/humanoid_rl_controller/rl_master/docs/dds_sim2real_deploy_guide.md`
-- MuJoCo sim2sim guide:
-  - `src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_mujoco_deploy_guide.md`
-- EngineAI Gym policy deploy guide:
-  - `src/humanoid_rl_controller/rl_master/docs/engineai_gym_policy_deploy_guide.md`
-- End-to-end function flow:
-  - `src/humanoid_rl_controller/rl_master/docs/runtime_end_to_end_function_flow.md`
-- Runtime checklist / runbook:
-  - `src/humanoid_rl_controller/rl_master/docs/runbooks/runtime_checklist.md`
+- Runtime/controller docs index:
+  [src/humanoid_rl_controller/rl_master/docs/README.md](/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/rl_master/docs/README.md)
+- MuJoCo sim2sim docs index:
+  [src/humanoid_sim2sim/mujoco_sim2sim/docs/README.md](/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/docs/README.md)
+- Script entry-point guide:
+  [script/README.md](/home/edify/Code/jc01_deploy/script/README.md)

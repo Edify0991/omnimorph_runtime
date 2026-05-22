@@ -38,14 +38,14 @@ Optional auto-start after bringup:
 
 ```bash
 sudo ./script/driver.sh
-sudo ./script/imu.sh
-./script/solver.sh --mode-id 0
-sudo python3 ./script/joyLaunch.py
+sudo ./script/start_imu_yesense.sh
+./script/start_rl_solver.sh --mode-id 0
+sudo ./script/start_joylaunch.sh
 ```
 
 Notes:
 
-- `solver.sh` now launches the standard fused runtime.
+- `start_rl_solver.sh` launches the standard fused runtime.
 - the old standalone controller launcher has been removed.
 
 ## 3. External Topics Still Used

@@ -2,16 +2,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKSPACE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/common.sh"
 
-cd "${WORKSPACE_DIR}"
+print_banner "RL Solver"
+source_ros_workspace
 
-set +u
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-set -u
+SOLVER_EXEC="$(resolve_ros_executable "rl_master" "RL_solver")" || \
+  die "RL_solver executable not found"
 
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
-
-exec ./install/rl_master/lib/rl_master/RL_solver "$@"
+log_info "Starting: ${SOLVER_EXEC} $*"
+exec "${SOLVER_EXEC}" "$@"
