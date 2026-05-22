@@ -1,162 +1,206 @@
 <svg width="1400" height="640" viewBox="0 0 1400 640" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="120" y1="40" x2="1230" y2="620" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F6F1E7"/>
-      <stop offset="0.48" stop-color="#E6E8EA"/>
-      <stop offset="1" stop-color="#CCD4DB"/>
+    <linearGradient id="bg" x1="92" y1="30" x2="1294" y2="624" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6EDE1"/>
+      <stop offset="0.46" stop-color="#E8EDF1"/>
+      <stop offset="1" stop-color="#D1D9E0"/>
     </linearGradient>
-    <linearGradient id="tile" x1="303" y1="270" x2="1120" y2="570" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFFFF" stop-opacity="0.92"/>
-      <stop offset="1" stop-color="#D8E0E6" stop-opacity="0.88"/>
+    <radialGradient id="warmGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(280 104) rotate(18) scale(290 170)">
+      <stop stop-color="#F5C39A" stop-opacity="0.58"/>
+      <stop offset="1" stop-color="#F5C39A" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="coolGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1160 112) rotate(-11) scale(340 180)">
+      <stop stop-color="#A9D5EA" stop-opacity="0.62"/>
+      <stop offset="1" stop-color="#A9D5EA" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="platformTop" x1="200" y1="226" x2="1218" y2="528" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FBFCFD" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#D6DEE5" stop-opacity="0.92"/>
     </linearGradient>
-    <linearGradient id="platform" x1="316" y1="250" x2="970" y2="488" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#33424E"/>
-      <stop offset="1" stop-color="#182028"/>
+    <linearGradient id="heroTop" x1="434" y1="360" x2="1026" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2E3D48"/>
+      <stop offset="1" stop-color="#131A20"/>
     </linearGradient>
-    <linearGradient id="accent" x1="224" y1="125" x2="1214" y2="525" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FF9C5B"/>
-      <stop offset="0.55" stop-color="#54A9D7"/>
-      <stop offset="1" stop-color="#5FC58C"/>
+    <linearGradient id="heroSideL" x1="434" y1="360" x2="434" y2="586" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#344550"/>
+      <stop offset="1" stop-color="#223039"/>
     </linearGradient>
-    <filter id="shadow" x="0" y="0" width="1400" height="640" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#16212A" flood-opacity="0.18"/>
+    <linearGradient id="heroSideR" x1="748" y1="404" x2="948" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#182128"/>
+      <stop offset="1" stop-color="#0D1217"/>
+    </linearGradient>
+    <linearGradient id="lineAccent" x1="428" y1="150" x2="1018" y2="330" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF955A"/>
+      <stop offset="0.48" stop-color="#44A8D9"/>
+      <stop offset="1" stop-color="#59C48B"/>
+    </linearGradient>
+    <linearGradient id="quadBody" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#3F5769"/>
+      <stop offset="1" stop-color="#24323D"/>
+    </linearGradient>
+    <linearGradient id="humanBody" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#2D404C"/>
+      <stop offset="1" stop-color="#151D24"/>
+    </linearGradient>
+    <linearGradient id="wheelBody" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#415A67"/>
+      <stop offset="1" stop-color="#202D36"/>
+    </linearGradient>
+    <filter id="drop" x="-20%" y="-20%" width="140%" height="160%" filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#16212A" flood-opacity="0.2"/>
     </filter>
     <filter id="soft" x="-20%" y="-20%" width="140%" height="140%" filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">
-      <feGaussianBlur stdDeviation="8"/>
+      <feGaussianBlur stdDeviation="12"/>
     </filter>
   </defs>
 
   <rect width="1400" height="640" rx="32" fill="url(#bg)"/>
-  <circle cx="1140" cy="128" r="106" fill="#FFFFFF" fill-opacity="0.34" filter="url(#soft)"/>
-  <circle cx="274" cy="104" r="76" fill="#F3D3B7" fill-opacity="0.36" filter="url(#soft)"/>
+  <rect width="1400" height="640" rx="32" fill="url(#warmGlow)"/>
+  <rect width="1400" height="640" rx="32" fill="url(#coolGlow)"/>
 
-  <g opacity="0.76">
-    <path d="M98 374L284 300L520 356L334 430L98 374Z" fill="url(#tile)"/>
-    <path d="M334 430L520 356V468L334 542V430Z" fill="#CBD3DA"/>
-    <path d="M520 356L706 282L942 338L756 412L520 356Z" fill="url(#tile)"/>
-    <path d="M756 412L942 338V450L756 524V412Z" fill="#D3DBE2"/>
-    <path d="M942 338L1118 268L1298 320L1122 390L942 338Z" fill="url(#tile)"/>
-    <path d="M1122 390L1298 320V420L1122 490V390Z" fill="#D0D8DF"/>
+  <g opacity="0.82">
+    <path d="M72 394L302 300L584 366L354 460L72 394Z" fill="url(#platformTop)"/>
+    <path d="M354 460L584 366V500L354 594V460Z" fill="#CDD6DE"/>
+    <path d="M494 372L736 272L1006 338L764 438L494 372Z" fill="url(#platformTop)"/>
+    <path d="M764 438L1006 338V468L764 568V438Z" fill="#D3DBE2"/>
+    <path d="M944 344L1142 264L1332 320L1134 400L944 344Z" fill="url(#platformTop)"/>
+    <path d="M1134 400L1332 320V438L1134 518V400Z" fill="#D0D8DF"/>
   </g>
 
-  <g opacity="0.22" stroke="#7D8E9C" stroke-width="2">
-    <path d="M116 376L334 430L334 542"/>
-    <path d="M302 302L520 356L520 468"/>
-    <path d="M538 356L756 412L756 524"/>
-    <path d="M960 338L1122 390L1122 490"/>
+  <g opacity="0.14" stroke="#718594" stroke-width="2">
+    <path d="M104 390L354 460L354 594"/>
+    <path d="M324 304L584 366L584 500"/>
+    <path d="M524 372L764 438L764 568"/>
+    <path d="M968 344L1134 400L1134 518"/>
+    <path d="M164 344L418 412"/>
+    <path d="M536 312L814 388"/>
+    <path d="M978 294L1182 356"/>
   </g>
 
-  <g filter="url(#shadow)">
-    <path d="M472 452L670 374L898 432L700 510L472 452Z" fill="url(#platform)"/>
-    <path d="M700 510L898 432V508L700 586V510Z" fill="#10171E"/>
-    <path d="M472 452L670 374V450L472 528V452Z" fill="#25323C"/>
+  <g filter="url(#drop)">
+    <path d="M404 476L724 348L1078 434L758 562L404 476Z" fill="url(#heroTop)"/>
+    <path d="M404 476L724 348V458L404 586V476Z" fill="url(#heroSideL)"/>
+    <path d="M758 562L1078 434V544L758 672V562Z" fill="url(#heroSideR)"/>
   </g>
 
-  <g opacity="0.58" stroke="#526473" stroke-width="2">
-    <path d="M500 465L698 519"/>
-    <path d="M542 448L740 502"/>
-    <path d="M584 432L782 486"/>
-    <path d="M626 416L824 470"/>
+  <g opacity="0.5" stroke="#596A78" stroke-width="2">
+    <path d="M452 494L774 580"/>
+    <path d="M504 474L826 560"/>
+    <path d="M556 454L878 540"/>
+    <path d="M608 434L930 520"/>
+    <path d="M660 414L982 500"/>
   </g>
 
-  <g transform="translate(672 246)">
-    <ellipse cx="34" cy="242" rx="74" ry="22" fill="#12202A" fill-opacity="0.18"/>
-    <path d="M28 50L48 40L66 48L70 152L32 168L14 156L28 50Z" fill="#24333E"/>
-    <rect x="26" y="18" width="26" height="28" rx="10" fill="#2F404D"/>
-    <path d="M34 0L51 8L52 26L34 32L22 20L23 8L34 0Z" fill="#384C5A"/>
-    <path d="M22 86L2 118L14 126L32 104" stroke="#2A3944" stroke-width="10" stroke-linecap="round"/>
-    <path d="M62 94L86 120L74 130L54 108" stroke="#2A3944" stroke-width="10" stroke-linecap="round"/>
-    <path d="M30 168L14 216L28 222L44 178" stroke="#283843" stroke-width="12" stroke-linecap="round"/>
-    <path d="M56 164L84 210L70 218L46 180" stroke="#283843" stroke-width="12" stroke-linecap="round"/>
-    <path d="M12 212L28 244L6 252" stroke="#1E2A33" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M82 206L66 244L92 250" stroke="#1E2A33" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M28 50L48 40L54 98L18 112L28 50Z" fill="#1A252D" fill-opacity="0.48"/>
-    <text x="39" y="102" text-anchor="middle" fill="#F4F7FA" font-size="16" font-family="Arial, sans-serif">H</text>
+  <g stroke="url(#lineAccent)" stroke-width="3.5" stroke-linecap="round" opacity="0.96">
+    <path d="M470 184C554 128 652 114 754 142"/>
+    <path d="M802 150C892 176 960 222 1012 290"/>
+    <path d="M444 312C528 250 618 212 710 190"/>
   </g>
 
-  <g transform="translate(410 332)">
-    <ellipse cx="58" cy="148" rx="64" ry="16" fill="#15212B" fill-opacity="0.14"/>
-    <path d="M28 42L84 18L110 44L96 72L36 76L20 58L28 42Z" fill="#2D3E4A"/>
-    <path d="M16 62L0 108" stroke="#24343E" stroke-width="10" stroke-linecap="round"/>
-    <path d="M38 76L22 124" stroke="#24343E" stroke-width="10" stroke-linecap="round"/>
-    <path d="M86 74L96 126" stroke="#24343E" stroke-width="10" stroke-linecap="round"/>
-    <path d="M108 62L126 110" stroke="#24343E" stroke-width="10" stroke-linecap="round"/>
-    <path d="M-2 106L10 144L0 150" stroke="#1E2A33" stroke-width="10" stroke-linecap="round"/>
-    <path d="M20 122L32 154L22 160" stroke="#1E2A33" stroke-width="10" stroke-linecap="round"/>
-    <path d="M96 124L108 156L120 150" stroke="#1E2A33" stroke-width="10" stroke-linecap="round"/>
-    <path d="M126 108L136 144L148 140" stroke="#1E2A33" stroke-width="10" stroke-linecap="round"/>
-    <text x="62" y="58" text-anchor="middle" fill="#F4F7FA" font-size="14" font-family="Arial, sans-serif">Q</text>
+  <g opacity="0.42">
+    <path d="M1040 182C1076 164 1120 160 1156 174" stroke="#8BC9E5" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M230 216C262 194 302 186 342 194" stroke="#F1A168" stroke-width="2.5" stroke-linecap="round"/>
   </g>
 
-  <g transform="translate(956 328)">
-    <ellipse cx="66" cy="160" rx="72" ry="16" fill="#15212B" fill-opacity="0.14"/>
-    <path d="M36 24L92 24L112 56L98 78L44 78L22 46L36 24Z" fill="#2D3E4A"/>
-    <circle cx="50" cy="104" r="22" fill="#22313B"/>
-    <circle cx="102" cy="104" r="22" fill="#22313B"/>
-    <circle cx="50" cy="104" r="12" fill="#CBD7E0"/>
-    <circle cx="102" cy="104" r="12" fill="#CBD7E0"/>
-    <path d="M50 78V98" stroke="#20303A" stroke-width="10" stroke-linecap="round"/>
-    <path d="M102 78V98" stroke="#20303A" stroke-width="10" stroke-linecap="round"/>
-    <path d="M36 78L14 126" stroke="#24343E" stroke-width="10" stroke-linecap="round"/>
-    <path d="M98 78L120 126" stroke="#24343E" stroke-width="10" stroke-linecap="round"/>
-    <path d="M14 126L22 156" stroke="#1E2A33" stroke-width="10" stroke-linecap="round"/>
-    <path d="M120 126L112 156" stroke="#1E2A33" stroke-width="10" stroke-linecap="round"/>
-    <text x="70" y="56" text-anchor="middle" fill="#F4F7FA" font-size="14" font-family="Arial, sans-serif">W</text>
+  <g transform="translate(250 258)">
+    <ellipse cx="118" cy="194" rx="120" ry="24" fill="#152029" fill-opacity="0.14"/>
+    <path d="M62 72L138 48L202 68L198 106L120 124L44 102L62 72Z" fill="url(#quadBody)"/>
+    <path d="M144 50L164 32L182 48L162 66" stroke="#5FD2A3" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="184" cy="30" r="11" fill="#ECF6FB"/>
+    <circle cx="184" cy="30" r="4.5" fill="#4AA6D7"/>
+    <path d="M64 102L36 150" stroke="#22313B" stroke-width="12" stroke-linecap="round"/>
+    <path d="M100 114L76 170" stroke="#22313B" stroke-width="12" stroke-linecap="round"/>
+    <path d="M146 114L170 168" stroke="#22313B" stroke-width="12" stroke-linecap="round"/>
+    <path d="M192 100L224 148" stroke="#22313B" stroke-width="12" stroke-linecap="round"/>
+    <path d="M36 150L52 196L36 212" stroke="#18222B" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M76 170L92 216L76 232" stroke="#18222B" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M170 168L154 216L170 232" stroke="#18222B" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M224 148L208 196L224 212" stroke="#18222B" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M84 82L128 74L164 86L120 98L74 92L84 82Z" fill="#14202A" fill-opacity="0.38"/>
+    <rect x="0" y="0" width="144" height="30" rx="15" fill="#13202A"/>
+    <text x="72" y="21" text-anchor="middle" fill="#F3F7FA" font-size="14" font-family="Arial, sans-serif" font-weight="700">QUADRUPED</text>
   </g>
 
-  <g stroke="url(#accent)" stroke-width="3" opacity="0.9">
-    <path d="M576 158C626 122 694 116 764 136"/>
-    <path d="M808 142C878 162 930 196 958 248"/>
-    <path d="M522 302C566 262 618 232 666 216"/>
+  <g transform="translate(606 150)">
+    <ellipse cx="118" cy="356" rx="120" ry="26" fill="#152029" fill-opacity="0.16"/>
+    <path d="M94 42C94 24 108 10 126 10C144 10 158 24 158 42C158 60 144 74 126 74C108 74 94 60 94 42Z" fill="#EDF4F8"/>
+    <path d="M110 76L146 74L172 100L178 222L114 258L66 230L78 104L110 76Z" fill="url(#humanBody)"/>
+    <path d="M120 96L148 94L154 152L106 168L120 96Z" fill="#111920" fill-opacity="0.42"/>
+    <path d="M126 10L144 22L144 38L126 48L108 38L108 22L126 10Z" fill="#2A3A46"/>
+    <path d="M78 130L42 176L60 188L98 146" stroke="#25343E" stroke-width="13" stroke-linecap="round"/>
+    <path d="M164 138L204 182L186 194L148 150" stroke="#25343E" stroke-width="13" stroke-linecap="round"/>
+    <path d="M108 256L70 328L90 340L128 270" stroke="#25343E" stroke-width="15" stroke-linecap="round"/>
+    <path d="M156 254L204 324L184 338L138 270" stroke="#25343E" stroke-width="15" stroke-linecap="round"/>
+    <path d="M70 328L94 382L62 392" stroke="#18222B" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M204 324L178 382L212 392" stroke="#18222B" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M114 88L146 88" stroke="#5ABBE9" stroke-width="7" stroke-linecap="round"/>
+    <path d="M110 116L150 116" stroke="#FF9A5F" stroke-width="7" stroke-linecap="round"/>
+    <rect x="188" y="18" width="136" height="30" rx="15" fill="#13202A"/>
+    <text x="256" y="39" text-anchor="middle" fill="#F3F7FA" font-size="14" font-family="Arial, sans-serif" font-weight="700">HUMANOID</text>
   </g>
 
-  <g fill="#18232C">
-    <rect x="96" y="72" width="182" height="44" rx="22" fill="#F9FBFC" fill-opacity="0.84"/>
-    <text x="187" y="101" text-anchor="middle" fill="#20303C" font-size="20" font-family="Arial, sans-serif">SIM2SIM</text>
-
-    <rect x="290" y="72" width="202" height="44" rx="22" fill="#F9FBFC" fill-opacity="0.84"/>
-    <text x="391" y="101" text-anchor="middle" fill="#20303C" font-size="20" font-family="Arial, sans-serif">SIM2REAL</text>
-
-    <rect x="506" y="72" width="132" height="44" rx="22" fill="#F9FBFC" fill-opacity="0.84"/>
-    <text x="572" y="101" text-anchor="middle" fill="#20303C" font-size="20" font-family="Arial, sans-serif">RL</text>
-
-    <rect x="652" y="72" width="180" height="44" rx="22" fill="#F9FBFC" fill-opacity="0.84"/>
-    <text x="742" y="101" text-anchor="middle" fill="#20303C" font-size="20" font-family="Arial, sans-serif">DIFFUSION</text>
-
-    <rect x="846" y="72" width="228" height="44" rx="22" fill="#F9FBFC" fill-opacity="0.84"/>
-    <text x="960" y="101" text-anchor="middle" fill="#20303C" font-size="20" font-family="Arial, sans-serif">FLOW MATCHING</text>
-
-    <rect x="1088" y="72" width="184" height="44" rx="22" fill="#F9FBFC" fill-opacity="0.84"/>
-    <text x="1180" y="101" text-anchor="middle" fill="#20303C" font-size="20" font-family="Arial, sans-serif">SENSORS</text>
+  <g transform="translate(964 250)">
+    <ellipse cx="116" cy="208" rx="120" ry="24" fill="#152029" fill-opacity="0.14"/>
+    <path d="M56 50L154 50L184 86L166 132L78 132L42 92L56 50Z" fill="url(#wheelBody)"/>
+    <path d="M76 34L118 20L160 34" stroke="#72CFE6" stroke-width="9" stroke-linecap="round"/>
+    <path d="M92 132L72 174" stroke="#24333D" stroke-width="13" stroke-linecap="round"/>
+    <path d="M140 132L160 174" stroke="#24333D" stroke-width="13" stroke-linecap="round"/>
+    <circle cx="70" cy="184" r="32" fill="#1F2D36"/>
+    <circle cx="160" cy="184" r="32" fill="#1F2D36"/>
+    <circle cx="70" cy="184" r="15" fill="#EDF4F8"/>
+    <circle cx="160" cy="184" r="15" fill="#EDF4F8"/>
+    <path d="M42 92L14 144" stroke="#24333D" stroke-width="11" stroke-linecap="round"/>
+    <path d="M184 86L210 140" stroke="#24333D" stroke-width="11" stroke-linecap="round"/>
+    <path d="M14 144L26 194" stroke="#18222B" stroke-width="11" stroke-linecap="round"/>
+    <path d="M210 140L198 192" stroke="#18222B" stroke-width="11" stroke-linecap="round"/>
+    <path d="M104 68L128 68" stroke="#FF9A5F" stroke-width="7" stroke-linecap="round"/>
+    <rect x="118" y="0" width="162" height="30" rx="15" fill="#13202A"/>
+    <text x="199" y="21" text-anchor="middle" fill="#F3F7FA" font-size="14" font-family="Arial, sans-serif" font-weight="700">WHEEL-LEGGED</text>
   </g>
 
-  <g fill="#1C2833">
-    <text x="96" y="560" font-size="64" font-family="Arial, sans-serif" font-weight="700">Morph Runtime</text>
-    <text x="98" y="598" font-size="24" font-family="Arial, sans-serif" fill="#3B4E5E">
+  <g>
+    <rect x="84" y="74" width="176" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.9"/>
+    <text x="172" y="101" text-anchor="middle" fill="#20303B" font-size="19" font-family="Arial, sans-serif">SIM2SIM</text>
+    <rect x="274" y="74" width="196" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.9"/>
+    <text x="372" y="101" text-anchor="middle" fill="#20303B" font-size="19" font-family="Arial, sans-serif">SIM2REAL</text>
+    <rect x="486" y="74" width="128" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.9"/>
+    <text x="550" y="101" text-anchor="middle" fill="#20303B" font-size="19" font-family="Arial, sans-serif">RL</text>
+    <rect x="628" y="74" width="176" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.9"/>
+    <text x="716" y="101" text-anchor="middle" fill="#20303B" font-size="19" font-family="Arial, sans-serif">DIFFUSION</text>
+    <rect x="818" y="74" width="220" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.9"/>
+    <text x="928" y="101" text-anchor="middle" fill="#20303B" font-size="19" font-family="Arial, sans-serif">FLOW MATCHING</text>
+    <rect x="1052" y="74" width="170" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.9"/>
+    <text x="1137" y="101" text-anchor="middle" fill="#20303B" font-size="19" font-family="Arial, sans-serif">SENSORS</text>
+  </g>
+
+  <g filter="url(#soft)">
+    <ellipse cx="166" cy="566" rx="126" ry="56" fill="#FFFFFF" fill-opacity="0.32"/>
+  </g>
+
+  <g>
+    <text x="82" y="512" fill="#18242D" font-size="72" font-family="Arial, sans-serif" font-weight="700">Morph Runtime</text>
+    <text x="86" y="554" fill="#38505E" font-size="24" font-family="Arial, sans-serif">
       Unified policy deployment for humanoid, wheel-legged, and quadruped robots
     </text>
   </g>
 
-  <g fill="#243440">
-    <rect x="106" y="462" width="188" height="36" rx="18" fill="#FFFFFF" fill-opacity="0.82"/>
-    <text x="200" y="485" text-anchor="middle" font-size="16" font-family="Arial, sans-serif">ROS 2 / DDS</text>
-
-    <rect x="106" y="510" width="188" height="36" rx="18" fill="#FFFFFF" fill-opacity="0.82"/>
-    <text x="200" y="533" text-anchor="middle" font-size="16" font-family="Arial, sans-serif">ONNX Runtime</text>
-
-    <rect x="1106" y="470" width="184" height="36" rx="18" fill="#FFFFFF" fill-opacity="0.82"/>
-    <text x="1198" y="493" text-anchor="middle" font-size="16" font-family="Arial, sans-serif">MuJoCo</text>
-
-    <rect x="1106" y="518" width="184" height="36" rx="18" fill="#FFFFFF" fill-opacity="0.82"/>
-    <text x="1198" y="541" text-anchor="middle" font-size="16" font-family="Arial, sans-serif">Real Hardware</text>
+  <g>
+    <rect x="86" y="584" width="170" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.92"/>
+    <text x="171" y="606" text-anchor="middle" fill="#24333E" font-size="15" font-family="Arial, sans-serif">ROS 2 / DDS</text>
+    <rect x="270" y="584" width="184" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.92"/>
+    <text x="362" y="606" text-anchor="middle" fill="#24333E" font-size="15" font-family="Arial, sans-serif">ONNX Runtime</text>
+    <rect x="1032" y="584" width="126" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.92"/>
+    <text x="1095" y="606" text-anchor="middle" fill="#24333E" font-size="15" font-family="Arial, sans-serif">MuJoCo</text>
+    <rect x="1172" y="584" width="142" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.92"/>
+    <text x="1243" y="606" text-anchor="middle" fill="#24333E" font-size="15" font-family="Arial, sans-serif">Real Hardware</text>
   </g>
 
-  <g fill="#FFFFFF" fill-opacity="0.72">
-    <circle cx="1228" cy="222" r="4"/>
-    <circle cx="1258" cy="194" r="3"/>
-    <circle cx="1290" cy="238" r="3"/>
-    <circle cx="332" cy="182" r="4"/>
-    <circle cx="362" cy="154" r="3"/>
-    <circle cx="390" cy="198" r="3"/>
+  <g fill="#FFFFFF" fill-opacity="0.7">
+    <circle cx="1262" cy="194" r="4"/>
+    <circle cx="1290" cy="222" r="3"/>
+    <circle cx="1230" cy="236" r="3"/>
+    <circle cx="340" cy="170" r="4"/>
+    <circle cx="372" cy="146" r="3"/>
+    <circle cx="400" cy="190" r="3"/>
   </g>
 </svg>
