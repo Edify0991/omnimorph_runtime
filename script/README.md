@@ -55,12 +55,10 @@ Terminal 1:
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  --model-path "${MUJOCO_MODEL_PATH}" \
-  backend:=cpp \
-  mode_id:=0 \
-  control_hz:=100.0 \
-  enable_viewer:=true
+ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
+  -p model_path:="${MUJOCO_MODEL_PATH}" \
+  -p enable_viewer:=true \
+  -p viewer_fps:=500.0
 ```
 
 ## Script Layout
@@ -160,12 +158,10 @@ If you want the friendlier Python MuJoCo GUI while still keeping the fused C++ r
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  --model-path "${MUJOCO_MODEL_PATH}" \
-  backend:=python_frontend \
-  mode_id:=0 \
-  control_hz:=100.0 \
-  enable_viewer:=true
+ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
+  -p model_path:="${MUJOCO_MODEL_PATH}" \
+  -p enable_viewer:=true \
+  -p viewer_fps:=500.0
 ```
 
 This path uses:
@@ -198,4 +194,4 @@ This preset assumes the MuJoCo XML exposes:
 
 For environment troubleshooting around ROS setup, Conda, FastDDS, ONNX Runtime, and launch commands, see:
 
-- [Sim2Sim Runtime Environment Notes](${OMNIMORPH_RUNTIME_ROOT}/src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_runtime_environment_notes.md)
+- [Sim2Sim Runtime Environment Notes](../src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_runtime_environment_notes.md)

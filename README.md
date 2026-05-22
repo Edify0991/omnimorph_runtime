@@ -78,11 +78,10 @@ Terminal 1:
 
 ```bash
 source ./script/dev_env.sh
-./script/sim2sim_engineai.sh \
-  --model-path "${MUJOCO_MODEL_PATH}" \
-  --mode-id 0 \
-  --control-hz 100.0 \
-  --enable-viewer true
+ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
+  -p model_path:="${MUJOCO_MODEL_PATH}" \
+  -p enable_viewer:=true \
+  -p viewer_fps:=500.0
 ```
 
 Start policy manually:
@@ -111,8 +110,8 @@ ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000}
 | Purpose | Command |
 | --- | --- |
 | Start solver directly | `ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=<N>` |
-| Start MuJoCo fused backend | `./script/sim2sim_engineai.sh --model-path "${MUJOCO_MODEL_PATH}" --mode-id <N>` |
-| Start MuJoCo Python frontend path | `ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py model_path:="${MUJOCO_MODEL_PATH}" backend:=python_frontend mode_id:=<N>` |
+| Start MuJoCo Python frontend | `ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args -p model_path:="${MUJOCO_MODEL_PATH}" -p enable_viewer:=true -p viewer_fps:=500.0` |
+| Start MuJoCo fused backend (optional) | `./script/sim2sim_runtime.sh --model-path "${MUJOCO_MODEL_PATH}" --mode-id <N>` |
 | Start policy | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1000 + N}"` |
 | Switch mode only | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 2000 + N}"` |
 | Stop policy | `ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 11}"` |
