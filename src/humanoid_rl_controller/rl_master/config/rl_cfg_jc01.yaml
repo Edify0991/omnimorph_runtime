@@ -95,6 +95,8 @@ joint_groups:
   - left_elbow_yaw
   - left_wrist_pitch
   - left_wrist_roll
+robot_kinematics_adapter: jc01
+
 deploy_mode_profiles:
 - mode_id: 0
   config_section: amp_tienkunglab_jc01_walk_full_body
@@ -130,11 +132,12 @@ config_files:
   jingchu01_pacedcmotor_group_delay_qdq_newpd: profiles/jingchu01_pacedcmotor_group_delay_qdq_newpd.yaml
   amp_tienkunglab_jc01_walk_full_body: profiles/amp_tienkunglab_jc01_walk_full_body.yaml
 path_variables:
-  jc01_pinocchio_urdf: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/JC01-URDF.urdf
-  jc01_scene_xml: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/scene_jingchu01.xml
-  jc01_legs_xml: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_legs.xml
-  jc01_fullbody_engineai_walk_xml: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jc01_fullbody_engineai_walk_sim2sim.xml
-  jc01_default_sim_xml: /home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_new_0304.xml
+  robot_assets_dir: ${ROBOT_ASSETS_DIR}
+  jc01_pinocchio_urdf: ${robot_assets_dir}/JC01-URDF.urdf
+  jc01_scene_xml: ${robot_assets_dir}/scene_jingchu01.xml
+  jc01_legs_xml: ${robot_assets_dir}/jingchu01_legs.xml
+  jc01_fullbody_engineai_walk_xml: ${robot_assets_dir}/jc01_fullbody_engineai_walk_sim2sim.xml
+  jc01_default_sim_xml: ${robot_assets_dir}/jingchu01_new_0304.xml
 runtime_process:
   controller:
     enabled: true

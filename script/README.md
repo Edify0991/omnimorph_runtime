@@ -7,7 +7,7 @@
 After opening a new terminal, initialize the workspace runtime environment with:
 
 ```bash
-source /home/edify/Code/jc01_deploy/script/dev_env.sh
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 ```
 
 This prepares the shell by:
@@ -23,30 +23,30 @@ This prepares the shell by:
 Terminal 1:
 
 ```bash
-source /home/edify/Code/jc01_deploy/script/dev_env.sh
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 sudo ./script/driver.sh
 ```
 
 Terminal 2:
 
 ```bash
-source /home/edify/Code/jc01_deploy/script/dev_env.sh
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 sudo ./script/start_imu_yesense.sh
 ```
 
 Terminal 3:
 
 ```bash
-source /home/edify/Code/jc01_deploy/script/dev_env.sh
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 ros2 run rl_master RL_solver --ros-args -p startup_mode_id:=0
 ```
 
 Terminal 4:
 
 ```bash
-source /home/edify/Code/jc01_deploy/script/dev_env.sh
-sudo /usr/bin/python3 /home/edify/Code/jc01_deploy/script/joyLaunch.py \
-  --workspace /home/edify/Code/jc01_deploy
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
+sudo /usr/bin/python3 ${OMNIMORPH_RUNTIME_ROOT}/script/joyLaunch.py \
+  --workspace ${OMNIMORPH_RUNTIME_ROOT}
 ```
 
 ### MuJoCo Sim2Sim
@@ -54,9 +54,9 @@ sudo /usr/bin/python3 /home/edify/Code/jc01_deploy/script/joyLaunch.py \
 Terminal 1:
 
 ```bash
-source /home/edify/Code/jc01_deploy/script/dev_env.sh
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  model_path:=/abs/path/to/robot.xml \
+  --model-path "${MUJOCO_MODEL_PATH}" \
   backend:=cpp \
   mode_id:=0 \
   control_hz:=100.0 \
@@ -159,9 +159,9 @@ Typical joystick combos:
 If you want the friendlier Python MuJoCo GUI while still keeping the fused C++ runtime for control and physics, use:
 
 ```bash
-source /home/edify/Code/jc01_deploy/script/dev_env.sh
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  model_path:=/abs/path/to/robot.xml \
+  --model-path "${MUJOCO_MODEL_PATH}" \
   backend:=python_frontend \
   mode_id:=0 \
   control_hz:=100.0 \
@@ -181,12 +181,12 @@ It is the only supported Python GUI path now.
 For the JC01 legs-only `engineai_walk` policy preset, use:
 
 ```bash
-source /home/edify/Code/jc01_deploy/script/dev_env.sh
+source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
-  model_path:=/home/edify/Code/jingchu01/jingchu01_legs.xml \
+  model_path:=${ROBOT_ASSETS_DIR}/jingchu01_legs.xml \
   backend:=python_frontend \
   mode_id:=0 \
-  bridge_config:=/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
+  bridge_config:=${OMNIMORPH_RUNTIME_ROOT}/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
   enable_viewer:=true
 ```
 
@@ -198,4 +198,4 @@ This preset assumes the MuJoCo XML exposes:
 
 For environment troubleshooting around ROS setup, Conda, FastDDS, ONNX Runtime, and launch commands, see:
 
-- [Sim2Sim Runtime Environment Notes](/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_runtime_environment_notes.md)
+- [Sim2Sim Runtime Environment Notes](${OMNIMORPH_RUNTIME_ROOT}/src/humanoid_sim2sim/mujoco_sim2sim/docs/sim2sim_runtime_environment_notes.md)
