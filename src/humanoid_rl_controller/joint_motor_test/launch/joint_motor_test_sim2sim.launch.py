@@ -22,8 +22,8 @@ def generate_launch_description():
     )
     backend_arg = DeclareLaunchArgument(
         "backend",
-        default_value="python_interactive",
-        description="sim2sim backend: cpp or python_interactive",
+        default_value="python_frontend",
+        description="sim2sim backend: cpp or python_frontend",
     )
     test_config_arg = DeclareLaunchArgument(
         "test_config_path",

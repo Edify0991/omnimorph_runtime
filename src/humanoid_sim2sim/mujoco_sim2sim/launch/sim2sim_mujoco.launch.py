@@ -21,7 +21,7 @@ def generate_launch_description():
     backend_arg = DeclareLaunchArgument(
         "backend",
         default_value="cpp",
-        description="sim2sim backend: cpp | python_frontend | python_interactive",
+        description="sim2sim backend: cpp | python_frontend",
     )
     bridge_cfg_arg = DeclareLaunchArgument(
         "bridge_config",
@@ -226,23 +226,6 @@ def generate_launch_description():
         ],
     )
 
-    python_interactive_bridge = Node(
-        package="mujoco_sim2sim",
-        executable="mujoco_sim_interactive_backend.py",
-        # Keep node name aligned with yaml root key `mujoco_sim_bridge`
-        # so both backends consume the same parameter block.
-        name="mujoco_sim_bridge",
-        output="screen",
-        condition=IfCondition(PythonExpression(["'", LaunchConfiguration("backend"), "' == 'python_interactive'"])),
-        parameters=[
-            *common_bridge_parameters,
-            {
-                "show_left_ui": ParameterValue(LaunchConfiguration("show_left_ui"), value_type=bool),
-                "show_right_ui": ParameterValue(LaunchConfiguration("show_right_ui"), value_type=bool),
-            },
-        ],
-    )
-
     return LaunchDescription(
         [
             model_path_arg,
@@ -276,6 +259,5 @@ def generate_launch_description():
             cpp_bridge,
             python_frontend_bridge,
             python_frontend_viewer,
-            python_interactive_bridge,
         ]
     )

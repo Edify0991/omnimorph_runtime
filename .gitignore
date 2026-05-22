@@ -20,6 +20,7 @@ Makefile
 # 日志文件
 *.log
 log/
+MUJOCO_LOG.TXT
 
 # 临时文件
 *.tmp
@@ -47,3 +48,11 @@ thirdparty/
 # src/humanoid_rl_controller/rl_master/policies
 
 data/
+
+# Local assistant / tooling artifacts
+/command.md
+/home/
+/.codex/
+/.codex-*/
+/.agents/
+/.codex_tmp*

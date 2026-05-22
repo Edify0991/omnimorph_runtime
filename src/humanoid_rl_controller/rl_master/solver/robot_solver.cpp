@@ -1566,12 +1566,22 @@ void RobotSolver::run()
             rl_master::RobotStateData io_state = buildControllerStateData();
             const rl_master::RobotCommandData controller_command =
                 controller_runtime_.step(io_state, teleop_sample, effective_mode_control_word);
+            rl_master::RobotCommandData runtime_command = controller_command;
+            bool runtime_command_fresh = true;
+            if (dds_bridge_.readLatestRuntimeCommand(&runtime_command, &runtime_command_fresh))
+            {
+                latest_cmd_fresh_ = runtime_command_fresh;
+            }
+            else
+            {
+                latest_cmd_fresh_ = true;
+            }
             syncRuntimeCfgFromController();
             const long control_period_ns = resolveControlPeriodNs(sim2real_cfg_);
             const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
             emitDerivedRuntimeEvents(controller_snapshot);
             updateModeControlPreprocessState(controller_snapshot);
-            applyRuntimeCommand(controller_command, true);
+            applyRuntimeCommand(runtime_command, latest_cmd_fresh_);
 
             const auto last_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(last_open_rl_));
             const auto current_mode = rl_master::resolveCommandRuntimeMode(true, static_cast<float>(open_rl_));

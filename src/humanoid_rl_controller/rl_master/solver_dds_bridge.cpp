@@ -12,6 +12,7 @@
 namespace
 {
 constexpr float kPi = 3.14159265358979323846f;
+constexpr double kRuntimeCommandFreshnessSec = 0.25;
 
 std::string normalizeToken(std::string value)
 {
@@ -172,6 +173,24 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
             has_mode_control_word_ = true;
         });
 
+    runtime_command_sub_ = node_->create_subscription<std_msgs::msg::Float32MultiArray>(
+        rl_master::dds::kTopicRuntimeCommand,
+        rclcpp::QoS(rclcpp::KeepLast(5)).reliable(),
+        [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
+            rl_master::RobotCommandData command;
+            uint32_t sequence = 0;
+            double stamp_sec = 0.0;
+            if (!msg || !rl_master::dds::decodeRuntimeCommand(*msg, &command, &sequence, &stamp_sec))
+            {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(runtime_command_mutex_);
+            latest_runtime_command_ = std::move(command);
+            latest_runtime_command_seq_ = sequence;
+            latest_runtime_command_stamp_sec_ = stamp_sec;
+            has_runtime_command_ = true;
+        });
+
     imu_sub_ = node_->create_subscription<sensor_msgs::msg::Imu>(
         "/imu/yesense",
         rclcpp::QoS(rclcpp::KeepLast(30)).best_effort(),
@@ -310,6 +329,7 @@ void SolverDdsBridge::disconnect()
     external_observation_subs_.clear();
     mode_control_sub_.reset();
     teleop_sub_.reset();
+    runtime_command_sub_.reset();
     state_pub_.reset();
     executor_.reset();
     node_.reset();
@@ -589,6 +609,39 @@ bool SolverDdsBridge::readLatestModeControlWord(int *control_word)
         return false;
     }
     *control_word = latest_mode_control_word_;
+    return true;
+}
+
+bool SolverDdsBridge::readLatestRuntimeCommand(
+    rl_master::RobotCommandData *command,
+    bool *fresh,
+    uint32_t *sequence,
+    double *stamp_sec)
+{
+    if (!command)
+    {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(runtime_command_mutex_);
+    if (!has_runtime_command_)
+    {
+        return false;
+    }
+
+    *command = latest_runtime_command_;
+    if (sequence)
+    {
+        *sequence = latest_runtime_command_seq_;
+    }
+    if (stamp_sec)
+    {
+        *stamp_sec = latest_runtime_command_stamp_sec_;
+    }
+    if (fresh)
+    {
+        *fresh = (rl_master::monotonicTimeSec() - latest_runtime_command_stamp_sec_) <= kRuntimeCommandFreshnessSec;
+    }
     return true;
 }
 

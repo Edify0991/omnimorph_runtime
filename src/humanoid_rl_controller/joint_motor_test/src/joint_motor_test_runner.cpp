@@ -90,7 +90,7 @@ JointMotorTestRunner::JointMotorTestRunner()
     loadTrajectory();
 
     command_pub_ = node_->create_publisher<std_msgs::msg::Float32MultiArray>(
-        rl_master::dds::legacy::kTopicPolicyCommand,
+        rl_master::dds::kTopicRuntimeCommand,
         rclcpp::QoS(rclcpp::KeepLast(1)).reliable());
 
     state_sub_ = node_->create_subscription<std_msgs::msg::Float32MultiArray>(
@@ -913,7 +913,7 @@ rl_master::RobotCommandData JointMotorTestRunner::buildDisabledCommand()
 
 void JointMotorTestRunner::publishCommand(const rl_master::RobotCommandData &command, double now_sec)
 {
-    const auto msg = rl_master::dds::encodePolicyCommand(command, ++command_sequence_, now_sec);
+    const auto msg = rl_master::dds::encodeRuntimeCommand(command, ++command_sequence_, now_sec);
     command_pub_->publish(msg);
 }
 

@@ -21,13 +21,6 @@ constexpr int kCtrlWordStopPolicy = 11;
 constexpr int kCtrlWordZeroing = 12;
 constexpr int kCtrlWordEstop = 13;
 
-// Legacy lifecycle words kept for compatibility with tools that used 3001..3004.
-constexpr int kLegacyCtrlWordLifecycleBase = 3000;
-constexpr int kLegacyCtrlWordStartPolicy = kLegacyCtrlWordLifecycleBase + 1;
-constexpr int kLegacyCtrlWordStopPolicy = kLegacyCtrlWordLifecycleBase + 2;
-constexpr int kLegacyCtrlWordZeroing = kLegacyCtrlWordLifecycleBase + 3;
-constexpr int kLegacyCtrlWordEstop = kLegacyCtrlWordLifecycleBase + 4;
-
 // Generic extended mode control:
 // - [1000, 1999]: request start for mode=(code-1000).
 // - [2000, 2999]: set pending mode=(code-2000), do not change lifecycle.

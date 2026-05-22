@@ -4,6 +4,11 @@ namespace mujoco_sim2sim
 {
 using namespace bridge_internal;
 
+namespace
+{
+constexpr double kRuntimeCommandFreshnessSec = 0.25;
+}
+
 void MujocoSimBridge::enforceBaseLock()
 {
     if (!shouldEnforceBaseLock() || !fixed_base_pose_initialized_ || base_free_qpos_adr_ < 0 || base_free_qvel_adr_ < 0)
@@ -127,11 +132,22 @@ void MujocoSimBridge::controlLoopTick()
 
     const rl_master::RobotStateData state = buildRobotState();
     const rl_master::TeleopCommand teleop_command = latestTeleopCommand();
-    const rl_master::RobotCommandData command =
+    rl_master::RobotCommandData command =
         controller_runtime_.step(state, teleop_command, effective_mode_control_word);
     const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
     emitDerivedRuntimeEvents(controller_snapshot);
-    const auto runtime_mode = rl_master::resolveCommandRuntimeMode(true, command.open_rl);
+    bool runtime_command_fresh = true;
+    {
+        std::lock_guard<std::mutex> lock(runtime_command_mutex_);
+        if (has_runtime_command_)
+        {
+            latest_runtime_command_fresh_ =
+                (rl_master::monotonicTimeSec() - latest_runtime_command_stamp_sec_) <= kRuntimeCommandFreshnessSec;
+            command = latest_runtime_command_;
+            runtime_command_fresh = latest_runtime_command_fresh_;
+        }
+    }
+    const auto runtime_mode = rl_master::resolveCommandRuntimeMode(runtime_command_fresh, command.open_rl);
     const bool control_active = runtime_mode.open_rl_active;
     const auto controller_state = static_cast<rl_master::DeployLifecycleState>(controller_snapshot.deploy_state);
     const int controller_mode_id = controller_snapshot.active_mode_id;

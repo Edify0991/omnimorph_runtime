@@ -10,8 +10,8 @@ mujoco_sim_bridge:
     # C++ sim2sim no longer uses this field to override joint order.
     # The effective controlled joint order comes only from
     # rl_master.robot_global_joint_order / ModeProfileRegistry::jointOrder().
-    # Keep this block only for python_interactive backend compatibility, and it
-    # must exactly match the registry order.
+    # Keep this block aligned with the registry order for model mapping and
+    # diagnostics. It is no longer a backend-specific override.
     joint_names:
       - "right_hip_roll"
       - "right_hip_yaw"

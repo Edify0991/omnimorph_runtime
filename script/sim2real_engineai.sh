@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "${MODE_ID}" =~ ^[0-9]+$ ]] || die "--mode-id must be a non-negative integer"
-print_banner "EngineAI Sim2Real (Single-Process RL_solver)"
+print_banner "Morph Runtime Sim2Real (Single-Process RL_solver)"
 
 CURRENT_PYTHON="$(command -v python3 || true)"
 [[ -n "${CURRENT_PYTHON}" ]] || die "python3 not found in PATH"

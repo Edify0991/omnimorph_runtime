@@ -68,8 +68,10 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
 - `/humanoid/rl/teleop`
 - `/humanoid/rl/mode_control`
 - `/humanoid/rl/state` (debug / monitoring)
+- `/humanoid/rl/runtime_command` (optional test-injection path such as `joint_motor_test`)
 
-There is no standalone `/humanoid/rl/command` control hop in the supported fused path anymore.
+The legacy `/humanoid/rl/command` hop is removed. Use `/humanoid/rl/runtime_command`
+only for explicit runtime-command injection tools.
 
 ## 5. Internal Function Chain
 

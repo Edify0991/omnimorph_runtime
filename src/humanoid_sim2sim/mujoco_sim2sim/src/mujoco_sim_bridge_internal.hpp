@@ -105,6 +105,7 @@ private:
     // Command input, lifecycle handling, and control-loop timing.
     void teleopCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
     void modeControlCallback(const std_msgs::msg::Int32::SharedPtr msg);
+    void runtimeCommandCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg);
     void controlLoopTick();
     int prepareModeControlWordForTick(int raw_control_word);
     void enforceBaseLock();
@@ -296,6 +297,7 @@ private:
     rclcpp::executors::SingleThreadedExecutor::SharedPtr input_executor_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr teleop_sub_;
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_control_sub_;
+    rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr runtime_command_sub_;
     rclcpp::TimerBase::SharedPtr control_timer_;
     std::thread input_executor_thread_;
     std::thread state_telemetry_thread_;
@@ -303,6 +305,12 @@ private:
     std::atomic<bool> io_stop_requested_{false};
     mutable std::mutex teleop_mutex_;
     std::atomic<int> mode_command_cache_{rl_master::kCtrlWordSetModeBase + rl_master::kModeCodeMin};
+    mutable std::mutex runtime_command_mutex_;
+    rl_master::RobotCommandData latest_runtime_command_{};
+    bool has_runtime_command_ = false;
+    bool latest_runtime_command_fresh_ = false;
+    uint32_t latest_runtime_command_seq_ = 0;
+    double latest_runtime_command_stamp_sec_ = 0.0;
     std::mutex telemetry_mutex_;
     std::condition_variable telemetry_cv_;
     rl_master::RobotStateData latest_mirrored_state_{};

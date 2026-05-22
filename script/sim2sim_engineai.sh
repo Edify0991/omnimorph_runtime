@@ -151,7 +151,7 @@ done
 [[ "${MODE_ID}" =~ ^[0-9]+$ ]] || die "--mode-id must be a non-negative integer"
 [[ -f "${MODEL_PATH}" ]] || log_warn "model file not found yet: ${MODEL_PATH} (launch may fail if path is wrong)"
 
-print_banner "EngineAI Sim2Sim (Single-Process Fused Runtime)"
+print_banner "Morph Runtime Sim2Sim (Single-Process Fused Runtime)"
 
 CURRENT_PYTHON="$(command -v python3 || true)"
 [[ -n "${CURRENT_PYTHON}" ]] || die "python3 not found in PATH"

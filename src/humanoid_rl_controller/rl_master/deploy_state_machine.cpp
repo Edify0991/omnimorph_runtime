@@ -228,26 +228,22 @@ DecodedControlWord DeployStateMachine::decodeControlWord(int control_word, int f
     DecodedControlWord decoded;
     decoded.locomotion_mode = fallback_locomotion_mode;
 
-    if (control_word == kCtrlWordStartPolicy ||
-        control_word == kLegacyCtrlWordStartPolicy)
+    if (control_word == kCtrlWordStartPolicy)
     {
         decoded.request_start = true;
         return decoded;
     }
-    if (control_word == kCtrlWordStopPolicy ||
-        control_word == kLegacyCtrlWordStopPolicy)
+    if (control_word == kCtrlWordStopPolicy)
     {
         decoded.request_stop = true;
         return decoded;
     }
-    if (control_word == kCtrlWordZeroing ||
-        control_word == kLegacyCtrlWordZeroing)
+    if (control_word == kCtrlWordZeroing)
     {
         decoded.request_zero = true;
         return decoded;
     }
-    if (control_word == kCtrlWordEstop ||
-        control_word == kLegacyCtrlWordEstop)
+    if (control_word == kCtrlWordEstop)
     {
         decoded.request_estop = true;
         return decoded;
@@ -274,13 +270,9 @@ DecodedControlWord DeployStateMachine::decodeControlWord(int control_word, int f
 bool DeployStateMachine::isValidControlWord(int control_word)
 {
     if (control_word == kCtrlWordStartPolicy ||
-        control_word == kLegacyCtrlWordStartPolicy ||
         control_word == kCtrlWordStopPolicy ||
-        control_word == kLegacyCtrlWordStopPolicy ||
         control_word == kCtrlWordZeroing ||
-        control_word == kLegacyCtrlWordZeroing ||
-        control_word == kCtrlWordEstop ||
-        control_word == kLegacyCtrlWordEstop)
+        control_word == kCtrlWordEstop)
     {
         return true;
     }

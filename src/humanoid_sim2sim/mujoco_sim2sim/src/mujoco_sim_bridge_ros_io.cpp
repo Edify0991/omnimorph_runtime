@@ -3,6 +3,11 @@
 namespace mujoco_sim2sim
 {
 
+namespace
+{
+constexpr double kRuntimeCommandFreshnessSec = 0.25;
+}
+
 void MujocoSimBridge::setupRosInterfaces()
 {
     state_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>(
@@ -49,6 +54,13 @@ void MujocoSimBridge::startInputExecutor()
             this->modeControlCallback(msg);
         });
 
+    runtime_command_sub_ = input_node_->create_subscription<std_msgs::msg::Float32MultiArray>(
+        rl_master::dds::kTopicRuntimeCommand,
+        rclcpp::QoS(rclcpp::KeepLast(5)).reliable(),
+        [this](const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
+            this->runtimeCommandCallback(msg);
+        });
+
     io_stop_requested_.store(false);
     input_executor_->add_node(input_node_);
     input_executor_thread_ = std::thread([this]() {
@@ -85,6 +97,7 @@ void MujocoSimBridge::stopInputExecutor()
     }
     mode_control_sub_.reset();
     teleop_sub_.reset();
+    runtime_command_sub_.reset();
     input_executor_.reset();
     input_node_.reset();
 }
@@ -117,6 +130,29 @@ void MujocoSimBridge::modeControlCallback(const std_msgs::msg::Int32::SharedPtr 
         return;
     }
     mode_command_cache_.store(msg->data);
+}
+
+void MujocoSimBridge::runtimeCommandCallback(const std_msgs::msg::Float32MultiArray::SharedPtr msg)
+{
+    if (!msg)
+    {
+        return;
+    }
+
+    rl_master::RobotCommandData command;
+    uint32_t sequence = 0;
+    double stamp_sec = 0.0;
+    if (!rl_master::dds::decodeRuntimeCommand(*msg, &command, &sequence, &stamp_sec))
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(runtime_command_mutex_);
+    latest_runtime_command_ = std::move(command);
+    latest_runtime_command_seq_ = sequence;
+    latest_runtime_command_stamp_sec_ = stamp_sec;
+    latest_runtime_command_fresh_ = (rl_master::monotonicTimeSec() - stamp_sec) <= kRuntimeCommandFreshnessSec;
+    has_runtime_command_ = true;
 }
 
 rl_master::TeleopCommand MujocoSimBridge::latestTeleopCommand() const

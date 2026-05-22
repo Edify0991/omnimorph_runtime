@@ -12,7 +12,7 @@ It now runs with dynamic joint-count trajectories. The active joint layout is re
 
 It keeps the existing deployment pipeline:
 
-- command publish: `/humanoid/rl/command`
+- command publish: `/humanoid/rl/runtime_command`
 - state subscribe: `/humanoid/rl/state`
 - lifecycle/mode control: `/humanoid/rl/mode_control`
 
@@ -97,7 +97,6 @@ Control words (via `/humanoid/rl/mode_control`):
 - `1000 + mode_id`: switch mode and start
 - `2000 + mode_id`: switch mode only
 - `10/11/12/13`: start / stop / zeroing / estop
-- `3001/3002/3003/3004`: legacy lifecycle words
 
 Recommended flow for this package:
 
@@ -131,7 +130,7 @@ ros2 launch joint_motor_test joint_motor_test.launch.py \
 ```bash
 ros2 launch joint_motor_test joint_motor_test_sim2sim.launch.py \
   model_path:=/abs/path/to/robot.xml \
-  backend:=python_interactive \
+  backend:=python_frontend \
   test_config_path:=/abs/path/to/joint_motor_test.yaml \
   fixed_base:=true \
   fixed_base_height:=-1.0 \
@@ -168,7 +167,7 @@ ros2 launch joint_motor_test joint_motor_test_sim2sim.launch.py \
   model_path:=/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/jingchu01_legs.xml \
   bridge_config:=/home/edify/Code/jc01_deploy/src/humanoid_sim2sim/mujoco_sim2sim/config/jc01_legs_engineai_walk_sim2sim.yaml \
   test_config_path:=/home/edify/Code/jc01_deploy/src/humanoid_rl_controller/joint_motor_test/config/beyondmimic_leg12_reference_tracking.yaml \
-  backend:=python_interactive \
+  backend:=python_frontend \
   fixed_base:=true \
   fixed_base_height:=0.8780 \
   control_hz:=500.0 \
@@ -184,8 +183,8 @@ ros2 topic pub --once /humanoid/rl/mode_control std_msgs/msg/Int32 "{data: 1090}
 
 Viewer controls:
 
-- `backend:=python_interactive`: use official MuJoCo Python viewer UI (left/right panels, camera, perturbation tools).
-- `backend:=cpp`: use bridge built-in hotkeys below.
+- `backend:=python_frontend`: use the supported Python viewer client on top of the fused C++ backend.
+- `backend:=cpp`: use the bridge built-in viewer/hotkeys below.
 
 CPP backend hotkeys:
 

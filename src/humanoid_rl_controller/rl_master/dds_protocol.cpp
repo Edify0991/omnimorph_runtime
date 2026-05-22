@@ -101,7 +101,7 @@ inline float readStateTau(const RobotStateData &state, size_t index)
 }
 } // namespace
 
-std_msgs::msg::Float32MultiArray encodePolicyCommand(
+std_msgs::msg::Float32MultiArray encodeRuntimeCommand(
     const RobotCommandData &command,
     uint32_t sequence,
     double stamp_sec)
@@ -128,7 +128,7 @@ std_msgs::msg::Float32MultiArray encodePolicyCommand(
     return msg;
 }
 
-bool decodePolicyCommand(
+bool decodeRuntimeCommand(
     const std_msgs::msg::Float32MultiArray &msg,
     RobotCommandData *command,
     uint32_t *sequence,

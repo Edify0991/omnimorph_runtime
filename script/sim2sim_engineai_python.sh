@@ -131,7 +131,7 @@ done
 [[ "${MODE_ID}" =~ ^[0-9]+$ ]] || die "--mode-id must be a non-negative integer"
 [[ -f "${MODEL_PATH}" ]] || log_warn "model file not found yet: ${MODEL_PATH} (launch may fail if path is wrong)"
 
-print_banner "EngineAI Sim2Sim (Python GUI Frontend)"
+print_banner "Morph Runtime Sim2Sim (Python GUI Frontend)"
 log_info "This path keeps the friendly Python MuJoCo GUI, while the fused C++ backend owns both physics and policy/control loop."
 
 CURRENT_PYTHON="$(command -v python3 || true)"

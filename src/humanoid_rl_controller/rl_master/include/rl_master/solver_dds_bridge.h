@@ -60,6 +60,11 @@ public:
 
     bool readLatestTeleopCommand(rl_master::TeleopCommand *command);
     bool readLatestModeControlWord(int *control_word);
+    bool readLatestRuntimeCommand(
+        rl_master::RobotCommandData *command,
+        bool *fresh,
+        uint32_t *sequence = nullptr,
+        double *stamp_sec = nullptr);
 
     void buildRobotStateData(
         const std::vector<JointData> &joint_state,
@@ -79,6 +84,7 @@ private:
     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr state_pub_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr teleop_sub_;
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_control_sub_;
+    rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr runtime_command_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     std::vector<rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr> external_observation_subs_;
@@ -90,6 +96,12 @@ private:
     std::mutex mode_control_mutex_;
     int latest_mode_control_word_ = 0;
     bool has_mode_control_word_ = false;
+
+    std::mutex runtime_command_mutex_;
+    rl_master::RobotCommandData latest_runtime_command_{};
+    bool has_runtime_command_ = false;
+    uint32_t latest_runtime_command_seq_ = 0;
+    double latest_runtime_command_stamp_sec_ = 0.0;
 
     std::mutex imu_mutex_;
     std::array<float, 3> imu_ang_vel_{0.0f, 0.0f, 0.0f};

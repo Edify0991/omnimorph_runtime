@@ -59,6 +59,15 @@ This starts only `mujoco_sim_bridge` with `backend:=cpp`.
 - `start_joylaunch.sh`: joystick/operator launcher wrapper
 - `joyLaunch.py`: joystick/operator implementation
 
+`joyLaunch.py` runtime mode semantics:
+
+- launching `start_rl_solver.sh` from the hand controller now passes
+  `--mode-id <primary_mode_id>`
+- `primary_mode_id` and `secondary_mode_id` are local joystick-side defaults
+- the hand controller publishes lifecycle/mode words to `/humanoid/rl/mode_control`
+- it does not automatically inherit mode selection from a separately launched
+  `sim2real_engineai.sh` process
+
 ### Common helpers
 
 - `common.sh`: shared shell helpers
@@ -126,6 +135,17 @@ Useful helper:
 ./script/publish_mode_control.sh switch --mode-id 1
 ./script/publish_mode_control.sh stop
 ```
+
+Typical joystick combos:
+
+- `START`: launch solver with `primary_mode_id`
+- `L1 + DPAD_DOWN`: publish `2000 + primary_mode_id`
+- `L1 + B`: publish `2000 + secondary_mode_id`
+- `L1 + DPAD_UP`: publish `1000 + primary_mode_id`
+- `L1 + A`: publish `1000 + secondary_mode_id`
+- `L1 + Y`: publish `11` (`STOP_POLICY`)
+- `L1 + RS`: publish `12` (`ZEROING`)
+- `LT + B`: publish `13` (`ESTOP`)
 
 ## Compatibility Notes
 

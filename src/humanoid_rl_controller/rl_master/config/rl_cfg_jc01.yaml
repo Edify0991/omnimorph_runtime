@@ -123,14 +123,14 @@ deploy_mode_profiles:
   config_section: beyondmimic_jc01_dance_full_body_wo_state_estimation
   tag: beyondmimic_jc01_dance_full_body_wo_state_estimation
 config_files:
-  amp_mjlab_jc01_full_body: profiles/amp_mjlab_jc01_full_body.yaml
+  amp_mjlab_jc01_walkrun_full_body: profiles/amp_mjlab_jc01_walkrun_full_body.yaml
   beyondmimic_jc01_walk_lower_body_w_state_estimation: profiles/beyondmimic_jc01_walk_lower_body_w_state_estimation.yaml
   beyondmimic_jc01_dance_full_body_wo_state_estimation: profiles/beyondmimic_jc01_dance_full_body_wo_state_estimation.yaml
   engineaigym_walk_lower_body: profiles/engineaigym_walk_lower_body.yaml
   engineaigym_stand_lower_body: profiles/engineaigym_stand_lower_body.yaml
   jingchu01_dcmotor_newpd_baseline: profiles/jingchu01_dcmotor_newpd_baseline.yaml
   jingchu01_pacedcmotor_group_delay_qdq_newpd: profiles/jingchu01_pacedcmotor_group_delay_qdq_newpd.yaml
-  tienkun_amp_jc01_full_body: profiles/tienkun_amp_jc01_full_body.yaml
+  amp_tienkunglab_jc01_walk_full_body: profiles/amp_tienkunglab_jc01_walk_full_body.yaml
 runtime_process:
   controller:
     enabled: true

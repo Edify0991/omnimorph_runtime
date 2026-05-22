@@ -62,6 +62,6 @@ The repository still keeps some legacy code paths and docs under `legacy/` for h
 
 That means:
 
-- all active producers should use `encodePolicyCommand(...)` / `encodeRobotState(...)`
-- all active consumers should use `decodePolicyCommand(...)` / `decodeRobotState(...)`
+- all active producers should use `encodeRuntimeCommand(...)` / `encodeRobotState(...)`
+- all active consumers should use `decodeRuntimeCommand(...)` / `decodeRobotState(...)`
 - any remaining external tool that still emits old 12-dof flat arrays must be upgraded before use with the current fused runtime
