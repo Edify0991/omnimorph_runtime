@@ -27,11 +27,11 @@ source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 sudo ./script/start_driver_jc01.sh
 ```
 
-For Unitree G1, use the vendor bridge terminal instead:
+For Unitree G1, use the official Unitree low-level runtime/DDS check instead:
 
 ```bash
-source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-./script/start_unitree_g1_bridge.sh
+source ~/unitree_ros2/setup.sh
+ros2 topic echo lowstate --once
 ```
 
 Terminal 2:
@@ -74,7 +74,7 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
 
 - `start_rl_solver.sh`: wrapper around the installed `RL_solver` executable
 - `start_driver_jc01.sh`: JC01 local driver wrapper
-- `start_unitree_g1_bridge.sh`: Unitree G1 low-level ROS 2 bridge wrapper
+- `start_unitree_g1_bridge.sh`: legacy standalone Unitree G1 bridge wrapper; normal G1 deployment now uses `RL_solver` in-process Unitree DDS motor IO
 - `start_imu_yesense.sh`: IMU node launcher
 - `start_joylaunch.sh`: joystick/operator helper entry
 - `joyLaunch.py`: joystick/operator implementation

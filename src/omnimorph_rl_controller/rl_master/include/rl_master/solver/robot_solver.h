@@ -17,7 +17,7 @@
 #include "rl_master/logging/runtime_recorder.h"
 #include "rl_master/rl_cfg.h"
 #include "rl_master/runtime/integrated_controller_runtime.h"
-#include "rl_master/solver/motor_shm_io.h"
+#include "rl_master/solver/motor_io_backend.h"
 #include "rl_master/solver_dds_bridge.h"
 
 namespace rl_master::solver
@@ -112,8 +112,8 @@ private:
     std::array<uint8_t, kMotorShmSlotCount> motor_types_{};
 
     std::unique_ptr<rl_master::kinematics::RobotKinematicsAdapter> kinematics_adapter_;
+    std::unique_ptr<MotorIoBackend> motor_io_backend_;
     SolverDdsBridge dds_bridge_;
-    MotorShmIo motor_shm_io_;
 
     std::string active_config_section_ = "sim2real";
     Sim2realCfg sim2real_cfg_;

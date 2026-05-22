@@ -9,6 +9,7 @@ robot_identity:
   morphology: quadruped
   vendor: jingchu
   kinematics_adapter: jc05_quadruped
+  motor_io_backend: shm
   external_hardware_bridge: jc05_vendor_bridge
 
 robot_global_joint_order:

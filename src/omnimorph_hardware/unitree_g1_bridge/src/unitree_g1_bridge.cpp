@@ -12,6 +12,7 @@
 #include <unitree_hg/msg/low_state.hpp>
 
 #include "rl_master/hardware/motor_shm_contract.h"
+#include "rl_master/kinematics/joint_data.h"
 
 #ifdef OMNIMORPH_HAS_UNITREE_CRC
 #include "common/motor_crc_hg.h"
@@ -26,6 +27,11 @@ constexpr uint8_t kUnitreeMotorDisable = 0;
 float fallbackGain(float raw, float fallback)
 {
     return raw > 0.0f ? raw : fallback;
+}
+
+bool usesUnitreePdLoop(uint8_t run_mode)
+{
+    return run_mode == RUN_MODE_R1 || run_mode == RUN_MODE_CSP;
 }
 } // namespace
 
@@ -162,17 +168,22 @@ private:
             const bool enabled = has_target_ || !disable_when_no_target_;
             const bool active_mode = target.run_mode != 0;
             const bool lower_body = i < 15;
+            const bool pd_loop = usesUnitreePdLoop(target.run_mode);
 
             cmd.motor_cmd[i].mode = (enabled && active_mode) ? kUnitreeMotorEnable : kUnitreeMotorDisable;
-            cmd.motor_cmd[i].q = target.io.target.target_pos;
-            cmd.motor_cmd[i].dq = target.io.target.target_speed;
+            cmd.motor_cmd[i].q = pd_loop ? target.io.target.target_pos : 0.0f;
+            cmd.motor_cmd[i].dq = pd_loop ? target.io.target.target_speed : 0.0f;
             cmd.motor_cmd[i].tau = target.io.target.target_torque;
-            cmd.motor_cmd[i].kp = fallbackGain(
-                static_cast<float>(target.pd[0]),
-                static_cast<float>(lower_body ? default_lower_kp_ : default_upper_kp_));
-            cmd.motor_cmd[i].kd = fallbackGain(
-                static_cast<float>(target.pd[1]),
-                static_cast<float>(lower_body ? default_lower_kd_ : default_upper_kd_));
+            cmd.motor_cmd[i].kp = pd_loop
+                                      ? fallbackGain(
+                                            static_cast<float>(target.pd[0]),
+                                            static_cast<float>(lower_body ? default_lower_kp_ : default_upper_kp_))
+                                      : 0.0f;
+            cmd.motor_cmd[i].kd = pd_loop
+                                      ? fallbackGain(
+                                            static_cast<float>(target.pd[1]),
+                                            static_cast<float>(lower_body ? default_lower_kd_ : default_upper_kd_))
+                                      : 0.0f;
         }
 
 #ifdef OMNIMORPH_HAS_UNITREE_CRC

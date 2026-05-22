@@ -210,7 +210,7 @@ flowchart TD
 7. `RobotSolver::initModeProfileMap()`
 8. `RobotSolver::switchToModeConfig(startup_mode_id, true)`
 9. `RobotSolver::initialize()`
-10. `motor_shm_io_.connect()`
+10. `motor_io_backend_->connect()`
 11. `dds_bridge_.connect()`
 12. `RobotSolver::initializeController()`
 13. `controller_runtime_.setModeProfileRegistry(mode_registry_)`

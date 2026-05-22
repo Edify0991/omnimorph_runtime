@@ -9,6 +9,7 @@ robot_identity:
   morphology: humanoid
   vendor: jingchu
   kinematics_adapter: jc01
+  motor_io_backend: shm
   external_hardware_bridge: jc01_shm_bridge
 
 robot_global_joint_order:

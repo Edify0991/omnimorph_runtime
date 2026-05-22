@@ -41,11 +41,12 @@ source ./script/dev_env.sh
 sudo ./script/start_driver_jc01.sh  # JC01 only
 ```
 
-For Unitree G1, Terminal 1 is the vendor bridge instead of the JC01 driver:
+For Unitree G1, Terminal 1 is the official Unitree low-level runtime/DDS check
+instead of a repository driver:
 
 ```bash
-source ./script/dev_env.sh
-./script/start_unitree_g1_bridge.sh
+source ~/unitree_ros2/setup.sh
+ros2 topic echo lowstate --once
 ```
 
 Terminal 2:
@@ -76,7 +77,7 @@ ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000
 ```
 
 
-> Note: real-robot driver startup is robot-specific. JC01 uses the local shared-memory driver script. Unitree G1 uses `unitree_g1_bridge`, which expects the official Unitree ROS 2 low-level stack (`unitree_hg`, `lowstate`, `/lowcmd`) to be sourced and reachable.
+> Note: real-robot driver startup is robot-specific. JC01 uses the local shared-memory driver script. Unitree G1 uses the official Unitree runtime as the low-level driver; `RL_solver` connects to `lowstate` and `/lowcmd` in-process through `motor_io_backend: unitree_g1_dds`.
 
 > Before startup, set model-related variables in `rl_cfg_*.yaml` (`path_variables`) and avoid hard-coded absolute paths.
 ### MuJoCo sim2sim (Python viewer fdrontend)
@@ -118,7 +119,7 @@ ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000
 | --- | --- |
 | Start solver | `./script/start_rl_solver.sh --ros-args -p startup_mode_id:=<N>` |
 | Start JC01 driver | `sudo ./script/start_driver_jc01.sh` |
-| Start Unitree G1 bridge | `./script/start_unitree_g1_bridge.sh` |
+| Check Unitree G1 lowstate | `source ~/unitree_ros2/setup.sh && ros2 topic echo lowstate --once` |
 | Start MuJoCo Python frontend | `ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args -p model_path:="${MUJOCO_MODEL_PATH}" -p enable_viewer:=true -p viewer_fps:=500.0` |
 | Start MuJoCo fused backend (optional) | `./script/sim2sim_runtime.sh --model-path "${MUJOCO_MODEL_PATH}" --mode-id <N>` |
 | Start policy | `ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000 + N}"` |

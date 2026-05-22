@@ -111,7 +111,7 @@ Real-robot runtime path:
 14. `SolverDdsBridge` starts dedicated ROS input executor thread
 15. `SolverDdsBridge` starts asynchronous low-frequency state telemetry thread
 16. `RobotSolver::run()` loop
-17. `motor_shm_io_.readFeedback(...)`
+17. `motor_io_backend_->readFeedback(...)`
 18. sample cached teleop / mode_control / imu
 19. `dds_bridge_.buildRobotStateData(...)`
 20. `IntegratedControllerRuntime::step(...)`

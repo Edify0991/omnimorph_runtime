@@ -8,10 +8,15 @@
 namespace rl_master::solver
 {
 
-MotorShmIo::MotorShmIo() = default;
-MotorShmIo::~MotorShmIo() = default;
+ShmMotorIoBackend::ShmMotorIoBackend() = default;
+ShmMotorIoBackend::~ShmMotorIoBackend() = default;
 
-void MotorShmIo::connect()
+std::string ShmMotorIoBackend::backendId() const
+{
+    return "shm";
+}
+
+void ShmMotorIoBackend::connect()
 {
     shm_target_ = std::make_unique<SharedMemory>(
         rl_master::hardware::kMotorTargetShmPath,
@@ -31,7 +36,7 @@ void MotorShmIo::connect()
     shm_feedback_->connect();
 }
 
-void MotorShmIo::readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback)
+void ShmMotorIoBackend::readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback)
 {
     if (!feedback)
     {
@@ -40,17 +45,17 @@ void MotorShmIo::readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedb
 
     if (!shm_feedback_)
     {
-        throw std::runtime_error("MotorShmIo::readFeedback called before connect().");
+        throw std::runtime_error("ShmMotorIoBackend::readFeedback called before connect().");
     }
 
     shm_feedback_->read(feedback->data(), static_cast<int>(kMotorShmSlotCount), 0);
 }
 
-void MotorShmIo::writeTarget(const std::array<MotorHandle, kMotorShmSlotCount> &target)
+void ShmMotorIoBackend::writeTarget(const std::array<MotorHandle, kMotorShmSlotCount> &target)
 {
     if (!shm_target_)
     {
-        throw std::runtime_error("MotorShmIo::writeTarget called before connect().");
+        throw std::runtime_error("ShmMotorIoBackend::writeTarget called before connect().");
     }
 
     shm_target_->write(target.data(), static_cast<int>(kMotorShmSlotCount), 0);

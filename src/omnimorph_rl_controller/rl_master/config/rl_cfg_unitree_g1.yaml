@@ -5,6 +5,7 @@ robot_identity:
   morphology: humanoid
   vendor: unitree
   kinematics_adapter: unitree_g1
+  motor_io_backend: unitree_g1_dds
   external_hardware_bridge: unitree_sdk_bridge
 
 robot_global_joint_order:

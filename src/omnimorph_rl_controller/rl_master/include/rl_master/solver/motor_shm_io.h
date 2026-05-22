@@ -5,31 +5,31 @@
 #include <memory>
 #include <string>
 
-#include "rl_master/hardware/motor_shm_contract.h"
+#include "rl_master/solver/motor_io_backend.h"
 
 class SharedMemory;
 
 namespace rl_master::solver
 {
 
-using rl_master::hardware::kMotorShmSlotCount;
-using rl_master::hardware::MotorHandle;
-
-class MotorShmIo
+class ShmMotorIoBackend final : public MotorIoBackend
 {
 public:
-    MotorShmIo();
-    ~MotorShmIo();
+    ShmMotorIoBackend();
+    ~ShmMotorIoBackend() override;
 
-    void connect();
+    std::string backendId() const override;
+    void connect() override;
 
-    void readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback);
-    void writeTarget(const std::array<MotorHandle, kMotorShmSlotCount> &target);
+    void readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback) override;
+    void writeTarget(const std::array<MotorHandle, kMotorShmSlotCount> &target) override;
 
 private:
     std::unique_ptr<SharedMemory> shm_target_;
     std::unique_ptr<SharedMemory> shm_feedback_;
 };
+
+using MotorShmIo = ShmMotorIoBackend;
 
 } // namespace rl_master::solver
 

@@ -873,6 +873,7 @@ public:
     std::string robot_morphology;
     std::string robot_vendor;
     std::string robot_kinematics_adapter = "jc01";
+    std::string motor_io_backend = "shm";
     std::string external_hardware_bridge;
     std::string policy_name;
     std::string policy_family = "amp"; // amp / beyondmimic / custom
@@ -1047,6 +1048,21 @@ public:
                 robot_identity,
                 "external_hardware_bridge",
                 "");
+            motor_io_backend = yamlReadOr<std::string>(
+                robot_identity,
+                "motor_io_backend",
+                yamlReadOr<std::string>(config, "motor_io_backend", ""));
+            if (motor_io_backend.empty())
+            {
+                if (external_hardware_bridge == "unitree_sdk_bridge")
+                {
+                    motor_io_backend = "unitree_g1_dds";
+                }
+                else
+                {
+                    motor_io_backend = "shm";
+                }
+            }
             const std::map<std::string, std::string> path_variables =
                 loadPathVariablesFromRootDocument(config_doc.root_doc);
 

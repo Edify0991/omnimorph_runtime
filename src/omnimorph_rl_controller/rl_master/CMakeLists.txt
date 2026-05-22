@@ -63,6 +63,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(SharedMemory REQUIRED)
+find_package(unitree_hg QUIET)
 find_package(yaml-cpp REQUIRED)
 find_package(SymEngine CONFIG REQUIRED)
 find_package(pinocchio CONFIG REQUIRED
@@ -256,6 +257,7 @@ target_link_libraries(test_kine
 add_executable(RL_solver
   filters/moving_average_filter.cpp
   rl_solver.cpp
+  solver/motor_io_backend.cpp
   solver/motor_shm_io.cpp
   solver/robot_solver.cpp
   solver_dds_bridge.cpp
@@ -276,6 +278,37 @@ ament_target_dependencies(RL_solver
   nav_msgs
   SharedMemory
 )
+if(unitree_hg_FOUND)
+  target_sources(RL_solver PRIVATE
+    solver/unitree_g1_motor_io.cpp
+  )
+  ament_target_dependencies(RL_solver
+    unitree_hg
+  )
+  target_compile_definitions(RL_solver PRIVATE RL_MASTER_HAS_UNITREE_HG=1)
+  find_path(UNITREE_ROS2_COMMON_INCLUDE_DIR
+    NAMES common/motor_crc_hg.h
+    HINTS
+      $ENV{UNITREE_ROS2_ROOT}/example/src/include
+      $ENV{UNITREE_ROS2_ROOT}/example/src
+      $ENV{UNITREE_ROS2_ROOT}/include
+      /opt/unitree_ros2/include
+      /usr/local/include
+      /usr/include
+  )
+  if(UNITREE_ROS2_COMMON_INCLUDE_DIR)
+    target_include_directories(RL_solver PRIVATE ${UNITREE_ROS2_COMMON_INCLUDE_DIR})
+    target_compile_definitions(RL_solver PRIVATE OMNIMORPH_HAS_UNITREE_CRC=1)
+    message(STATUS "rl_master: Unitree G1 DDS motor IO enabled with CRC header at ${UNITREE_ROS2_COMMON_INCLUDE_DIR}")
+  else()
+    message(WARNING
+      "rl_master: unitree_hg found, but common/motor_crc_hg.h was not. "
+      "Unitree G1 DDS motor IO will build without filling the official LowCmd CRC field. "
+      "Set UNITREE_ROS2_ROOT to the official unitree_ros2 checkout to enable CRC.")
+  endif()
+else()
+  message(STATUS "rl_master: unitree_hg not found; Unitree G1 DDS motor IO backend disabled.")
+endif()
 target_link_libraries(RL_solver
   rl_master_runtime
   onnxruntime::onnxruntime

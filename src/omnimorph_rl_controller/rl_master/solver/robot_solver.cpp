@@ -383,7 +383,10 @@ bool RobotSolver::initialize()
 
     try
     {
-        motor_shm_io_.connect();
+        motor_io_backend_ = createMotorIoBackend(sim2real_cfg_.motor_io_backend);
+        std::cout << "[RL_solver] motor IO backend active: "
+                  << motor_io_backend_->backendId() << std::endl;
+        motor_io_backend_->connect();
         dds_bridge_.connect({
             sim2real_cfg_.enable_state_telemetry,
             sim2real_cfg_.state_telemetry_hz,
@@ -680,7 +683,11 @@ void RobotSolver::initMotorTypes()
 
 void RobotSolver::getMotorState()
 {
-    motor_shm_io_.readFeedback(&motor_feedback_all_);
+    if (!motor_io_backend_)
+    {
+        throw std::runtime_error("motor IO backend is not initialized");
+    }
+    motor_io_backend_->readFeedback(&motor_feedback_all_);
 
     const size_t motor_count = motorSlotCount();
     for (size_t i = 0; i < motor_count; ++i)
@@ -841,7 +848,11 @@ void RobotSolver::sendMotorCmd()
         motor_cmd_mode_[i] = static_cast<float>(joint_cmd.mode);
     }
 
-    motor_shm_io_.writeTarget(motor_target_all_);
+    if (!motor_io_backend_)
+    {
+        throw std::runtime_error("motor IO backend is not initialized");
+    }
+    motor_io_backend_->writeTarget(motor_target_all_);
 }
 
 void RobotSolver::applyRuntimeCommand(
@@ -1137,6 +1148,8 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
     appendQuoted(oss, active_config_section_);
     oss << ",\"active_policy_name\":";
     appendQuoted(oss, sim2real_cfg_.policy_name);
+    oss << ",\"motor_io_backend\":";
+    appendQuoted(oss, sim2real_cfg_.motor_io_backend);
     oss << ",\"runtime_joint_order\":";
     appendStringVector(oss, installed_joint_names_);
     oss << ",\"installed_joint_names\":";
@@ -1171,6 +1184,9 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
         oss << "\"obs_stack_n\":" << cfg.obs_stack_N << ",";
         oss << "\"policy_hz\":" << cfg.RL_control_f << ",";
         oss << "\"solver_control_hz\":" << cfg.solver_control_hz << ",";
+        oss << "\"motor_io_backend\":";
+        appendQuoted(oss, cfg.motor_io_backend);
+        oss << ",";
         oss << "\"installed_joint_run_modes\":";
         appendStringMap(oss, cfg.installed_joint_run_modes);
         oss << ",";

@@ -141,35 +141,35 @@ beyondmimic_g1_walk_full_body_w_state_estimation:
   RL_control_f: 50
   solver_control_hz: 500
   installed_joint_run_modes:
-    left_hip_pitch_joint: cst
-    left_hip_roll_joint: cst
-    left_hip_yaw_joint: cst
-    left_knee_joint: cst
-    left_ankle_pitch_joint: cst
-    left_ankle_roll_joint: cst
-    right_hip_pitch_joint: cst
-    right_hip_roll_joint: cst
-    right_hip_yaw_joint: cst
-    right_knee_joint: cst
-    right_ankle_pitch_joint: cst
-    right_ankle_roll_joint: cst
-    waist_yaw_joint: cst
-    waist_roll_joint: cst
-    waist_pitch_joint: cst
-    left_shoulder_pitch_joint: cst
-    left_shoulder_roll_joint: cst
-    left_shoulder_yaw_joint: cst
-    left_elbow_joint: cst
-    left_wrist_roll_joint: cst
-    left_wrist_pitch_joint: cst
-    left_wrist_yaw_joint: cst
-    right_shoulder_pitch_joint: cst
-    right_shoulder_roll_joint: cst
-    right_shoulder_yaw_joint: cst
-    right_elbow_joint: cst
-    right_wrist_roll_joint: cst
-    right_wrist_pitch_joint: cst
-    right_wrist_yaw_joint: cst
+    left_hip_pitch_joint: r1
+    left_hip_roll_joint: r1
+    left_hip_yaw_joint: r1
+    left_knee_joint: r1
+    left_ankle_pitch_joint: r1
+    left_ankle_roll_joint: r1
+    right_hip_pitch_joint: r1
+    right_hip_roll_joint: r1
+    right_hip_yaw_joint: r1
+    right_knee_joint: r1
+    right_ankle_pitch_joint: r1
+    right_ankle_roll_joint: r1
+    waist_yaw_joint: r1
+    waist_roll_joint: r1
+    waist_pitch_joint: r1
+    left_shoulder_pitch_joint: r1
+    left_shoulder_roll_joint: r1
+    left_shoulder_yaw_joint: r1
+    left_elbow_joint: r1
+    left_wrist_roll_joint: r1
+    left_wrist_pitch_joint: r1
+    left_wrist_yaw_joint: r1
+    right_shoulder_pitch_joint: r1
+    right_shoulder_roll_joint: r1
+    right_shoulder_yaw_joint: r1
+    right_elbow_joint: r1
+    right_wrist_roll_joint: r1
+    right_wrist_pitch_joint: r1
+    right_wrist_yaw_joint: r1
   realtime:
     enabled: true
     lock_memory: true
