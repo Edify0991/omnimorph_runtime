@@ -1,7 +1,7 @@
-# Morph Runtime
+# OmniMorph Runtime
 
 <p align="center">
-  <img src="./assets/readme/morph_runtime_hero.svg" alt="Morph Runtime hero illustration" width="100%" />
+  <img src="./assets/readme/OmniMorph Runtime.png" alt="OmniMorph Runtime illustration" width="100%" />
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
   <img alt="Policies" src="https://img.shields.io/badge/Policies-RL%20%7C%20Imitation%20%7C%20Generative-4FAF7A?style=flat-square" />
 </p>
 
-Morph Runtime is the deployment shell around the actual controller/runtime
+OmniMorph Runtime is the deployment shell around the actual controller/runtime
 packages already in this repository. The goal is simple: keep one explicit,
 inspectable runtime that can serve different robot bodies, different
 observation contracts, and different policy families without cloning the whole
@@ -100,7 +100,7 @@ It is already being used for:
 ## GitHub Rename Suggestion
 
 If you want the public repository name to match the broader direction of the
-project, a good candidate is `morph-runtime`.
+project, a good candidate is `omnimorph-runtime`.
 
 GitHub-side rename:
 

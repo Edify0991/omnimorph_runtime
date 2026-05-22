@@ -50,9 +50,5 @@ thirdparty/
 data/
 
 # Local assistant / tooling artifacts
-/command.md
-/home/
-/.codex/
-/.codex-*/
-/.agents/
-/.codex_tmp*
+command.md
+.codex
