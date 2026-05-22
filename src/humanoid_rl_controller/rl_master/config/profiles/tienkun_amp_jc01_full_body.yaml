@@ -1,7 +1,7 @@
 tienkun_amp_jc01_full_body:
   policy_name: tienkun_amp_0515
   policy_family: amp
-  policy_file: policies/tienkun_amp_0515.onnx
+  policy_file: policies/policy_0520_1.onnx
   obs_stack_N: 10
   cycle_time: 0.85
   kps:

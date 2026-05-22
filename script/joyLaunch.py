@@ -609,7 +609,7 @@ def parse_args() -> RuntimeConfig:
     parser = argparse.ArgumentParser(description="Joystick launcher for humanoid RL deployment")
     parser.add_argument("--workspace", type=Path, default=default_workspace)
 
-    parser.add_argument("--max-vx", type=float, default=2.0)
+    parser.add_argument("--max-vx", type=float, default=1.2)
     parser.add_argument("--max-vy", type=float, default=0.02)
     parser.add_argument("--max-dyaw", type=float, default=0.6)
     parser.add_argument("--deadband", type=float, default=0.05)
