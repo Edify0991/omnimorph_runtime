@@ -588,6 +588,18 @@ const ReferenceMotionProvider &RL_controller::activeReferenceMotionProvider() co
     return activeModeProfile().reference_motion;
 }
 
+std::vector<std::string> RL_controller::activeResolvedReferenceBodyNames() const
+{
+    const Sim2realCfg &cfg = activePolicyCfg();
+    return effectiveReferenceBodyNames(cfg, &activeReferenceMotionProvider());
+}
+
+std::string RL_controller::activeResolvedReferenceAnchorBody() const
+{
+    const Sim2realCfg &cfg = activePolicyCfg();
+    return effectiveReferenceAnchorBody(cfg, &activeReferenceMotionProvider());
+}
+
 std::vector<float> RL_controller::activeZeroPose() const
 {
     const auto &profile = activeModeProfile();

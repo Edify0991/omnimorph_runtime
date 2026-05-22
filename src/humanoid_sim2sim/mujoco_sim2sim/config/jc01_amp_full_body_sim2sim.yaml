@@ -2,7 +2,7 @@ mujoco_sim_bridge:
   ros__parameters:
     # Use the workspace-local tuned full-body sim2sim model so AMP-specific
     # stability fixes live with this repo instead of relying on an external XML.
-    model_path: "/home/nvidia/Documents/jc01-model/scene_jingchu01.xml"
+    model_path: "/home/edify/Code/jingchu01/JC01-7DOF-URDF/JC01-URDF-18所/scene_jingchu01.xml"
 
     base_body_name: "Body"
     base_free_joint_name: ""
@@ -172,7 +172,7 @@ mujoco_sim_bridge:
     fix_base: false
     # Training/exported model base height is 0.92 m. Keep the fixed-base
     # zeroing pose consistent with that; do not override this to 0.87 for AMP.
-    fixed_base_height: 0.92
+    fixed_base_height: 0.88
     enable_fixed_base_zeroing: true
     enable_fixed_base_hold_after_zeroing: true
     enable_release_before_running: true

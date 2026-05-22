@@ -118,6 +118,7 @@ beyondmimic_leg12_legacy:
   reference_motion_sampling: step
   reference_motion_source: policy_outputs
   reference_anchor_body: Robotbase
+  motion_reference_alignment: startup_anchor_pos_yaw
   reference_body_names:
     - Robotbase
     - right_hip_roll
@@ -156,10 +157,11 @@ beyondmimic_leg12_legacy:
       frame_alignment_rpy: [0.0, 0.0, 0.0]
     sim_base:
       quat_source_order: wxyz
+      velocity_source: body_object_velocity_root_local
     policy_extra_outputs:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel
-      reference_joint_order_metadata_key: joint_names
+      reference_joint_order_metadata_key: command_joint_names
       preserve_reference_joint_order: false
       reference_body_pos_w_key: body_pos_w
       reference_body_quat_w_key: body_quat_w
@@ -182,7 +184,7 @@ beyondmimic_leg12_legacy:
     action_output_name: actions
     enable_time_step_input: true
     time_step_input_name: time_step
-    time_step_start: 50
+    time_step_start: 0
     advance_time_step_on_reference_prefetch: false
     strict_model_io: true
     enable_metadata_check: true
@@ -232,18 +234,18 @@ beyondmimic_leg12_legacy:
       left_ankle_pitch: -0.24
       left_ankle_roll: 0.0
     zero_joint_angles:
-      right_hip_roll: 0.06155104563
-      right_hip_yaw: 0.06163998134
-      right_hip_pitch: -0.7300625741
-      right_knee_pitch: 0.9624607265
-      right_ankle_pitch: -0.3909943849
-      right_ankle_roll: 0.01593868062
-      left_hip_roll: 0.1247593905
-      left_hip_yaw: 0.4690311123
-      left_hip_pitch: -0.5295148194
-      left_knee_pitch: 0.9484381676
-      left_ankle_pitch: -0.1391760856
-      left_ankle_roll: -0.2259051586
+      right_hip_roll: 0.0
+      right_hip_yaw: 0.0
+      right_hip_pitch: -0.24
+      right_knee_pitch: 0.48
+      right_ankle_pitch: -0.24
+      right_ankle_roll: 0.0
+      left_hip_roll: 0.0
+      left_hip_yaw: 0.0
+      left_hip_pitch: -0.24
+      left_knee_pitch: 0.48
+      left_ankle_pitch: -0.24
+      left_ankle_roll: 0.0
     joint_limit_range:
       right_hip_roll: [-0.2, 0.2]
       right_hip_yaw: [-1.05, 1.05]

@@ -204,18 +204,21 @@ bool MujocoSimBridge::maybeApplyRunningStartReferenceSync(
         base_free_qvel_adr_ >= 0 &&
         (base_free_qvel_adr_ + 5) < model_->nv)
     {
-        const std::vector<std::string> &body_names = active_cfg.reference_body_names;
+        const std::vector<std::string> body_names =
+            controller_runtime_.controller().activeResolvedReferenceBodyNames();
+        const std::string anchor_body =
+            controller_runtime_.controller().activeResolvedReferenceAnchorBody();
         const auto reference_root_body = selectReferenceRootBody(
             body_names,
             base_body_name_,
-            active_cfg.reference_anchor_body);
+            anchor_body);
         if (reference_root_body.has_value())
         {
             if (reference_root_body->used_anchor_fallback)
             {
                 RCLCPP_WARN(
                     this->get_logger(),
-                    "Reference startup seed could not find sim root body '%s' in reference_body_names; "
+                    "Reference startup seed could not find sim root body '%s' in resolved reference body_names; "
                     "falling back to reference_anchor_body '%s'.",
                     base_body_name_.c_str(),
                     reference_root_body->body_name.c_str());
@@ -388,18 +391,21 @@ bool MujocoSimBridge::applyReferencePoseReplayFrame(
         base_free_qvel_adr_ >= 0 &&
         (base_free_qvel_adr_ + 5) < model_->nv)
     {
-        const std::vector<std::string> &body_names = active_cfg.reference_body_names;
+        const std::vector<std::string> body_names =
+            controller_runtime_.controller().activeResolvedReferenceBodyNames();
+        const std::string anchor_body =
+            controller_runtime_.controller().activeResolvedReferenceAnchorBody();
         const auto reference_root_body = selectReferenceRootBody(
             body_names,
             base_body_name_,
-            active_cfg.reference_anchor_body);
+            anchor_body);
         if (reference_root_body.has_value())
         {
             if (reference_root_body->used_anchor_fallback && !reference_pose_replay_test_logged_)
             {
                 RCLCPP_WARN(
                     this->get_logger(),
-                    "Reference pose replay could not find sim root body '%s' in reference_body_names; "
+                    "Reference pose replay could not find sim root body '%s' in resolved reference body_names; "
                     "falling back to reference_anchor_body '%s'.",
                     base_body_name_.c_str(),
                     reference_root_body->body_name.c_str());

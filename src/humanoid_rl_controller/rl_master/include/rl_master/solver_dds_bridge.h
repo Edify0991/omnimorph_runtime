@@ -97,6 +97,8 @@ private:
     std::array<float, 4> imu_quat_{0.0f, 0.0f, 0.0f, 1.0f};
     std::array<float, 3> imu_rpy_{0.0f, 0.0f, 0.0f};
     bool has_imu_sample_ = false;
+    std::array<float, 3> odom_pos_w_{0.0f, 0.0f, 0.0f};
+    bool has_odom_pose_ = false;
     std::array<float, 3> odom_lin_vel_w_{0.0f, 0.0f, 0.0f};
     bool has_odom_lin_vel_ = false;
     std::string active_odom_topic_;

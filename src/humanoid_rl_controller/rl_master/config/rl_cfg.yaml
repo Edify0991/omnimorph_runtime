@@ -110,9 +110,6 @@ deploy_mode_profiles:
 - mode_id: 3
   config_section: engineai_stand
   tag: stand
-# - mode_id: 4
-#   config_section: beyondmimic_leg12_strict_walk2
-#   tag: beyondmimic_walk
 - mode_id: 4
   config_section: tienkun_amp_jc01_full_body
   tag: tienkun_amp
@@ -122,9 +119,17 @@ deploy_mode_profiles:
 - mode_id: 6
   config_section: jingchu01_pacedcmotor_group_delay_qdq_newpd
   tag: jc01_pacedc_group_delay_qdq_newpd
+- mode_id: 7
+  config_section: beyondmimic_leg12_legacy_fullbody
+  tag: beyondmimic_leg12_legacy_fullbody
+- mode_id: 8
+  config_section: beyondmimic_jingchu01_full_body_wo_state_estimation
+  tag: beyondmimic_jingchu01_full_body_wo_state_estimation
 config_files:
   amp_mjlab_jc01_full_body: profiles/amp_mjlab_jc01_full_body.yaml
-  beyondmimic_leg12_strict_walk2: profiles/beyondmimic_leg12_strict_walk2.yaml
+  beyondmimic_leg12_legacy: profiles/beyondmimic_leg12_legacy.yaml
+  beyondmimic_leg12_legacy_fullbody: profiles/beyondmimic_leg12_legacy_fullbody.yaml
+  beyondmimic_jingchu01_full_body_wo_state_estimation: profiles/beyondmimic_jingchu01_full_body_wo_state_estimation.yaml
   engineai_walk: profiles/engineai_walk.yaml
   engineai_full_body_example: profiles/engineai_full_body_example.yaml
   engineai_stand: profiles/stand_sim2real.yaml
