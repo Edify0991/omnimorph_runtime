@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 import rclpy
 from PyQt5.QtWidgets import QApplication
@@ -16,7 +16,7 @@ from .main_window import MainWindow
 from .ros_interface import OmnimorphOpsNode
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
+def parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Qt operator console for the OmniMorph deploy runtime.")
     parser.add_argument("--config", type=Path, default=find_default_config(), help="Path to rl_cfg_jc01.yaml")
     parser.add_argument("--camera-topic", default=TOPIC_CAMERA_COLOR, help="ROS topic for color image preview")
@@ -29,12 +29,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(list(argv or []))
     config = load_gui_config(args.config)
 
     app = QApplication([sys.argv[0]])
-    window_ref: dict[str, MainWindow] = {}
+    window_ref: Dict[str, MainWindow] = {}
 
     rclpy.init(args=None)
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -28,7 +28,7 @@ def font(path: str, size: int, index: int = 0) -> ImageFont.FreeTypeFont:
         return ImageFont.load_default()
 
 
-def text_size(draw: ImageDraw.ImageDraw, text: str, fnt: ImageFont.ImageFont) -> tuple[int, int]:
+def text_size(draw: ImageDraw.ImageDraw, text: str, fnt: ImageFont.ImageFont) -> Tuple[int, int]:
     box = draw.textbbox((0, 0), text, font=fnt)
     return box[2] - box[0], box[3] - box[1]
 
@@ -39,12 +39,12 @@ def wrap_line(
     fnt: ImageFont.ImageFont,
     max_width: int,
     cjk: bool,
-) -> list[str]:
+) -> List[str]:
     if not text:
         return [""]
     if not cjk and " " in text:
         words = text.split(" ")
-        lines: list[str] = []
+        lines: List[str] = []
         cur = ""
         for word in words:
             trial = word if not cur else f"{cur} {word}"
@@ -79,8 +79,8 @@ def wrap_text(
     fnt: ImageFont.ImageFont,
     max_width: int,
     cjk: bool,
-) -> list[str]:
-    wrapped: list[str] = []
+) -> List[str]:
+    wrapped: List[str] = []
     for raw in text.split("\n"):
         wrapped.extend(wrap_line(draw, raw, fnt, max_width, cjk))
     return wrapped
@@ -88,7 +88,7 @@ def wrap_text(
 
 def rounded_box(
     draw: ImageDraw.ImageDraw,
-    rect: tuple[int, int, int, int],
+    rect: Tuple[int, int, int, int],
     fill: str,
     outline: str,
     width: int = 3,
@@ -99,7 +99,7 @@ def rounded_box(
 
 def draw_centered_lines(
     draw: ImageDraw.ImageDraw,
-    rect: tuple[int, int, int, int],
+    rect: Tuple[int, int, int, int],
     lines: Sequence[str],
     fnt: ImageFont.ImageFont,
     fill: str,
@@ -116,10 +116,10 @@ def draw_centered_lines(
 
 def draw_node(
     draw: ImageDraw.ImageDraw,
-    rect: tuple[int, int, int, int],
+    rect: Tuple[int, int, int, int],
     title: str,
     body: str,
-    fonts: dict[str, ImageFont.ImageFont],
+    fonts: Dict[str, ImageFont.ImageFont],
     *,
     cjk: bool,
     fill: str = "#ffffff",
@@ -155,9 +155,9 @@ def draw_node(
 
 def draw_section(
     draw: ImageDraw.ImageDraw,
-    rect: tuple[int, int, int, int],
+    rect: Tuple[int, int, int, int],
     title: str,
-    fonts: dict[str, ImageFont.ImageFont],
+    fonts: Dict[str, ImageFont.ImageFont],
     *,
     fill: str,
     outline: str,
@@ -170,8 +170,8 @@ def draw_section(
 
 def arrow_head(
     draw: ImageDraw.ImageDraw,
-    p1: tuple[int, int],
-    p2: tuple[int, int],
+    p1: Tuple[int, int],
+    p2: Tuple[int, int],
     color: str,
     size: int = 16,
 ) -> None:
@@ -183,13 +183,13 @@ def arrow_head(
 
 def draw_arrow(
     draw: ImageDraw.ImageDraw,
-    points: Sequence[tuple[int, int]],
+    points: Sequence[Tuple[int, int]],
     *,
     color: str = "#334155",
     width: int = 4,
     dash: bool = False,
-    label: str | None = None,
-    label_font: ImageFont.ImageFont | None = None,
+    label: Optional[str] = None,
+    label_font: Optional[ImageFont.ImageFont] = None,
 ) -> None:
     if dash:
         for a, b in zip(points, points[1:]):
@@ -217,27 +217,27 @@ def draw_arrow(
         draw.text((rect[0] + pad, rect[1] + 4), label, font=label_font, fill=color)
 
 
-def node_center(rect: tuple[int, int, int, int]) -> tuple[int, int]:
+def node_center(rect: Tuple[int, int, int, int]) -> Tuple[int, int]:
     return ((rect[0] + rect[2]) // 2, (rect[1] + rect[3]) // 2)
 
 
-def node_right(rect: tuple[int, int, int, int]) -> tuple[int, int]:
+def node_right(rect: Tuple[int, int, int, int]) -> Tuple[int, int]:
     return (rect[2], (rect[1] + rect[3]) // 2)
 
 
-def node_left(rect: tuple[int, int, int, int]) -> tuple[int, int]:
+def node_left(rect: Tuple[int, int, int, int]) -> Tuple[int, int]:
     return (rect[0], (rect[1] + rect[3]) // 2)
 
 
-def node_top(rect: tuple[int, int, int, int]) -> tuple[int, int]:
+def node_top(rect: Tuple[int, int, int, int]) -> Tuple[int, int]:
     return ((rect[0] + rect[2]) // 2, rect[1])
 
 
-def node_bottom(rect: tuple[int, int, int, int]) -> tuple[int, int]:
+def node_bottom(rect: Tuple[int, int, int, int]) -> Tuple[int, int]:
     return ((rect[0] + rect[2]) // 2, rect[3])
 
 
-def build_text(lang: str) -> dict[str, object]:
+def build_text(lang: str) -> Dict[str, object]:
     if lang == "zh":
         return {
             "title": "人形机器人 RL 部署运行时架构与数据流",

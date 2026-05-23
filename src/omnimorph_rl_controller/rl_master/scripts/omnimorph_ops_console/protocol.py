@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Sequence
+from typing import List
 
 from .constants import (
     BASE_STATE_TAIL_COUNT,
@@ -44,9 +45,9 @@ def decode_robot_state_payload(data: Sequence[float]) -> RobotStateSnapshot:
         return snapshot
 
     cursor = STATE_HEADER_COUNT
-    joint_q: list[float] = []
-    joint_dq: list[float] = []
-    joint_tau: list[float] = []
+    joint_q: List[float] = []
+    joint_dq: List[float] = []
+    joint_tau: List[float] = []
     for _ in range(joint_count):
         joint_q.append(float(data[cursor]))
         joint_dq.append(float(data[cursor + 1]))
@@ -78,4 +79,3 @@ def decode_robot_state_payload(data: Sequence[float]) -> RobotStateSnapshot:
 
     snapshot.valid = True
     return snapshot
-

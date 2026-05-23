@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import time
+from typing import Optional
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QImage, QPixmap
@@ -50,13 +51,13 @@ class MainWindow(QMainWindow):
         self.config = config
         self.latest_snapshot = RobotStateSnapshot()
         self.state_message_count = 0
-        self.last_camera_image: QImage | None = None
-        self.last_depth_image: QImage | None = None
+        self.last_camera_image: Optional[QImage] = None
+        self.last_depth_image: Optional[QImage] = None
         self.last_camera_rx_time = 0.0
         self.last_depth_rx_time = 0.0
         self.last_camera_feature_rx_time = 0.0
-        self.last_camera_interval_s: float | None = None
-        self.last_depth_interval_s: float | None = None
+        self.last_camera_interval_s: Optional[float] = None
+        self.last_depth_interval_s: Optional[float] = None
 
         self.setWindowTitle("JC01 Humanoid Ops Console")
         self.resize(1240, 760)
@@ -224,7 +225,7 @@ class MainWindow(QMainWindow):
         scaled = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         label.setPixmap(scaled)
 
-    def _format_stream_status(self, prefix: str, msg: Image, rx_time: float, interval_s: float | None) -> str:
+    def _format_stream_status(self, prefix: str, msg: Image, rx_time: float, interval_s: Optional[float]) -> str:
         parts = [f"{prefix}: {msg.width}x{msg.height} {msg.encoding}"]
         if interval_s is not None and interval_s > 1.0e-6:
             parts.append(f"{(1.0 / interval_s):.1f} Hz")
@@ -238,7 +239,7 @@ class MainWindow(QMainWindow):
         if self.last_depth_image is not None:
             self._set_image_label(self.depth_label, self.last_depth_image)
 
-    def _decode_image_msg(self, msg: Image) -> QImage | None:
+    def _decode_image_msg(self, msg: Image) -> Optional[QImage]:
         width = int(msg.width)
         height = int(msg.height)
         if width <= 0 or height <= 0:

@@ -9,7 +9,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 try:
     import yaml
@@ -468,7 +468,7 @@ def get_global_robot_joint_order(
         return []
 
     out: List[str] = []
-    seen: set[str] = set()
+    seen: Set[str] = set()
     for item in raw:
         name = str(item).strip()
         if not name:
@@ -504,7 +504,7 @@ def get_joint_groups(
             issues.error("global", f"joint_groups.{group_name} must be a sequence")
             continue
         names: List[str] = []
-        seen_local: set[str] = set()
+        seen_local: Set[str] = set()
         for item in group_raw:
             name = str(item).strip()
             if not name:
@@ -2397,7 +2397,7 @@ def main() -> int:
         root_dir = cfg_path.parent.parent
     else:
         configured_root = resolve_path(root_dir_raw, cfg_path.parent, path_variables)
-        configured_root_error: OSError | None = None
+        configured_root_error: Optional[OSError] = None
         try:
             configured_root_exists = configured_root.exists()
         except OSError as exc:
@@ -2428,7 +2428,7 @@ def main() -> int:
 
     config_files = get_config_file_map(root_cfg, cfg_path, path_variables, issues)
     selected_specs: List[Tuple[int, str, str]] = []
-    selected_sections: set[str] = set()
+    selected_sections: Set[str] = set()
     for mode_id, section, tag in specs:
         if args.mode_ids and mode_id not in args.mode_ids:
             continue

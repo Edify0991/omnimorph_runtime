@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from typing import Deque, Optional
+from typing import Deque, Dict, List, Optional, Tuple
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QPainter, QPen
@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import QSizePolicy, QTableWidgetItem, QWidget
 from .models import RobotStateSnapshot
 
 
-def fmt_vec(values: list[float], precision: int = 3) -> str:
+def fmt_vec(values: List[float], precision: int = 3) -> str:
     return "[" + ", ".join(f"{v:.{precision}f}" for v in values) + "]"
 
 
@@ -26,7 +26,7 @@ class RollingPlot(QWidget):
         super().__init__(parent)
         self.setMinimumHeight(180)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.series: dict[str, Deque[float]] = {
+        self.series: Dict[str, Deque[float]] = {
             "roll": deque(maxlen=240),
             "pitch": deque(maxlen=240),
             "yaw": deque(maxlen=240),
@@ -83,7 +83,7 @@ class RollingPlot(QWidget):
                 continue
             painter.setPen(QPen(self.colors[name], 2))
             n = len(series)
-            points: list[tuple[float, float]] = []
+            points: List[Tuple[float, float]] = []
             for i, value in enumerate(series):
                 x = rect.left() + rect.width() * i / max(1, n - 1)
                 y = rect.bottom() - rect.height() * (value - y_min) / (y_max - y_min)
@@ -153,4 +153,3 @@ class RobotTwinWidget(QWidget):
         rpy_deg = [math.degrees(v) for v in self.snapshot.base_rpy]
         painter.drawText(rect.left() + 14, rect.top() + 26, f"RPY deg: {fmt_vec(rpy_deg, 1)}")
         painter.drawText(rect.left() + 14, rect.top() + 48, f"joints: {self.snapshot.joint_count}")
-

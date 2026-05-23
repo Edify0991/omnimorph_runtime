@@ -66,10 +66,24 @@ find_package(SharedMemory REQUIRED)
 find_package(unitree_hg QUIET)
 find_package(yaml-cpp REQUIRED)
 find_package(SymEngine CONFIG REQUIRED)
+
+set(_rl_master_ros_prefix_hints "")
+if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
+  list(APPEND _rl_master_ros_prefix_hints
+    "/opt/ros/$ENV{ROS_DISTRO}"
+    "/opt/ros/$ENV{ROS_DISTRO}/lib/${CMAKE_LIBRARY_ARCHITECTURE}/cmake/pinocchio"
+  )
+endif()
+list(APPEND _rl_master_ros_prefix_hints
+  "/opt/ros/humble"
+  "/opt/ros/humble/lib/${CMAKE_LIBRARY_ARCHITECTURE}/cmake/pinocchio"
+  "/opt/ros/foxy"
+  "/opt/ros/foxy/lib/${CMAKE_LIBRARY_ARCHITECTURE}/cmake/pinocchio"
+)
+list(REMOVE_DUPLICATES _rl_master_ros_prefix_hints)
+
 find_package(pinocchio CONFIG REQUIRED
-  HINTS
-    /opt/ros/humble
-    /opt/ros/humble/lib/${CMAKE_LIBRARY_ARCHITECTURE}/cmake/pinocchio
+  HINTS ${_rl_master_ros_prefix_hints}
 )
 find_package(Threads REQUIRED)
 find_library(ZSTD_LIBRARY NAMES zstd REQUIRED)
@@ -146,9 +160,17 @@ endif()
 if(DEFINED ENV{CONDA_ENGINEAI_PREFIX})
   list(APPEND _rl_master_runtime_rpath_dirs "$ENV{CONDA_ENGINEAI_PREFIX}/lib")
 endif()
-list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/humble/lib")
+if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
+  list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/$ENV{ROS_DISTRO}/lib")
+  if(CMAKE_LIBRARY_ARCHITECTURE)
+    list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/$ENV{ROS_DISTRO}/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+  endif()
+endif()
+list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/humble/lib" "/opt/ros/foxy/lib")
 if(CMAKE_LIBRARY_ARCHITECTURE)
-  list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/humble/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+  list(APPEND _rl_master_runtime_rpath_dirs
+    "/opt/ros/humble/lib/${CMAKE_LIBRARY_ARCHITECTURE}"
+    "/opt/ros/foxy/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
 endif()
 list(REMOVE_DUPLICATES _rl_master_runtime_rpath_dirs)
 set(RL_MASTER_RPATH "")

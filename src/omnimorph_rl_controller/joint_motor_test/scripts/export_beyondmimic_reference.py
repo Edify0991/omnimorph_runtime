@@ -14,7 +14,7 @@ import argparse
 import csv
 import math
 import pathlib
-from typing import Dict, Iterable, List, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 
@@ -37,7 +37,7 @@ def _metadata(session: object) -> Dict[str, str]:
     return dict(session.get_modelmeta().custom_metadata_map)
 
 
-def _input_by_name(inputs: Sequence[object], preferred: str) -> object | None:
+def _input_by_name(inputs: Sequence[object], preferred: str) -> Optional[object]:
     for item in inputs:
         if getattr(item, "name", "") == preferred:
             return item

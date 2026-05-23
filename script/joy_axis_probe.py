@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import argparse
-from typing import Sequence
+from typing import Optional, Sequence
 
 import evdev
 from evdev import ecodes
 
 
-def find_joystick_device(keywords: Sequence[str]) -> evdev.InputDevice | None:
+def find_joystick_device(keywords: Sequence[str]) -> Optional[evdev.InputDevice]:
     for path in evdev.list_devices():
         device = evdev.InputDevice(path)
         if any(token in device.name for token in keywords):

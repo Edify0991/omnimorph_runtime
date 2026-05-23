@@ -3,18 +3,19 @@
 import argparse
 import json
 from pathlib import Path
+from typing import List
 
 import numpy as np
 
 
-def _load_string_list(data: np.lib.npyio.NpzFile, key: str) -> list[str]:
+def _load_string_list(data: np.lib.npyio.NpzFile, key: str) -> List[str]:
     if key not in data:
         return []
     values = data[key]
     return [str(v) for v in values.tolist()]
 
 
-def _flatten_frame(frame: np.ndarray) -> list[float]:
+def _flatten_frame(frame: np.ndarray) -> List[float]:
     return [float(v) for v in np.asarray(frame, dtype=np.float32).reshape(-1).tolist()]
 
 

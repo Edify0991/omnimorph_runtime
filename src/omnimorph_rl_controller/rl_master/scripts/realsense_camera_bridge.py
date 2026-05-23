@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import copy
 from dataclasses import dataclass
+from typing import List, Optional
 
 import numpy as np
 import rclpy
@@ -16,8 +17,8 @@ from PIL import Image as PILImage
 
 @dataclass
 class FeatureState:
-    color: list[float]
-    depth: list[float]
+    color: List[float]
+    depth: List[float]
 
 
 class StandardizedCameraBridge(Node):
@@ -217,7 +218,7 @@ class StandardizedCameraBridge(Node):
     def _on_depth_info(self, msg: CameraInfo) -> None:
         self.depth_info_pub.publish(self._resize_camera_info(msg))
 
-    def _decode_color(self, msg: Image) -> np.ndarray | None:
+    def _decode_color(self, msg: Image) -> Optional[np.ndarray]:
         width = int(msg.width)
         height = int(msg.height)
         if width <= 0 or height <= 0:
@@ -254,7 +255,7 @@ class StandardizedCameraBridge(Node):
         mono = pixels[:, :, 0]
         return np.ascontiguousarray(np.repeat(mono[:, :, None], 3, axis=2))
 
-    def _decode_depth_mm(self, msg: Image) -> np.ndarray | None:
+    def _decode_depth_mm(self, msg: Image) -> Optional[np.ndarray]:
         width = int(msg.width)
         height = int(msg.height)
         if width <= 0 or height <= 0:

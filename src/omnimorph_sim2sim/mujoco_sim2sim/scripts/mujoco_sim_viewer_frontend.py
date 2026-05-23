@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import rclpy
 from rclpy.node import Node
@@ -162,7 +162,7 @@ class MujocoViewerFrontend(Node):
             model = mujoco.MjModel.from_xml_path(model_path)
         return model
 
-    def _read_vec3_parameter(self, name: str, default: list[float]) -> np.ndarray:
+    def _read_vec3_parameter(self, name: str, default: List[float]) -> np.ndarray:
         raw = self.get_parameter(name).value
         values = list(default)
         if isinstance(raw, (list, tuple)) and len(raw) >= 3:

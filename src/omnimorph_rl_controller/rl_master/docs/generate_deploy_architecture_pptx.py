@@ -8,7 +8,7 @@ arrow lines. It does not embed the PNG diagrams as a flat image.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, Tuple
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
@@ -162,7 +162,7 @@ def add_segment(slide, a, b, *, color, width=1.8, dash=False, arrow=False):
     return line
 
 
-def add_polyline(slide, points: Sequence[tuple[float, float]], *, color, width=1.8, dash=False):
+def add_polyline(slide, points: Sequence[Tuple[float, float]], *, color, width=1.8, dash=False):
     for a, b in zip(points, points[1:-1]):
         add_segment(slide, a, b, color=color, width=width, dash=dash, arrow=False)
     add_segment(slide, points[-2], points[-1], color=color, width=width, dash=dash, arrow=True)

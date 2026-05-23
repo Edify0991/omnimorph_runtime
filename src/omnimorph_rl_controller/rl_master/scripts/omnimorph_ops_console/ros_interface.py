@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Optional
 
 import rclpy
 from geometry_msgs.msg import Twist
@@ -17,9 +18,9 @@ class OmnimorphOpsNode(Node):
         self,
         on_state: Callable[[Float32MultiArray], None],
         *,
-        on_camera: Callable[[Image], None] | None = None,
-        on_depth: Callable[[Image], None] | None = None,
-        on_camera_features: Callable[[Float32MultiArray], None] | None = None,
+        on_camera: Optional[Callable[[Image], None]] = None,
+        on_depth: Optional[Callable[[Image], None]] = None,
+        on_camera_features: Optional[Callable[[Float32MultiArray], None]] = None,
         camera_topic: str = "",
         depth_topic: str = "",
         camera_feature_topic: str = "",
