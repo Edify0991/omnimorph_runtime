@@ -56,9 +56,11 @@ if(unitree_hg_FOUND)
     DESTINATION lib/${PROJECT_NAME}
   )
 else()
-  message(WARNING
+  message(STATUS
     "unitree_g1_bridge: unitree_hg package not found. "
-    "Skipping executable build; source the official Unitree ROS2 workspace before building this package.")
+    "Skipping legacy standalone bridge executable. "
+    "Normal G1 deployment uses rl_master's in-process unitree_g1_dds backend; "
+    "source the official Unitree ROS2 workspace only if you need this standalone diagnostic bridge.")
 endif()
 
 install(DIRECTORY docs

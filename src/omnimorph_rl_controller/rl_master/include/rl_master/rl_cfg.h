@@ -146,6 +146,28 @@ inline bool containsPathVariablePlaceholder(const std::string &raw)
     return raw.find("${") != std::string::npos;
 }
 
+inline std::vector<std::string> collectPathVariablePlaceholders(const std::string &raw)
+{
+    std::vector<std::string> keys;
+    size_t search_pos = 0;
+    while (true)
+    {
+        const size_t open = raw.find("${", search_pos);
+        if (open == std::string::npos)
+        {
+            break;
+        }
+        const size_t close = raw.find('}', open + 2);
+        if (close == std::string::npos)
+        {
+            break;
+        }
+        keys.push_back(raw.substr(open + 2, close - (open + 2)));
+        search_pos = close + 1;
+    }
+    return keys;
+}
+
 inline std::string expandPathVariables(
     const std::string &raw,
     const std::map<std::string, std::string> &variables,
@@ -255,6 +277,24 @@ inline std::map<std::string, std::string> loadPathVariablesFromRootDocument(
             throw std::runtime_error("path_variables['" + key + "'] must not be empty");
         }
         pending[key] = value;
+    }
+
+    for (const auto &entry : pending)
+    {
+        for (const std::string &placeholder_key : collectPathVariablePlaceholders(entry.second))
+        {
+            if (variables.find(placeholder_key) != variables.end())
+            {
+                continue;
+            }
+            if (const char *env_value = std::getenv(placeholder_key.c_str()))
+            {
+                if (env_value[0] != '\0')
+                {
+                    variables[placeholder_key] = env_value;
+                }
+            }
+        }
     }
 
     for (size_t pass = 0; pass < pending.size() + 2 && !pending.empty(); ++pass)

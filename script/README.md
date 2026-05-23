@@ -18,13 +18,31 @@ This prepares the shell by:
 - exporting a writable `ROS_LOG_DIR`
 - preferring system/ROS runtime libraries before Conda copies in `LD_LIBRARY_PATH`
 
+`dev_env.sh` does not auto-detect robot asset paths. Export the YAML variables yourself first:
+
+```bash
+export OMNIMORPH_RUNTIME_ROOT=/abs/path/to/omnimorph_runtime
+
+# JC01
+export ROBOT_ASSETS_DIR=/abs/path/to/JC01-URDF-18所
+
+# Unitree G1
+export G1_PINOCCHIO_URDF=/abs/path/to/g1_29dof.urdf
+export G1_SCENE_XML=/abs/path/to/scene_29dof.xml
+
+# Optional CLI convenience for sim2sim viewer/backend examples
+export MUJOCO_MODEL_PATH="${ROBOT_ASSETS_DIR}/scene_jingchu01.xml"
+```
+
+When a startup command uses `sudo`, keep those variables with `sudo -E`.
+
 ### Real Robot
 
 Terminal 1:
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-sudo ./script/start_driver_jc01.sh
+sudo -E ./script/start_driver_jc01.sh
 ```
 
 For Unitree G1, use the official Unitree low-level runtime/DDS check instead:
@@ -38,21 +56,21 @@ Terminal 2:
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-sudo ./script/start_imu_yesense.sh
+sudo -E ./script/start_imu_yesense.sh
 ```
 
 Terminal 3:
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-./script/start_rl_solver.sh --ros-args -p startup_mode_id:=0
+sudo -E ./script/sim2real_runtime.sh --mode-id 0
 ```
 
 Terminal 4:
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-sudo /usr/bin/python3 ${OMNIMORPH_RUNTIME_ROOT}/script/joyLaunch.py \
+sudo -E /usr/bin/python3 ${OMNIMORPH_RUNTIME_ROOT}/script/joyLaunch.py \
   --workspace ${OMNIMORPH_RUNTIME_ROOT}
 ```
 
@@ -88,6 +106,15 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
 - the hand controller publishes lifecycle/mode words to `/omnimorph/rl/mode_control`
 - it does not automatically inherit mode selection from a separately launched
   manual solver process
+
+Example manual G1 startup:
+
+```bash
+source ./script/dev_env.sh
+./script/start_rl_solver.sh \
+  --rl-cfg src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml \
+  --mode-id 0
+```
 
 ### Common helpers
 

@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <csignal>
 #include <iostream>
 #include <memory>
@@ -59,6 +60,42 @@ int parseStartupModeId(int argc, char **argv)
     }
     return mode_id;
 }
+
+std::string parseRootConfigPath(int argc, char **argv)
+{
+    std::string path = RL_CFG_PATH;
+    if (const char *env_path = std::getenv("RL_MASTER_CFG_PATH"))
+    {
+        if (env_path[0] != '\0')
+        {
+            path = env_path;
+        }
+    }
+
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string arg = argv[i] ? argv[i] : "";
+        if ((arg == "--rl-cfg" || arg == "--config") && (i + 1) < argc)
+        {
+            path = argv[i + 1];
+            ++i;
+            continue;
+        }
+        const std::string rl_cfg_prefix = "--rl-cfg=";
+        if (arg.rfind(rl_cfg_prefix, 0) == 0)
+        {
+            path = arg.substr(rl_cfg_prefix.size());
+            continue;
+        }
+        const std::string config_prefix = "--config=";
+        if (arg.rfind(config_prefix, 0) == 0)
+        {
+            path = arg.substr(config_prefix.size());
+        }
+    }
+
+    return path;
+}
 } // namespace
 
 int main(int argc, char **argv)
@@ -66,11 +103,12 @@ int main(int argc, char **argv)
     try
     {
         const int startup_mode_id = parseStartupModeId(argc, argv);
+        const std::string root_config_path = parseRootConfigPath(argc, argv);
 
         std::shared_ptr<const rl_master::ModeProfileRegistry> mode_registry;
         try
         {
-            mode_registry = rl_master::ModeProfileRegistry::loadFromYaml(RL_CFG_PATH, "engineai_walk");
+            mode_registry = rl_master::ModeProfileRegistry::loadFromYaml(root_config_path, "engineai_walk");
         }
         catch (const std::exception &e)
         {
@@ -82,9 +120,10 @@ int main(int argc, char **argv)
         const auto &startup_cfg = mode_registry->cfgForMode(startup_mode_id, false);
         const std::string startup_section = startup_spec.config_section;
         std::cout << "[RL_solver] startup mode_id=" << startup_mode_id
-                  << ", config section=" << startup_section << std::endl;
+                  << ", config section=" << startup_section
+                  << ", root config=" << root_config_path << std::endl;
         rl_master::runtime::RealtimeConfig runtime_rt = startup_cfg.realtime;
-        (void)loadProcessRealtimeConfigFromYAML(RL_CFG_PATH, "solver", &runtime_rt);
+        (void)loadProcessRealtimeConfigFromYAML(root_config_path, "solver", &runtime_rt);
         runtime_rt = rl_master::runtime::overrideRealtimeConfigFromEnv(runtime_rt, "RL_MASTER_SOLVER_RT_");
         rl_master::runtime::configureRealtime(runtime_rt, "RL_solver");
 

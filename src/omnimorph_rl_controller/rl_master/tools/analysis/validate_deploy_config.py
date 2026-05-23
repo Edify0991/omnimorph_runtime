@@ -263,6 +263,111 @@ def normalize_token(value: Any) -> str:
     return str(value).strip().lower()
 
 
+def collect_path_variable_placeholders(raw: str) -> List[str]:
+    keys: List[str] = []
+    search_pos = 0
+    while True:
+        open_pos = raw.find("${", search_pos)
+        if open_pos < 0:
+            break
+        close_pos = raw.find("}", open_pos + 2)
+        if close_pos < 0:
+            break
+        keys.append(raw[open_pos + 2 : close_pos])
+        search_pos = close_pos + 1
+    return keys
+
+
+def expand_path_variables(
+    raw: str,
+    variables: Dict[str, str],
+    strict: bool = True,
+) -> str:
+    out = raw
+    search_pos = 0
+    while True:
+        open_pos = out.find("${", search_pos)
+        if open_pos < 0:
+            break
+        close_pos = out.find("}", open_pos + 2)
+        if close_pos < 0:
+            if strict:
+                raise RuntimeError(f"unterminated path variable placeholder in: {raw}")
+            break
+        key = out[open_pos + 2 : close_pos]
+        replacement = variables.get(key) or os.environ.get(key)
+        if replacement is None:
+            if strict:
+                raise RuntimeError(f"unknown path variable '${{{key}}}' in: {raw}")
+            search_pos = close_pos + 1
+            continue
+        out = out[:open_pos] + replacement + out[close_pos + 1 :]
+        search_pos = open_pos + len(replacement)
+    return out
+
+
+def resolve_configured_omnimorph_root_dir(root_cfg: Dict[str, Any], cfg_parent_dir: Path) -> Path:
+    configured_root_raw = str(
+        root_cfg.get("omnimorph_root_dir", root_cfg.get("humanoid_rl_root_dir", ""))
+    ).strip()
+    if not configured_root_raw:
+        return cfg_parent_dir.parent
+    candidate = Path(expand_path_variables(configured_root_raw, {}, strict=True))
+    if not candidate.is_absolute():
+        candidate = cfg_parent_dir / candidate
+    return candidate
+
+
+def load_path_variables(root_cfg: Dict[str, Any], cfg_path: Path) -> Dict[str, str]:
+    variables: Dict[str, str] = {}
+    resolved_root_dir = resolve_configured_omnimorph_root_dir(root_cfg, cfg_path.parent)
+    variables["omnimorph_root_dir"] = str(resolved_root_dir.resolve())
+    variables["humanoid_rl_root_dir"] = variables["omnimorph_root_dir"]
+    variables["rl_cfg_dir"] = str(cfg_path.parent.resolve())
+
+    raw_path_variables = root_cfg.get("path_variables")
+    if not isinstance(raw_path_variables, dict):
+        return variables
+
+    pending: Dict[str, str] = {}
+    for key, value in raw_path_variables.items():
+        key_str = str(key).strip()
+        value_str = str(value).strip()
+        if key_str and value_str:
+            pending[key_str] = value_str
+
+    for raw_value in pending.values():
+        for placeholder_key in collect_path_variable_placeholders(raw_value):
+            env_value = os.environ.get(placeholder_key)
+            if env_value and placeholder_key not in variables:
+                variables[placeholder_key] = env_value
+
+    for _ in range(len(pending) + 2):
+        if not pending:
+            break
+        progress = False
+        for key in list(pending.keys()):
+            expanded = expand_path_variables(pending[key], variables, strict=False)
+            if "${" in expanded:
+                continue
+            value_path = Path(expanded)
+            if not value_path.is_absolute():
+                value_path = cfg_path.parent / value_path
+            variables[key] = str(value_path.resolve())
+            del pending[key]
+            progress = True
+        if not progress:
+            break
+
+    if pending:
+        first_key = next(iter(pending))
+        raise RuntimeError(
+            f"failed to resolve path_variables entry '{first_key}': unresolved placeholder chain in '{pending[first_key]}'"
+        )
+
+    return variables
+
+
 def validate_exact_token_order(
     values: Sequence[Any],
     expected_tokens: Sequence[str],
@@ -283,8 +388,8 @@ def validate_exact_token_order(
     return normalized
 
 
-def resolve_path(raw: str, root_dir: Path) -> Path:
-    path = Path(raw)
+def resolve_path(raw: str, root_dir: Path, path_variables: Optional[Dict[str, str]] = None) -> Path:
+    path = Path(expand_path_variables(raw, path_variables or {}, strict=True))
     if path.is_absolute():
         return path
     return root_dir / path
@@ -293,6 +398,7 @@ def resolve_path(raw: str, root_dir: Path) -> Path:
 def validate_logging_config(
     root_cfg: Dict[str, Any],
     root_dir: Path,
+    path_variables: Dict[str, str],
     issues: IssueCollector,
 ) -> None:
     logging_cfg = to_dict(root_cfg.get("logging"))
@@ -314,7 +420,7 @@ def validate_logging_config(
     if not output_dir_raw:
         issues.error("global", "logging.output_dir is required")
     else:
-        output_dir = resolve_path(output_dir_raw, root_dir)
+        output_dir = resolve_path(output_dir_raw, root_dir, path_variables)
         parent = output_dir.parent
         if not parent.exists():
             issues.warn("global", f"logging.output_dir parent does not exist yet: {parent}")
@@ -559,6 +665,7 @@ def load_rl_cfg(path: Path) -> Dict[str, Any]:
 def get_config_file_map(
     root_cfg: Dict[str, Any],
     cfg_path: Path,
+    path_variables: Dict[str, str],
     issues: IssueCollector,
 ) -> Dict[str, Path]:
     raw = root_cfg.get("config_files")
@@ -581,7 +688,7 @@ def get_config_file_map(
             issues.error("global", f"config_files['{section}'] must not be empty")
             continue
 
-        resolved = resolve_path(raw_path, cfg_path.parent).resolve()
+        resolved = resolve_path(raw_path, cfg_path.parent, path_variables).resolve()
         if resolved in seen_paths and seen_paths[resolved] != section:
             issues.error(
                 "global",
@@ -596,11 +703,12 @@ def get_config_file_map(
 def load_profile_section_cfg(
     cfg_path: Path,
     root_cfg: Dict[str, Any],
+    path_variables: Dict[str, str],
     section_name: str,
     issues: IssueCollector,
     context: str,
 ) -> Tuple[Dict[str, Any], Optional[Path]]:
-    config_files = get_config_file_map(root_cfg, cfg_path, issues)
+    config_files = get_config_file_map(root_cfg, cfg_path, path_variables, issues)
     profile_path = config_files.get(section_name)
     if profile_path is None:
         issues.error(context, f"config_files is missing mapping for config section '{section_name}'")
@@ -646,21 +754,29 @@ def get_mode_profile_specs(root_cfg: Dict[str, Any]) -> List[Tuple[int, str, str
     return [(0, "sim2real", "mode_0")]
 
 
-def get_policy_file_path(section_cfg: Dict[str, Any], root_dir: Path) -> Path:
+def get_policy_file_path(
+    section_cfg: Dict[str, Any],
+    root_dir: Path,
+    path_variables: Dict[str, str],
+) -> Path:
     policy_name = str(section_cfg.get("policy_name", ""))
     policy_path_raw = str(section_cfg.get("policy_path", ""))
     policy_file_raw = str(section_cfg.get("policy_file", ""))
     if policy_path_raw:
-        return resolve_path(policy_path_raw, root_dir)
+        return resolve_path(policy_path_raw, root_dir, path_variables)
     if policy_file_raw:
-        return resolve_path(policy_file_raw, root_dir)
+        return resolve_path(policy_file_raw, root_dir, path_variables)
     return root_dir / "policies" / f"{policy_name}.onnx"
 
 
-def get_manifest_path(section_cfg: Dict[str, Any], root_dir: Path) -> Path:
+def get_manifest_path(
+    section_cfg: Dict[str, Any],
+    root_dir: Path,
+    path_variables: Dict[str, str],
+) -> Path:
     raw_manifest_path = str(section_cfg.get("observation_manifest_path", ""))
     if raw_manifest_path:
-        candidate = resolve_path(raw_manifest_path, root_dir)
+        candidate = resolve_path(raw_manifest_path, root_dir, path_variables)
     else:
         manifest_file = str(section_cfg.get("observation_manifest_file", "observation_manifest.yaml"))
         candidate = root_dir / "config" / manifest_file
@@ -669,13 +785,17 @@ def get_manifest_path(section_cfg: Dict[str, Any], root_dir: Path) -> Path:
     return root_dir / "config" / "observation_manifest.yaml"
 
 
-def get_reference_motion_path(section_cfg: Dict[str, Any], root_dir: Path) -> Path:
+def get_reference_motion_path(
+    section_cfg: Dict[str, Any],
+    root_dir: Path,
+    path_variables: Dict[str, str],
+) -> Path:
     reference_path_raw = str(section_cfg.get("reference_motion_path", ""))
     if reference_path_raw:
-        return resolve_path(reference_path_raw, root_dir)
+        return resolve_path(reference_path_raw, root_dir, path_variables)
     reference_file_raw = str(section_cfg.get("reference_motion_file", ""))
     if reference_file_raw:
-        return resolve_path(reference_file_raw, root_dir)
+        return resolve_path(reference_file_raw, root_dir, path_variables)
     return root_dir / "reference_motion" / "reference_motion.txt"
 
 
@@ -1351,6 +1471,7 @@ def check_source_contract(
 def check_reference_contract(
     section_cfg: Dict[str, Any],
     root_dir: Path,
+    path_variables: Dict[str, str],
     required_reference_features: Dict[str, bool],
     reference_order: List[str],
     issues: IssueCollector,
@@ -1377,7 +1498,7 @@ def check_reference_contract(
         return
 
     if reference_source in {"file", "auto"}:
-        reference_path = get_reference_motion_path(section_cfg, root_dir)
+        reference_path = get_reference_motion_path(section_cfg, root_dir, path_variables)
         if not reference_path.exists():
             issues.error(context, f"reference motion file not found: {reference_path}")
             return
@@ -1461,6 +1582,7 @@ def check_reference_contract(
 def check_named_body_layout_contract(
     section_cfg: Dict[str, Any],
     root_dir: Path,
+    path_variables: Dict[str, str],
     required_reference_features: Dict[str, bool],
     issues: IssueCollector,
     context: str,
@@ -1476,7 +1598,7 @@ def check_named_body_layout_contract(
     file_body_names: List[str] = []
     file_anchor = ""
     if reference_enabled and reference_source in {"file", "auto"}:
-        reference_path = get_reference_motion_path(section_cfg, root_dir)
+        reference_path = get_reference_motion_path(section_cfg, root_dir, path_variables)
         if reference_path.exists() and reference_path.suffix.lower() in {".yaml", ".yml", ".json"}:
             try:
                 with reference_path.open("r", encoding="utf-8") as f:
@@ -1959,6 +2081,7 @@ def validate_profile(
     cfg_path: Path,
     root_cfg: Dict[str, Any],
     root_dir: Path,
+    path_variables: Dict[str, str],
     mode_id: int,
     section_name: str,
     tag: str,
@@ -1966,7 +2089,9 @@ def validate_profile(
     skip_onnx: bool,
 ) -> None:
     context = f"profile(mode_id={mode_id}, tag={tag}, section={section_name})"
-    section_cfg, _ = load_profile_section_cfg(cfg_path, root_cfg, section_name, issues, context)
+    section_cfg, _ = load_profile_section_cfg(
+        cfg_path, root_cfg, path_variables, section_name, issues, context
+    )
     if not section_cfg:
         return
     if "save_data_flag" in section_cfg:
@@ -2107,13 +2232,14 @@ def validate_profile(
     )
     validate_robot_cfg_against_global_joint_order(section_cfg, global_joint_order, issues, context)
     validate_zero_pose_contract(section_cfg, global_joint_order, issues, context)
-    manifest_path = get_manifest_path(section_cfg, root_dir)
+    manifest_path = get_manifest_path(section_cfg, root_dir, path_variables)
     manifest_terms = load_manifest_terms(manifest_path, issues, context)
     required_reference_features = collect_required_reference_features(manifest_path, issues, context)
     check_source_contract(section_cfg, required_reference_features, issues, context)
     check_reference_contract(
         section_cfg,
         root_dir,
+        path_variables,
         required_reference_features,
         reference_order,
         issues,
@@ -2122,6 +2248,7 @@ def validate_profile(
     check_named_body_layout_contract(
         section_cfg,
         root_dir,
+        path_variables,
         required_reference_features,
         issues,
         context,
@@ -2168,7 +2295,7 @@ def validate_profile(
         "onnx_inter_threads": as_int(section_cfg.get("onnx_inter_threads", 1), 1),
     }
 
-    policy_path = get_policy_file_path(section_cfg, root_dir)
+    policy_path = get_policy_file_path(section_cfg, root_dir, path_variables)
     check_onnx_contract(policy_path, main_model_cfg, issues, context + " main_model", skip_onnx)
 
     for spec in to_list(section_cfg.get("external_observations")):
@@ -2196,9 +2323,9 @@ def validate_profile(
         sub_path_raw = str(node.get("policy_path", ""))
         sub_file_raw = str(node.get("policy_file", ""))
         if sub_path_raw:
-            sub_path = resolve_path(sub_path_raw, root_dir)
+            sub_path = resolve_path(sub_path_raw, root_dir, path_variables)
         elif sub_file_raw:
-            sub_path = resolve_path(sub_file_raw, root_dir)
+            sub_path = resolve_path(sub_file_raw, root_dir, path_variables)
         else:
             issues.error(sub_context, "missing policy_path/policy_file")
             continue
@@ -2258,12 +2385,18 @@ def main() -> int:
         print(f"[ERROR] failed to parse rl_cfg: {exc}")
         return 2
 
+    try:
+        path_variables = load_path_variables(root_cfg, cfg_path)
+    except Exception as exc:
+        print(f"[ERROR] failed to resolve path_variables: {exc}")
+        return 2
+
     root_dir_raw = str(root_cfg.get("omnimorph_root_dir", root_cfg.get("humanoid_rl_root_dir", "")))
     if not root_dir_raw:
         issues.warn("global", "missing omnimorph_root_dir in rl_cfg, fallback to local rl_master path")
         root_dir = cfg_path.parent.parent
     else:
-        configured_root = resolve_path(root_dir_raw, cfg_path.parent)
+        configured_root = resolve_path(root_dir_raw, cfg_path.parent, path_variables)
         configured_root_error: OSError | None = None
         try:
             configured_root_exists = configured_root.exists()
@@ -2287,13 +2420,13 @@ def main() -> int:
                     f"fallback to local path: {root_dir}",
                 )
 
-    validate_logging_config(root_cfg, root_dir, issues)
+    validate_logging_config(root_cfg, root_dir, path_variables, issues)
 
     specs = get_mode_profile_specs(root_cfg)
     if not specs:
         issues.error("global", "no deploy mode profiles resolved")
 
-    config_files = get_config_file_map(root_cfg, cfg_path, issues)
+    config_files = get_config_file_map(root_cfg, cfg_path, path_variables, issues)
     selected_specs: List[Tuple[int, str, str]] = []
     selected_sections: set[str] = set()
     for mode_id, section, tag in specs:
@@ -2321,6 +2454,7 @@ def main() -> int:
             cfg_path=cfg_path,
             root_cfg=root_cfg,
             root_dir=root_dir,
+            path_variables=path_variables,
             mode_id=mode_id,
             section_name=section,
             tag=tag,

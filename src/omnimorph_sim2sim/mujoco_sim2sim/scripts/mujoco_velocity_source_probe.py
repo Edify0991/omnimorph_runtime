@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -60,6 +61,56 @@ def _resolve_config_value(path: Path) -> Dict[str, object]:
     return params if isinstance(params, dict) else {}
 
 
+def _expand_path_variables(raw: str, variables: Dict[str, str]) -> str:
+    out = raw
+    search_pos = 0
+    while True:
+        open_pos = out.find("${", search_pos)
+        if open_pos < 0:
+            break
+        close_pos = out.find("}", open_pos + 2)
+        if close_pos < 0:
+            raise RuntimeError(f"unterminated path variable placeholder in: {raw}")
+        key = out[open_pos + 2 : close_pos]
+        replacement = variables.get(key) or os.environ.get(key)
+        if replacement is None:
+            raise RuntimeError(f"unknown path variable '${{{key}}}' in: {raw}")
+        out = out[:open_pos] + replacement + out[close_pos + 1 :]
+        search_pos = open_pos + len(replacement)
+    return out
+
+
+def _load_rl_cfg_path_variables(rl_cfg_path: Path) -> Dict[str, str]:
+    content = yaml.safe_load(rl_cfg_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(content, dict):
+        return {}
+    variables: Dict[str, str] = {"rl_cfg_dir": str(rl_cfg_path.parent.resolve())}
+    raw_path_variables = content.get("path_variables")
+    if not isinstance(raw_path_variables, dict):
+        return variables
+
+    pending = {
+        str(key).strip(): str(value).strip()
+        for key, value in raw_path_variables.items()
+        if str(key).strip() and str(value).strip()
+    }
+    for _ in range(len(pending) + 2):
+        if not pending:
+            break
+        progress = False
+        for key in list(pending.keys()):
+            expanded = _expand_path_variables(pending[key], variables)
+            value_path = Path(expanded)
+            if not value_path.is_absolute():
+                value_path = rl_cfg_path.parent / value_path
+            variables[key] = str(value_path.resolve())
+            del pending[key]
+            progress = True
+        if not progress:
+            break
+    return variables
+
+
 @dataclass
 class ProbeConfig:
     model_path: str
@@ -67,8 +118,20 @@ class ProbeConfig:
     base_free_joint_name: str
 
 
-def _load_probe_config(sim2sim_config_path: Optional[str], model_path: Optional[str], base_body_name: Optional[str], base_free_joint_name: Optional[str]) -> ProbeConfig:
+def _load_probe_config(
+    sim2sim_config_path: Optional[str],
+    rl_cfg_path: Optional[str],
+    model_path: Optional[str],
+    base_body_name: Optional[str],
+    base_free_joint_name: Optional[str],
+) -> ProbeConfig:
     params: Dict[str, object] = {}
+    path_variables: Dict[str, str] = {}
+    if rl_cfg_path:
+        resolved_rl_cfg_path = Path(rl_cfg_path).expanduser().resolve()
+        if not resolved_rl_cfg_path.exists():
+            raise FileNotFoundError(f"rl_cfg not found: {resolved_rl_cfg_path}")
+        path_variables = _load_rl_cfg_path_variables(resolved_rl_cfg_path)
     if sim2sim_config_path:
         config_path = Path(sim2sim_config_path).expanduser().resolve()
         if not config_path.exists():
@@ -81,6 +144,8 @@ def _load_probe_config(sim2sim_config_path: Optional[str], model_path: Optional[
 
     if not resolved_model_path:
         raise RuntimeError("model_path is empty. Provide --model-path or --sim2sim-config.")
+    if "${" in resolved_model_path:
+        resolved_model_path = _expand_path_variables(resolved_model_path, path_variables)
 
     return ProbeConfig(
         model_path=resolved_model_path,
@@ -309,6 +374,11 @@ def main() -> None:
         default="src/omnimorph_sim2sim/mujoco_sim2sim/config/jc01_amp_full_body_sim2sim.yaml",
         help="Optional MuJoCo sim2sim yaml used to resolve model_path/base names.",
     )
+    parser.add_argument(
+        "--rl-cfg",
+        default="",
+        help="Optional rl_cfg yaml used to expand ${...} placeholders in sim2sim config model_path.",
+    )
     parser.add_argument("--model-path", default="", help="Override MuJoCo model xml/mjb path.")
     parser.add_argument("--base-body-name", default="", help="Override base body name.")
     parser.add_argument("--base-free-joint-name", default="", help="Override base free joint name.")
@@ -316,6 +386,7 @@ def main() -> None:
 
     cfg = _load_probe_config(
         args.sim2sim_config,
+        args.rl_cfg or None,
         args.model_path or None,
         args.base_body_name or None,
         args.base_free_joint_name or None,

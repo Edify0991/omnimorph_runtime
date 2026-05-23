@@ -30,6 +30,37 @@ It is already being used for:
 - RL / AMP / BeyondMimic style policies
 - future diffusion or flow-matching style generative policies
 
+## Required Environment Variables
+
+The YAML configs use environment-variable placeholders for robot assets. `script/dev_env.sh`
+does not guess these paths for you anymore, because those directories are machine-specific.
+Set them explicitly before startup, and preserve them with `sudo -E` when a command needs root.
+
+JC01:
+
+```bash
+export OMNIMORPH_RUNTIME_ROOT=/abs/path/to/omnimorph_runtime
+export ROBOT_ASSETS_DIR=/abs/path/to/JC01-URDF-18所
+export MUJOCO_MODEL_PATH="${ROBOT_ASSETS_DIR}/scene_jingchu01.xml"
+```
+
+Unitree G1:
+
+```bash
+export OMNIMORPH_RUNTIME_ROOT=/abs/path/to/omnimorph_runtime
+export G1_PINOCCHIO_URDF=/abs/path/to/g1_29dof.urdf
+export G1_SCENE_XML=/abs/path/to/scene_29dof.xml
+export MUJOCO_MODEL_PATH="${G1_SCENE_XML}"
+```
+
+These variables are consumed here:
+
+- `src/omnimorph_rl_controller/rl_master/config/rl_cfg_jc01.yaml`: `${ROBOT_ASSETS_DIR}`
+- `src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml`: `${G1_PINOCCHIO_URDF}`, `${G1_SCENE_XML}`
+- sim2sim CLI examples below: `${MUJOCO_MODEL_PATH}`
+
+If you want this to persist across sessions, add those `export` lines to `~/.bashrc` or a machine-local startup file.
+
 ## Terminal Workflow
 
 ### Real robot
@@ -38,7 +69,7 @@ Terminal 1:
 
 ```bash
 source ./script/dev_env.sh
-sudo ./script/start_driver_jc01.sh  # JC01 only
+sudo -E ./script/start_driver_jc01.sh  # JC01 only
 ```
 
 For Unitree G1, Terminal 1 is the official Unitree low-level runtime/DDS check
@@ -53,21 +84,25 @@ Terminal 2:
 
 ```bash
 source ./script/dev_env.sh
-sudo ./script/start_imu_yesense.sh
+sudo -E ./script/start_imu_yesense.sh
 ```
 
 Terminal 3:
 
 ```bash
 source ./script/dev_env.sh
-./script/start_rl_solver.sh --ros-args -p startup_mode_id:=0
+sudo -E ./script/sim2real_runtime.sh --mode-id 0
+# Unitree G1:
+sudo -E ./script/start_rl_solver.sh \
+  --rl-cfg src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml \
+  --mode-id 0
 ```
 
 Terminal 4:
 
 ```bash
 source ./script/dev_env.sh
-sudo ./script/start_joylaunch.sh
+sudo -E ./script/start_joylaunch.sh
 ```
 
 Start policy manually:
@@ -78,11 +113,21 @@ ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000
 
 
 > Note: real-robot driver startup is robot-specific. JC01 uses the local shared-memory driver script. Unitree G1 uses the official Unitree runtime as the low-level driver; `RL_solver` connects to `lowstate` and `/lowcmd` in-process through `motor_io_backend: unitree_g1_dds`.
-
-> Before startup, set model-related variables in `rl_cfg_*.yaml` (`path_variables`) and avoid hard-coded absolute paths.
-### MuJoCo sim2sim (Python viewer fdrontend)
+### MuJoCo sim2sim (Python viewer frontend)
 
 Terminal 1:
+
+```bash
+ros2 run mujoco_sim2sim mujoco_sim_bridge --ros-args \
+  --params-file /path/to/omnimorph_runtime/src/omnimorph_sim2sim/mujoco_sim2sim/config/unitree_g1_beyondmimic_sim2sim.yaml \
+  -p rl_cfg_path:=/path/to/omnimorph_runtime/src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml \
+  -p startup_mode_id:=1 \
+  -p enable_viewer:=false \
+  -p enable_python_viewer_stream:=true \
+  -p enable_python_viewer_inspector:=true
+```
+
+Terminal 2:
 
 ```bash
 source ./script/dev_env.sh

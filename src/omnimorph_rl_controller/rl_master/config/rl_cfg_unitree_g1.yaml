@@ -110,13 +110,16 @@ deploy_mode_profiles:
   - mode_id: 0
     config_section: beyondmimic_g1_walk_full_body_w_state_estimation
     tag: g1_beyondmimic
+  - mode_id: 1
+    config_section: beyondmimic_g1_walk_full_body_wo_state_estimation
+    tag: g1_beyondmimic_wo_state_estimation
 
 config_files:
   beyondmimic_g1_walk_full_body_w_state_estimation: profiles/beyondmimic_g1_walk_full_body_w_state_estimation.yaml
+  beyondmimic_g1_walk_full_body_wo_state_estimation: profiles/beyondmimic_g1_walk_full_body_wo_state_estimation.yaml
 path_variables:
-  robot_assets_dir: ${ROBOT_ASSETS_DIR}
-  g1_pinocchio_urdf: ${robot_assets_dir}/g1_29dof.urdf
-  g1_scene_xml: ${robot_assets_dir}/scene_29dof.xml
+  g1_pinocchio_urdf: ${G1_PINOCCHIO_URDF}
+  g1_scene_xml: ${G1_SCENE_XML}
 
 runtime_process:
   controller:

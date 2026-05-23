@@ -145,7 +145,9 @@ not currently attached to an active `mode_id`.
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-./script/start_rl_solver.sh --ros-args -p startup_mode_id:=<mode_id>
+./script/start_rl_solver.sh \
+  --rl-cfg src/omnimorph_rl_controller/rl_master/config/rl_cfg_<robot>.yaml \
+  --mode-id <mode_id>
 ```
 
 Start the selected mode manually:
