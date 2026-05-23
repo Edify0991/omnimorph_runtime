@@ -292,6 +292,8 @@ beyondmimic_g1_walk_full_body_w_state_estimation:
     - right_wrist_yaw_joint
   source_contract:
     imu_input:
+      source_type: unitree_hg_lowstate
+      topic: lowstate
       payload: euler_compat
       euler_order: [roll, pitch, yaw]
       euler_unit: rad

@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <mutex>
+#include <system_error>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -87,9 +88,17 @@ public:
             rclcpp::QoS(rclcpp::KeepLast(10)).best_effort());
 
         executor_->add_node(node_);
-        spin_thread_ = std::thread([this] {
-            executor_->spin();
-        });
+        try
+        {
+            spin_thread_ = std::thread([this] {
+                executor_->spin();
+            });
+        }
+        catch (const std::system_error &e)
+        {
+            throw std::runtime_error(
+                std::string("failed to start Unitree G1 motor IO executor thread: ") + e.what());
+        }
 
         RCLCPP_INFO(
             node_->get_logger(),

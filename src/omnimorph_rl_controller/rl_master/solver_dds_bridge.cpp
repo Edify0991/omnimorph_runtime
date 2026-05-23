@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <system_error>
 #include <unordered_set>
 
 #include "rl_master/kinematics/joint_data.h"
@@ -97,20 +98,17 @@ std::array<float, 4> parseQuaternionFromImuMsg(
     const sensor_msgs::msg::Imu::SharedPtr &msg,
     const SourceContractImuInput &contract)
 {
-    const std::string quat_order = normalizeToken(contract.quat_order);
-    if (quat_order == "wxyz")
-    {
-        return {
-            static_cast<float>(msg->orientation.y),
-            static_cast<float>(msg->orientation.z),
-            static_cast<float>(msg->orientation.w),
-            static_cast<float>(msg->orientation.x)};
-    }
-    return {
+    const std::array<float, 4> raw_quat{
         static_cast<float>(msg->orientation.x),
         static_cast<float>(msg->orientation.y),
         static_cast<float>(msg->orientation.z),
         static_cast<float>(msg->orientation.w)};
+    const std::string quat_order = normalizeToken(contract.quat_order);
+    if (quat_order == "wxyz")
+    {
+        return {raw_quat[1], raw_quat[2], raw_quat[3], raw_quat[0]};
+    }
+    return raw_quat;
 }
 
 std::array<float, 4> parseQuaternionFromOdomMsg(const nav_msgs::msg::Odometry::SharedPtr &msg)
@@ -121,6 +119,25 @@ std::array<float, 4> parseQuaternionFromOdomMsg(const nav_msgs::msg::Odometry::S
         static_cast<float>(msg->pose.pose.orientation.z),
         static_cast<float>(msg->pose.pose.orientation.w)};
 }
+
+#ifdef RL_MASTER_HAS_UNITREE_HG
+std::array<float, 4> parseQuaternionFromUnitreeHgImu(
+    const unitree_hg::msg::IMUState &msg,
+    const SourceContractImuInput &contract)
+{
+    const std::array<float, 4> raw_quat{
+        static_cast<float>(msg.quaternion[0]),
+        static_cast<float>(msg.quaternion[1]),
+        static_cast<float>(msg.quaternion[2]),
+        static_cast<float>(msg.quaternion[3])};
+    const std::string quat_order = normalizeToken(contract.quat_order);
+    if (quat_order == "wxyz")
+    {
+        return {raw_quat[1], raw_quat[2], raw_quat[3], raw_quat[0]};
+    }
+    return raw_quat;
+}
+#endif
 }
 
 SolverDdsBridge::~SolverDdsBridge()
@@ -191,98 +208,6 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
             has_runtime_command_ = true;
         });
 
-    imu_sub_ = node_->create_subscription<sensor_msgs::msg::Imu>(
-        "/imu/yesense",
-        rclcpp::QoS(rclcpp::KeepLast(30)).best_effort(),
-        [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
-            SourceContract contract_snapshot;
-            {
-                std::lock_guard<std::mutex> lock(imu_mutex_);
-                contract_snapshot = source_contract_;
-            }
-
-            const auto &imu_contract = contract_snapshot.imu_input;
-            std::array<float, 3> raw_ang_vel{
-                static_cast<float>(msg->angular_velocity.x),
-                static_cast<float>(msg->angular_velocity.y),
-                static_cast<float>(msg->angular_velocity.z)};
-            std::array<float, 3> raw_lin_acc{
-                static_cast<float>(msg->linear_acceleration.x),
-                static_cast<float>(msg->linear_acceleration.y),
-                static_cast<float>(msg->linear_acceleration.z)};
-            std::array<float, 3> canonical_ang_vel = reorderVector3(
-                raw_ang_vel,
-                imu_contract.ang_vel_order,
-                {"x", "y", "z"});
-            std::array<float, 3> canonical_lin_acc = raw_lin_acc;
-
-            std::array<float, 4> canonical_quat{0.0f, 0.0f, 0.0f, 1.0f};
-            const std::string payload = normalizeToken(imu_contract.payload);
-            if (payload == "quaternion")
-            {
-                canonical_quat = parseQuaternionFromImuMsg(msg, imu_contract);
-            }
-            else
-            {
-                std::array<float, 3> raw_euler{
-                    static_cast<float>(msg->orientation.x),
-                    static_cast<float>(msg->orientation.y),
-                    static_cast<float>(msg->orientation.z)};
-                std::array<float, 3> canonical_rpy = reorderVector3(
-                    raw_euler,
-                    imu_contract.euler_order,
-                    {"roll", "pitch", "yaw"});
-                if (normalizeToken(imu_contract.euler_unit) == "deg")
-                {
-                    constexpr float kDegToRad = kPi / 180.0f;
-                    for (float &value : canonical_rpy)
-                    {
-                        value *= kDegToRad;
-                    }
-                }
-                canonical_quat = rpyToQuat(canonical_rpy[0], canonical_rpy[1], canonical_rpy[2]);
-            }
-
-            std::array<float, 4> alignment_quat = rpyToQuat(
-                imu_contract.frame_alignment_rpy.size() > 0 ? imu_contract.frame_alignment_rpy[0] : 0.0f,
-                imu_contract.frame_alignment_rpy.size() > 1 ? imu_contract.frame_alignment_rpy[1] : 0.0f,
-                imu_contract.frame_alignment_rpy.size() > 2 ? imu_contract.frame_alignment_rpy[2] : 0.0f);
-            canonical_quat = quatMultiply(canonical_quat, alignment_quat);
-            canonical_ang_vel = rotateVectorByQuat(canonical_ang_vel, alignment_quat);
-            canonical_lin_acc = rotateVectorByQuat(canonical_lin_acc, alignment_quat);
-
-            const std::vector<float> rpy_vec = quaternion_to_euler_array({
-                canonical_quat[0], canonical_quat[1], canonical_quat[2], canonical_quat[3]});
-            std::array<float, 3> canonical_rpy{
-                rpy_vec.size() > 0 ? rpy_vec[0] : 0.0f,
-                rpy_vec.size() > 1 ? rpy_vec[1] : 0.0f,
-                rpy_vec.size() > 2 ? rpy_vec[2] : 0.0f};
-
-            std::function<void(
-                const std::array<float, 3> &,
-                const std::array<float, 4> &,
-                const std::array<float, 3> &,
-                double)> callback;
-            {
-                std::lock_guard<std::mutex> lock(imu_mutex_);
-                imu_ang_vel_ = canonical_ang_vel;
-                imu_lin_acc_ = canonical_lin_acc;
-                imu_quat_ = canonical_quat;
-                imu_rpy_ = canonical_rpy;
-                has_imu_sample_ = true;
-                callback = imu_sample_callback_;
-            }
-
-            if (callback)
-            {
-                callback(
-                    canonical_ang_vel,
-                    canonical_quat,
-                    canonical_rpy,
-                    rl_master::monotonicTimeSec());
-            }
-        });
-
     {
         std::lock_guard<std::mutex> lock(telemetry_mutex_);
         telemetry_config_ = telemetry_config;
@@ -295,9 +220,18 @@ void SolverDdsBridge::connect(const StateTelemetryConfig &telemetry_config)
     stop_requested_.store(false);
 
     executor_->add_node(node_);
+    configureImuSubscription();
     configureExternalObservationSubscriptions();
-    executor_thread_ = std::thread([this]() { executorLoop(); });
-    telemetry_thread_ = std::thread([this]() { telemetryLoop(); });
+    try
+    {
+        executor_thread_ = std::thread([this]() { executorLoop(); });
+        telemetry_thread_ = std::thread([this]() { telemetryLoop(); });
+    }
+    catch (const std::system_error &e)
+    {
+        throw std::runtime_error(
+            std::string("failed to start SolverDdsBridge worker thread: ") + e.what());
+    }
 }
 
 void SolverDdsBridge::disconnect()
@@ -325,6 +259,10 @@ void SolverDdsBridge::disconnect()
     }
 
     imu_sub_.reset();
+#ifdef RL_MASTER_HAS_UNITREE_HG
+    unitree_lowstate_sub_.reset();
+    unitree_imu_state_sub_.reset();
+#endif
     odom_sub_.reset();
     external_observation_subs_.clear();
     mode_control_sub_.reset();
@@ -350,7 +288,240 @@ void SolverDdsBridge::updateSourceContract(const SourceContract &source_contract
         std::lock_guard<std::mutex> lock(imu_mutex_);
         source_contract_ = source_contract;
     }
+    configureImuSubscription();
     configureOdomSubscription();
+}
+
+void SolverDdsBridge::configureImuSubscription()
+{
+    if (!node_)
+    {
+        return;
+    }
+
+    SourceContract contract_snapshot;
+    {
+        std::lock_guard<std::mutex> lock(imu_mutex_);
+        contract_snapshot = source_contract_;
+    }
+
+    const auto &imu_contract = contract_snapshot.imu_input;
+    const std::string source_type = normalizeToken(imu_contract.source_type);
+    const std::string topic = imu_contract.topic;
+
+    if (topic.empty())
+    {
+        imu_sub_.reset();
+#ifdef RL_MASTER_HAS_UNITREE_HG
+        unitree_lowstate_sub_.reset();
+        unitree_imu_state_sub_.reset();
+#endif
+        active_imu_topic_.clear();
+        active_imu_source_type_.clear();
+        std::lock_guard<std::mutex> lock(imu_mutex_);
+        has_imu_sample_ = false;
+        return;
+    }
+    if (active_imu_source_type_ == source_type && active_imu_topic_ == topic)
+    {
+        return;
+    }
+
+    imu_sub_.reset();
+#ifdef RL_MASTER_HAS_UNITREE_HG
+    unitree_lowstate_sub_.reset();
+    unitree_imu_state_sub_.reset();
+#endif
+    active_imu_source_type_ = source_type;
+    active_imu_topic_ = topic;
+
+    auto publish_imu_sample = [this](
+                                  const SourceContractImuInput &contract,
+                                  const std::array<float, 3> &raw_ang_vel,
+                                  const std::array<float, 3> &raw_lin_acc,
+                                  const std::array<float, 4> &raw_quat_xyzw,
+                                  const std::array<float, 3> &raw_euler_rpy,
+                                  bool has_quat) {
+        std::array<float, 3> canonical_ang_vel = reorderVector3(
+            raw_ang_vel,
+            contract.ang_vel_order,
+            {"x", "y", "z"});
+        std::array<float, 3> canonical_lin_acc = raw_lin_acc;
+
+        std::array<float, 4> canonical_quat{0.0f, 0.0f, 0.0f, 1.0f};
+        const std::string payload = normalizeToken(contract.payload);
+        if (payload == "quaternion" && has_quat)
+        {
+            canonical_quat = raw_quat_xyzw;
+        }
+        else
+        {
+            std::array<float, 3> canonical_rpy = reorderVector3(
+                raw_euler_rpy,
+                contract.euler_order,
+                {"roll", "pitch", "yaw"});
+            if (normalizeToken(contract.euler_unit) == "deg")
+            {
+                constexpr float kDegToRad = kPi / 180.0f;
+                for (float &value : canonical_rpy)
+                {
+                    value *= kDegToRad;
+                }
+            }
+            canonical_quat = rpyToQuat(canonical_rpy[0], canonical_rpy[1], canonical_rpy[2]);
+        }
+
+        std::array<float, 4> alignment_quat = rpyToQuat(
+            contract.frame_alignment_rpy.size() > 0 ? contract.frame_alignment_rpy[0] : 0.0f,
+            contract.frame_alignment_rpy.size() > 1 ? contract.frame_alignment_rpy[1] : 0.0f,
+            contract.frame_alignment_rpy.size() > 2 ? contract.frame_alignment_rpy[2] : 0.0f);
+        canonical_quat = quatMultiply(canonical_quat, alignment_quat);
+        canonical_ang_vel = rotateVectorByQuat(canonical_ang_vel, alignment_quat);
+        canonical_lin_acc = rotateVectorByQuat(canonical_lin_acc, alignment_quat);
+
+        const std::vector<float> rpy_vec = quaternion_to_euler_array({
+            canonical_quat[0], canonical_quat[1], canonical_quat[2], canonical_quat[3]});
+        std::array<float, 3> canonical_rpy{
+            rpy_vec.size() > 0 ? rpy_vec[0] : 0.0f,
+            rpy_vec.size() > 1 ? rpy_vec[1] : 0.0f,
+            rpy_vec.size() > 2 ? rpy_vec[2] : 0.0f};
+
+        std::function<void(
+            const std::array<float, 3> &,
+            const std::array<float, 4> &,
+            const std::array<float, 3> &,
+            double)> callback;
+        {
+            std::lock_guard<std::mutex> lock(imu_mutex_);
+            imu_ang_vel_ = canonical_ang_vel;
+            imu_lin_acc_ = canonical_lin_acc;
+            imu_quat_ = canonical_quat;
+            imu_rpy_ = canonical_rpy;
+            has_imu_sample_ = true;
+            callback = imu_sample_callback_;
+        }
+
+        if (callback)
+        {
+            callback(
+                canonical_ang_vel,
+                canonical_quat,
+                canonical_rpy,
+                rl_master::monotonicTimeSec());
+        }
+    };
+
+    if (source_type == "sensor_msgs_imu")
+    {
+        imu_sub_ = node_->create_subscription<sensor_msgs::msg::Imu>(
+            topic,
+            rclcpp::QoS(rclcpp::KeepLast(30)).best_effort(),
+            [this, publish_imu_sample](const sensor_msgs::msg::Imu::SharedPtr msg) {
+                SourceContract contract_snapshot;
+                {
+                    std::lock_guard<std::mutex> lock(imu_mutex_);
+                    contract_snapshot = source_contract_;
+                }
+
+                publish_imu_sample(
+                    contract_snapshot.imu_input,
+                    {
+                        static_cast<float>(msg->angular_velocity.x),
+                        static_cast<float>(msg->angular_velocity.y),
+                        static_cast<float>(msg->angular_velocity.z),
+                    },
+                    {
+                        static_cast<float>(msg->linear_acceleration.x),
+                        static_cast<float>(msg->linear_acceleration.y),
+                        static_cast<float>(msg->linear_acceleration.z),
+                    },
+                    parseQuaternionFromImuMsg(msg, contract_snapshot.imu_input),
+                    {
+                        static_cast<float>(msg->orientation.x),
+                        static_cast<float>(msg->orientation.y),
+                        static_cast<float>(msg->orientation.z),
+                    },
+                    true);
+            });
+        return;
+    }
+
+#ifdef RL_MASTER_HAS_UNITREE_HG
+    if (source_type == "unitree_hg_lowstate")
+    {
+        unitree_lowstate_sub_ = node_->create_subscription<unitree_hg::msg::LowState>(
+            topic,
+            rclcpp::QoS(rclcpp::KeepLast(30)).best_effort(),
+            [this, publish_imu_sample](const unitree_hg::msg::LowState::SharedPtr msg) {
+                SourceContract contract_snapshot;
+                {
+                    std::lock_guard<std::mutex> lock(imu_mutex_);
+                    contract_snapshot = source_contract_;
+                }
+
+                publish_imu_sample(
+                    contract_snapshot.imu_input,
+                    {
+                        static_cast<float>(msg->imu_state.gyroscope[0]),
+                        static_cast<float>(msg->imu_state.gyroscope[1]),
+                        static_cast<float>(msg->imu_state.gyroscope[2]),
+                    },
+                    {
+                        static_cast<float>(msg->imu_state.accelerometer[0]),
+                        static_cast<float>(msg->imu_state.accelerometer[1]),
+                        static_cast<float>(msg->imu_state.accelerometer[2]),
+                    },
+                    parseQuaternionFromUnitreeHgImu(msg->imu_state, contract_snapshot.imu_input),
+                    {
+                        static_cast<float>(msg->imu_state.rpy[0]),
+                        static_cast<float>(msg->imu_state.rpy[1]),
+                        static_cast<float>(msg->imu_state.rpy[2]),
+                    },
+                    true);
+            });
+        return;
+    }
+    if (source_type == "unitree_hg_imu_state")
+    {
+        unitree_imu_state_sub_ = node_->create_subscription<unitree_hg::msg::IMUState>(
+            topic,
+            rclcpp::QoS(rclcpp::KeepLast(30)).best_effort(),
+            [this, publish_imu_sample](const unitree_hg::msg::IMUState::SharedPtr msg) {
+                SourceContract contract_snapshot;
+                {
+                    std::lock_guard<std::mutex> lock(imu_mutex_);
+                    contract_snapshot = source_contract_;
+                }
+
+                publish_imu_sample(
+                    contract_snapshot.imu_input,
+                    {
+                        static_cast<float>(msg->gyroscope[0]),
+                        static_cast<float>(msg->gyroscope[1]),
+                        static_cast<float>(msg->gyroscope[2]),
+                    },
+                    {
+                        static_cast<float>(msg->accelerometer[0]),
+                        static_cast<float>(msg->accelerometer[1]),
+                        static_cast<float>(msg->accelerometer[2]),
+                    },
+                    parseQuaternionFromUnitreeHgImu(*msg, contract_snapshot.imu_input),
+                    {
+                        static_cast<float>(msg->rpy[0]),
+                        static_cast<float>(msg->rpy[1]),
+                        static_cast<float>(msg->rpy[2]),
+                    },
+                    true);
+            });
+        return;
+    }
+#endif
+
+    RCLCPP_ERROR(
+        node_->get_logger(),
+        "unsupported IMU source_type '%s' for topic '%s'",
+        source_type.c_str(),
+        topic.c_str());
 }
 
 void SolverDdsBridge::updateExternalObservationSpecs(const std::vector<ExternalObservationSpec> &specs)

@@ -19,6 +19,10 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
+#ifdef RL_MASTER_HAS_UNITREE_HG
+#include <unitree_hg/msg/imu_state.hpp>
+#include <unitree_hg/msg/low_state.hpp>
+#endif
 
 #include "dds_protocol.h"
 #include "math_tool.h"
@@ -76,6 +80,7 @@ private:
     static std::array<float, 4> rpyToQuat(float roll, float pitch, float yaw);
     void executorLoop();
     void telemetryLoop();
+    void configureImuSubscription();
     void configureOdomSubscription();
     void configureExternalObservationSubscriptions();
 
@@ -86,6 +91,10 @@ private:
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_control_sub_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr runtime_command_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+#ifdef RL_MASTER_HAS_UNITREE_HG
+    rclcpp::Subscription<unitree_hg::msg::LowState>::SharedPtr unitree_lowstate_sub_;
+    rclcpp::Subscription<unitree_hg::msg::IMUState>::SharedPtr unitree_imu_state_sub_;
+#endif
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     std::vector<rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr> external_observation_subs_;
 
@@ -113,6 +122,8 @@ private:
     bool has_odom_pose_ = false;
     std::array<float, 3> odom_lin_vel_w_{0.0f, 0.0f, 0.0f};
     bool has_odom_lin_vel_ = false;
+    std::string active_imu_topic_;
+    std::string active_imu_source_type_;
     std::string active_odom_topic_;
     SourceContract source_contract_{};
     std::mutex external_observation_mutex_;

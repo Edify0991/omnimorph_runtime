@@ -715,6 +715,8 @@ struct OnnxInputSpec
 
 struct SourceContractImuInput
 {
+    std::string source_type = "sensor_msgs_imu"; // sensor_msgs_imu / unitree_hg_lowstate / unitree_hg_imu_state
+    std::string topic = "/imu/yesense";
     std::string payload = "euler_compat"; // euler_compat / quaternion
     std::vector<std::string> euler_order{"roll", "pitch", "yaw"};
     std::string euler_unit = "rad";       // rad / deg
@@ -1706,6 +1708,10 @@ public:
 
             const YAML::Node source_contract_cfg = cfg["source_contract"];
             const YAML::Node imu_contract_cfg = source_contract_cfg["imu_input"];
+            source_contract.imu_input.source_type = yamlReadOr<std::string>(
+                imu_contract_cfg, "source_type", source_contract.imu_input.source_type);
+            source_contract.imu_input.topic = yamlReadOr<std::string>(
+                imu_contract_cfg, "topic", source_contract.imu_input.topic);
             source_contract.imu_input.payload = yamlReadOr<std::string>(
                 imu_contract_cfg, "payload", source_contract.imu_input.payload);
             source_contract.imu_input.euler_order = yamlReadOr<std::vector<std::string>>(
@@ -1898,6 +1904,18 @@ public:
                 source_contract.imu_input.ang_vel_order,
                 {"x", "y", "z"},
                 "source_contract.imu_input.ang_vel_order");
+            if (source_contract.imu_input.source_type != "sensor_msgs_imu" &&
+                source_contract.imu_input.source_type != "unitree_hg_lowstate" &&
+                source_contract.imu_input.source_type != "unitree_hg_imu_state")
+            {
+                throw std::runtime_error(
+                    "source_contract.imu_input.source_type must be "
+                    "'sensor_msgs_imu', 'unitree_hg_lowstate', or 'unitree_hg_imu_state'");
+            }
+            if (source_contract.imu_input.topic.empty())
+            {
+                throw std::runtime_error("source_contract.imu_input.topic must not be empty");
+            }
             if (source_contract.imu_input.payload != "euler_compat" &&
                 source_contract.imu_input.payload != "quaternion")
             {
@@ -2255,7 +2273,9 @@ public:
         std::cout << "Motion Reference Alignment: " << motion_reference_alignment << std::endl;
         std::cout << "Pinocchio URDF Path: " << pinocchio_urdf_path << std::endl;
         std::cout << "Reference Joint Order: " << reference_joint_order.size() << std::endl;
-        std::cout << "Source Contract IMU: payload=" << source_contract.imu_input.payload
+        std::cout << "Source Contract IMU: source_type=" << source_contract.imu_input.source_type
+                  << ", topic=" << source_contract.imu_input.topic
+                  << ", payload=" << source_contract.imu_input.payload
                   << ", euler_unit=" << source_contract.imu_input.euler_unit
                   << ", quat_order=" << source_contract.imu_input.quat_order
                   << ", sim_base_quat_source_order=" << source_contract.sim_base.quat_source_order

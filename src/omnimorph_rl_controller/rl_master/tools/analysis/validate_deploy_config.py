@@ -184,6 +184,7 @@ ISAACLAB_LOCOMOTION_TERM_ORDER = [
 ]
 
 SUPPORTED_IMU_PAYLOADS = {"euler_compat", "quaternion"}
+SUPPORTED_IMU_SOURCE_TYPES = {"sensor_msgs_imu", "unitree_hg_lowstate", "unitree_hg_imu_state"}
 SUPPORTED_EULER_UNITS = {"rad", "deg"}
 SUPPORTED_QUAT_ORDERS = {"xyzw", "wxyz"}
 SUPPORTED_BASE_VELOCITY_FRAMES = {"body", "world"}
@@ -1309,6 +1310,16 @@ def check_source_contract(
     if not imu_input:
         issues.error(context, "missing source_contract.imu_input")
     else:
+        source_type = normalize_token(imu_input.get("source_type", "sensor_msgs_imu"))
+        if source_type not in SUPPORTED_IMU_SOURCE_TYPES:
+            issues.error(
+                context,
+                f"source_contract.imu_input.source_type must be one of {sorted(SUPPORTED_IMU_SOURCE_TYPES)}",
+            )
+        topic = str(imu_input.get("topic", "")).strip()
+        if not topic:
+            issues.error(context, "source_contract.imu_input.topic must not be empty")
+
         payload = normalize_token(imu_input.get("payload", ""))
         if payload not in SUPPORTED_IMU_PAYLOADS:
             issues.error(
