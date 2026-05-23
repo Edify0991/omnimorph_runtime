@@ -13,6 +13,7 @@
 #include <unitree_hg/msg/low_state.hpp>
 
 #include "rl_master/kinematics/joint_data.h"
+#include "rl_master/rl_protocol.h"
 #include "rl_master/runtime/realtime_utils.h"
 
 #ifdef OMNIMORPH_HAS_UNITREE_CRC

@@ -312,20 +312,56 @@ if(unitree_hg_FOUND)
     unitree_hg
   )
   target_compile_definitions(RL_solver PRIVATE RL_MASTER_HAS_UNITREE_HG=1)
+  set(_unitree_ros2_root_hints "")
+  set(_unitree_ros2_common_include_hints "")
+  set(_unitree_ros2_common_source_hints "")
+  if(DEFINED ENV{UNITREE_ROS2_ROOT} AND NOT "$ENV{UNITREE_ROS2_ROOT}" STREQUAL "")
+    list(APPEND _unitree_ros2_root_hints "$ENV{UNITREE_ROS2_ROOT}")
+  endif()
+  if(EXISTS "/home/unitree/unitree_ros2")
+    list(APPEND _unitree_ros2_root_hints "/home/unitree/unitree_ros2")
+  endif()
+  list(REMOVE_DUPLICATES _unitree_ros2_root_hints)
+  foreach(_unitree_root IN LISTS _unitree_ros2_root_hints)
+    list(APPEND _unitree_ros2_common_include_hints
+      "${_unitree_root}/example/src/include"
+      "${_unitree_root}/example/src"
+      "${_unitree_root}/include"
+    )
+    list(APPEND _unitree_ros2_common_source_hints
+      "${_unitree_root}/example/src/src/common"
+      "${_unitree_root}/src/common"
+    )
+  endforeach()
   find_path(UNITREE_ROS2_COMMON_INCLUDE_DIR
     NAMES common/motor_crc_hg.h
     HINTS
-      $ENV{UNITREE_ROS2_ROOT}/example/src/include
-      $ENV{UNITREE_ROS2_ROOT}/example/src
-      $ENV{UNITREE_ROS2_ROOT}/include
+      ${_unitree_ros2_common_include_hints}
       /opt/unitree_ros2/include
       /usr/local/include
       /usr/include
   )
+  find_file(UNITREE_ROS2_MOTOR_CRC_HG_SOURCE
+    NAMES motor_crc_hg.cpp
+    HINTS
+      ${_unitree_ros2_common_source_hints}
+  )
   if(UNITREE_ROS2_COMMON_INCLUDE_DIR)
-    target_include_directories(RL_solver PRIVATE ${UNITREE_ROS2_COMMON_INCLUDE_DIR})
-    target_compile_definitions(RL_solver PRIVATE OMNIMORPH_HAS_UNITREE_CRC=1)
-    message(STATUS "rl_master: Unitree G1 DDS motor IO enabled with CRC header at ${UNITREE_ROS2_COMMON_INCLUDE_DIR}")
+    target_include_directories(RL_solver PRIVATE
+      ${UNITREE_ROS2_COMMON_INCLUDE_DIR}
+      ${UNITREE_ROS2_COMMON_INCLUDE_DIR}/common
+    )
+    if(UNITREE_ROS2_MOTOR_CRC_HG_SOURCE)
+      target_sources(RL_solver PRIVATE ${UNITREE_ROS2_MOTOR_CRC_HG_SOURCE})
+      target_compile_definitions(RL_solver PRIVATE OMNIMORPH_HAS_UNITREE_CRC=1)
+      message(STATUS
+        "rl_master: Unitree G1 DDS motor IO enabled with CRC header at ${UNITREE_ROS2_COMMON_INCLUDE_DIR} "
+        "and source ${UNITREE_ROS2_MOTOR_CRC_HG_SOURCE}")
+    else()
+      message(WARNING
+        "rl_master: common/motor_crc_hg.h was found at ${UNITREE_ROS2_COMMON_INCLUDE_DIR}, "
+        "but motor_crc_hg.cpp was not. CRC will remain disabled until the official source file is available.")
+    endif()
   else()
     message(WARNING
       "rl_master: unitree_hg found, but common/motor_crc_hg.h was not. "
