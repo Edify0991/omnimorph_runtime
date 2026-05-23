@@ -65,7 +65,7 @@ find_package(nav_msgs REQUIRED)
 find_package(SharedMemory REQUIRED)
 find_package(unitree_hg QUIET)
 find_package(yaml-cpp REQUIRED)
-find_package(SymEngine CONFIG REQUIRED)
+find_package(SymEngine CONFIG QUIET)
 
 set(_rl_master_ros_prefix_hints "")
 if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
@@ -139,13 +139,17 @@ endif()
 message(STATUS "rl_master: ONNX Runtime include='${ONNXRUNTIME_INCLUDE_DIR}'")
 message(STATUS "rl_master: ONNX Runtime library='${ONNXRUNTIME_LIBRARY}'")
 
-set(RL_MASTER_SYMENGINE_TARGET symengine)
+set(RL_MASTER_SYMENGINE_TARGET "")
 if(TARGET symengine::symengine)
   set(RL_MASTER_SYMENGINE_TARGET symengine::symengine)
 elseif(TARGET SymEngine::symengine)
   set(RL_MASTER_SYMENGINE_TARGET SymEngine::symengine)
 endif()
-message(STATUS "rl_master: SymEngine target='${RL_MASTER_SYMENGINE_TARGET}'")
+if(RL_MASTER_SYMENGINE_TARGET)
+  message(STATUS "rl_master: SymEngine target='${RL_MASTER_SYMENGINE_TARGET}'")
+else()
+  message(STATUS "rl_master: SymEngine not found; continuing without it.")
+endif()
 
 set(_rl_master_runtime_rpath_dirs "$ORIGIN")
 if(ONNXRUNTIME_LIBRARY)
@@ -334,13 +338,15 @@ endif()
 target_link_libraries(RL_solver
   rl_master_runtime
   onnxruntime::onnxruntime
-  ${RL_MASTER_SYMENGINE_TARGET}
   Threads::Threads
   SharedMemory::SharedMemory
   yaml-cpp
   rl_master_robot_kinematics
   rl_master_arch_flags
 )
+if(RL_MASTER_SYMENGINE_TARGET)
+  target_link_libraries(RL_solver PRIVATE ${RL_MASTER_SYMENGINE_TARGET})
+endif()
 target_compile_features(RL_solver PRIVATE cxx_std_17)
 
 if(RL_MASTER_RPATH)
