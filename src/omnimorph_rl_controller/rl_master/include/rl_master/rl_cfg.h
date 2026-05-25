@@ -715,7 +715,7 @@ struct OnnxInputSpec
 
 struct SourceContractImuInput
 {
-    std::string source_type = "sensor_msgs_imu"; // sensor_msgs_imu / unitree_hg_lowstate / unitree_hg_imu_state
+    std::string source_type = "sensor_msgs_imu"; // sensor_msgs_imu / unitree_hg_lowstate / unitree_hg_imu_state / unitree_sdk2_lowstate / unitree_sdk2_imu_state
     std::string topic = "/imu/yesense";
     std::string payload = "euler_compat"; // euler_compat / quaternion
     std::vector<std::string> euler_order{"roll", "pitch", "yaw"};
@@ -794,6 +794,23 @@ struct SourceContractPolicyExtraOutputs
     std::string body_quat_frame = "world";
 };
 
+struct SourceContractUnitreeSdk2
+{
+    int domain_id = 0;
+    std::string network_interface;
+    std::string lowcmd_topic = "rt/lowcmd";
+    std::string lowstate_topic = "rt/lowstate";
+    std::string imu_topic = "rt/secondary_imu";
+    int queue_len = 1;
+    int writer_period_us = 2000;
+    int mode_pr = 0;
+    float lowstate_timeout_sec = 0.1f;
+    float default_lower_kp = 100.0f;
+    float default_lower_kd = 1.0f;
+    float default_upper_kp = 50.0f;
+    float default_upper_kd = 1.0f;
+};
+
 struct ObservationCanonicalContract
 {
     std::string joint_order = "robot_global_joint_order";
@@ -810,6 +827,7 @@ struct SourceContract
     SourceContractBaseVelocityEstimator base_velocity_estimator;
     SourceContractReferenceFile reference_file;
     SourceContractPolicyExtraOutputs policy_extra_outputs;
+    SourceContractUnitreeSdk2 unitree_sdk2;
 };
 
 struct PolicySubModelCfg
@@ -1115,7 +1133,7 @@ public:
             {
                 if (external_hardware_bridge == "unitree_sdk_bridge")
                 {
-                    motor_io_backend = "unitree_g1_dds";
+                    motor_io_backend = "unitree_g1_sdk2";
                 }
                 else
                 {
@@ -1806,6 +1824,34 @@ public:
             source_contract.imu_input.frame_alignment_rpy = yamlReadOr<std::vector<float>>(
                 imu_contract_cfg, "frame_alignment_rpy", source_contract.imu_input.frame_alignment_rpy);
 
+            const YAML::Node unitree_sdk2_cfg = source_contract_cfg["unitree_sdk2"];
+            source_contract.unitree_sdk2.domain_id = yamlReadOr<int>(
+                unitree_sdk2_cfg, "domain_id", source_contract.unitree_sdk2.domain_id);
+            source_contract.unitree_sdk2.network_interface = yamlReadOr<std::string>(
+                unitree_sdk2_cfg, "network_interface", source_contract.unitree_sdk2.network_interface);
+            source_contract.unitree_sdk2.lowcmd_topic = yamlReadOr<std::string>(
+                unitree_sdk2_cfg, "lowcmd_topic", source_contract.unitree_sdk2.lowcmd_topic);
+            source_contract.unitree_sdk2.lowstate_topic = yamlReadOr<std::string>(
+                unitree_sdk2_cfg, "lowstate_topic", source_contract.unitree_sdk2.lowstate_topic);
+            source_contract.unitree_sdk2.imu_topic = yamlReadOr<std::string>(
+                unitree_sdk2_cfg, "imu_topic", source_contract.unitree_sdk2.imu_topic);
+            source_contract.unitree_sdk2.queue_len = yamlReadOr<int>(
+                unitree_sdk2_cfg, "queue_len", source_contract.unitree_sdk2.queue_len);
+            source_contract.unitree_sdk2.writer_period_us = yamlReadOr<int>(
+                unitree_sdk2_cfg, "writer_period_us", source_contract.unitree_sdk2.writer_period_us);
+            source_contract.unitree_sdk2.mode_pr = yamlReadOr<int>(
+                unitree_sdk2_cfg, "mode_pr", source_contract.unitree_sdk2.mode_pr);
+            source_contract.unitree_sdk2.lowstate_timeout_sec = yamlReadOr<float>(
+                unitree_sdk2_cfg, "lowstate_timeout_sec", source_contract.unitree_sdk2.lowstate_timeout_sec);
+            source_contract.unitree_sdk2.default_lower_kp = yamlReadOr<float>(
+                unitree_sdk2_cfg, "default_lower_kp", source_contract.unitree_sdk2.default_lower_kp);
+            source_contract.unitree_sdk2.default_lower_kd = yamlReadOr<float>(
+                unitree_sdk2_cfg, "default_lower_kd", source_contract.unitree_sdk2.default_lower_kd);
+            source_contract.unitree_sdk2.default_upper_kp = yamlReadOr<float>(
+                unitree_sdk2_cfg, "default_upper_kp", source_contract.unitree_sdk2.default_upper_kp);
+            source_contract.unitree_sdk2.default_upper_kd = yamlReadOr<float>(
+                unitree_sdk2_cfg, "default_upper_kd", source_contract.unitree_sdk2.default_upper_kd);
+
             const YAML::Node sim_base_contract_cfg = source_contract_cfg["sim_base"];
             source_contract.sim_base.quat_source_order = yamlReadOr<std::string>(
                 sim_base_contract_cfg, "quat_source_order", source_contract.sim_base.quat_source_order);
@@ -1987,11 +2033,14 @@ public:
                 "source_contract.imu_input.ang_vel_order");
             if (source_contract.imu_input.source_type != "sensor_msgs_imu" &&
                 source_contract.imu_input.source_type != "unitree_hg_lowstate" &&
-                source_contract.imu_input.source_type != "unitree_hg_imu_state")
+                source_contract.imu_input.source_type != "unitree_hg_imu_state" &&
+                source_contract.imu_input.source_type != "unitree_sdk2_lowstate" &&
+                source_contract.imu_input.source_type != "unitree_sdk2_imu_state")
             {
                 throw std::runtime_error(
                     "source_contract.imu_input.source_type must be "
-                    "'sensor_msgs_imu', 'unitree_hg_lowstate', or 'unitree_hg_imu_state'");
+                    "'sensor_msgs_imu', 'unitree_hg_lowstate', 'unitree_hg_imu_state', "
+                    "'unitree_sdk2_lowstate', or 'unitree_sdk2_imu_state'");
             }
             if (source_contract.imu_input.topic.empty())
             {
@@ -2026,6 +2075,41 @@ public:
                     "source_contract.sim_base.velocity_source must be "
                     "'freejoint_qvel', 'body_object_velocity_local', "
                     "'body_object_velocity_root_local', or 'body_cvel'");
+            }
+            if (source_contract.unitree_sdk2.domain_id < 0)
+            {
+                throw std::runtime_error("source_contract.unitree_sdk2.domain_id must be >= 0");
+            }
+            if (source_contract.unitree_sdk2.lowcmd_topic.empty())
+            {
+                throw std::runtime_error("source_contract.unitree_sdk2.lowcmd_topic must not be empty");
+            }
+            if (source_contract.unitree_sdk2.lowstate_topic.empty())
+            {
+                throw std::runtime_error("source_contract.unitree_sdk2.lowstate_topic must not be empty");
+            }
+            if (source_contract.unitree_sdk2.imu_topic.empty())
+            {
+                throw std::runtime_error("source_contract.unitree_sdk2.imu_topic must not be empty");
+            }
+            if (source_contract.unitree_sdk2.queue_len < 0)
+            {
+                throw std::runtime_error("source_contract.unitree_sdk2.queue_len must be >= 0");
+            }
+            if (source_contract.unitree_sdk2.writer_period_us <= 0)
+            {
+                throw std::runtime_error("source_contract.unitree_sdk2.writer_period_us must be > 0");
+            }
+            if (source_contract.unitree_sdk2.lowstate_timeout_sec <= 0.0f)
+            {
+                throw std::runtime_error("source_contract.unitree_sdk2.lowstate_timeout_sec must be > 0");
+            }
+            if (source_contract.unitree_sdk2.default_lower_kp < 0.0f ||
+                source_contract.unitree_sdk2.default_lower_kd < 0.0f ||
+                source_contract.unitree_sdk2.default_upper_kp < 0.0f ||
+                source_contract.unitree_sdk2.default_upper_kd < 0.0f)
+            {
+                throw std::runtime_error("source_contract.unitree_sdk2 default gains must be >= 0");
             }
             if (source_contract.base_velocity_estimator.imu_accel_frame != "body" &&
                 source_contract.base_velocity_estimator.imu_accel_frame != "world")

@@ -386,6 +386,7 @@ bool RobotSolver::initialize()
         motor_io_backend_ = createMotorIoBackend(sim2real_cfg_.motor_io_backend);
         std::cout << "[RL_solver] motor IO backend active: "
                   << motor_io_backend_->backendId() << std::endl;
+        motor_io_backend_->updateSourceContract(sim2real_cfg_.source_contract);
         motor_io_backend_->connect();
         dds_bridge_.connect({
             sim2real_cfg_.enable_state_telemetry,
@@ -510,6 +511,10 @@ void RobotSolver::syncRuntimeCfgFromController(bool force)
         sim2real_cfg_.enable_state_telemetry,
         sim2real_cfg_.state_telemetry_hz,
     });
+    if (motor_io_backend_)
+    {
+        motor_io_backend_->updateSourceContract(sim2real_cfg_.source_contract);
+    }
     dds_bridge_.updateSourceContract(sim2real_cfg_.source_contract);
     dds_bridge_.updateExternalObservationSpecs(sim2real_cfg_.external_observations);
 

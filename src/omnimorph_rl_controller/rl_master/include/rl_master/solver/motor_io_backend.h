@@ -7,6 +7,8 @@
 
 #include "rl_master/hardware/motor_shm_contract.h"
 
+struct SourceContract;
+
 namespace rl_master::solver
 {
 
@@ -19,6 +21,10 @@ public:
     virtual ~MotorIoBackend() = default;
 
     virtual std::string backendId() const = 0;
+    virtual void updateSourceContract(const SourceContract &source_contract)
+    {
+        (void)source_contract;
+    }
     virtual void connect() = 0;
     virtual void readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback) = 0;
     virtual void writeTarget(const std::array<MotorHandle, kMotorShmSlotCount> &target) = 0;

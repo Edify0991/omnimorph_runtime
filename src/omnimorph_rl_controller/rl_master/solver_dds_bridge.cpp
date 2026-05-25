@@ -9,6 +9,12 @@
 
 #include "rl_master/kinematics/joint_data.h"
 #include "rl_master/runtime/realtime_utils.h"
+#ifdef RL_MASTER_HAS_UNITREE_SDK2
+#include <unitree/idl/hg/IMUState_.hpp>
+#include <unitree/idl/hg/LowState_.hpp>
+#include <unitree/robot/channel/channel_subscriber.hpp>
+#include "rl_master/solver/unitree_sdk2_support.h"
+#endif
 
 namespace
 {
@@ -130,6 +136,25 @@ std::array<float, 4> parseQuaternionFromUnitreeHgImu(
         static_cast<float>(msg.quaternion[1]),
         static_cast<float>(msg.quaternion[2]),
         static_cast<float>(msg.quaternion[3])};
+    const std::string quat_order = normalizeToken(contract.quat_order);
+    if (quat_order == "wxyz")
+    {
+        return {raw_quat[1], raw_quat[2], raw_quat[3], raw_quat[0]};
+    }
+    return raw_quat;
+}
+#endif
+
+#ifdef RL_MASTER_HAS_UNITREE_SDK2
+std::array<float, 4> parseQuaternionFromUnitreeSdk2Imu(
+    const unitree_hg::msg::dds_::IMUState_ &msg,
+    const SourceContractImuInput &contract)
+{
+    const std::array<float, 4> raw_quat{
+        static_cast<float>(msg.quaternion()[0]),
+        static_cast<float>(msg.quaternion()[1]),
+        static_cast<float>(msg.quaternion()[2]),
+        static_cast<float>(msg.quaternion()[3])};
     const std::string quat_order = normalizeToken(contract.quat_order);
     if (quat_order == "wxyz")
     {
@@ -263,6 +288,8 @@ void SolverDdsBridge::disconnect()
     unitree_lowstate_sub_.reset();
     unitree_imu_state_sub_.reset();
 #endif
+    unitree_sdk2_lowstate_sub_.reset();
+    unitree_sdk2_imu_state_sub_.reset();
     odom_sub_.reset();
     external_observation_subs_.clear();
     mode_control_sub_.reset();
@@ -316,6 +343,8 @@ void SolverDdsBridge::configureImuSubscription()
         unitree_lowstate_sub_.reset();
         unitree_imu_state_sub_.reset();
 #endif
+        unitree_sdk2_lowstate_sub_.reset();
+        unitree_sdk2_imu_state_sub_.reset();
         active_imu_topic_.clear();
         active_imu_source_type_.clear();
         std::lock_guard<std::mutex> lock(imu_mutex_);
@@ -332,6 +361,8 @@ void SolverDdsBridge::configureImuSubscription()
     unitree_lowstate_sub_.reset();
     unitree_imu_state_sub_.reset();
 #endif
+    unitree_sdk2_lowstate_sub_.reset();
+    unitree_sdk2_imu_state_sub_.reset();
     active_imu_source_type_ = source_type;
     active_imu_topic_ = topic;
 
@@ -513,6 +544,91 @@ void SolverDdsBridge::configureImuSubscription()
                     },
                     true);
             });
+        return;
+    }
+#endif
+
+#ifdef RL_MASTER_HAS_UNITREE_SDK2
+    if (source_type == "unitree_sdk2_lowstate")
+    {
+        rl_master::solver::ensureUnitreeSdk2ChannelFactoryInitialized(contract_snapshot.unitree_sdk2);
+        auto sub = std::make_shared<unitree::robot::ChannelSubscriber<unitree_hg::msg::dds_::LowState_>>(topic);
+        sub->InitChannel(
+            [this, publish_imu_sample](const void *message) {
+                if (!message)
+                {
+                    return;
+                }
+                const auto &msg = *static_cast<const unitree_hg::msg::dds_::LowState_ *>(message);
+                SourceContract contract_snapshot_inner;
+                {
+                    std::lock_guard<std::mutex> lock(imu_mutex_);
+                    contract_snapshot_inner = source_contract_;
+                }
+
+                publish_imu_sample(
+                    contract_snapshot_inner.imu_input,
+                    {
+                        static_cast<float>(msg.imu_state().gyroscope()[0]),
+                        static_cast<float>(msg.imu_state().gyroscope()[1]),
+                        static_cast<float>(msg.imu_state().gyroscope()[2]),
+                    },
+                    {
+                        static_cast<float>(msg.imu_state().accelerometer()[0]),
+                        static_cast<float>(msg.imu_state().accelerometer()[1]),
+                        static_cast<float>(msg.imu_state().accelerometer()[2]),
+                    },
+                    parseQuaternionFromUnitreeSdk2Imu(msg.imu_state(), contract_snapshot_inner.imu_input),
+                    {
+                        static_cast<float>(msg.imu_state().rpy()[0]),
+                        static_cast<float>(msg.imu_state().rpy()[1]),
+                        static_cast<float>(msg.imu_state().rpy()[2]),
+                    },
+                    true);
+            },
+            contract_snapshot.unitree_sdk2.queue_len);
+        unitree_sdk2_lowstate_sub_ = sub;
+        return;
+    }
+    if (source_type == "unitree_sdk2_imu_state")
+    {
+        rl_master::solver::ensureUnitreeSdk2ChannelFactoryInitialized(contract_snapshot.unitree_sdk2);
+        auto sub = std::make_shared<unitree::robot::ChannelSubscriber<unitree_hg::msg::dds_::IMUState_>>(topic);
+        sub->InitChannel(
+            [this, publish_imu_sample](const void *message) {
+                if (!message)
+                {
+                    return;
+                }
+                const auto &msg = *static_cast<const unitree_hg::msg::dds_::IMUState_ *>(message);
+                SourceContract contract_snapshot_inner;
+                {
+                    std::lock_guard<std::mutex> lock(imu_mutex_);
+                    contract_snapshot_inner = source_contract_;
+                }
+
+                publish_imu_sample(
+                    contract_snapshot_inner.imu_input,
+                    {
+                        static_cast<float>(msg.gyroscope()[0]),
+                        static_cast<float>(msg.gyroscope()[1]),
+                        static_cast<float>(msg.gyroscope()[2]),
+                    },
+                    {
+                        static_cast<float>(msg.accelerometer()[0]),
+                        static_cast<float>(msg.accelerometer()[1]),
+                        static_cast<float>(msg.accelerometer()[2]),
+                    },
+                    parseQuaternionFromUnitreeSdk2Imu(msg, contract_snapshot_inner.imu_input),
+                    {
+                        static_cast<float>(msg.rpy()[0]),
+                        static_cast<float>(msg.rpy()[1]),
+                        static_cast<float>(msg.rpy()[2]),
+                    },
+                    true);
+            },
+            contract_snapshot.unitree_sdk2.queue_len);
+        unitree_sdk2_imu_state_sub_ = sub;
         return;
     }
 #endif

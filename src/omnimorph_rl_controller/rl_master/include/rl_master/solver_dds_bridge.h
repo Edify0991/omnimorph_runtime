@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -95,6 +96,8 @@ private:
     rclcpp::Subscription<unitree_hg::msg::LowState>::SharedPtr unitree_lowstate_sub_;
     rclcpp::Subscription<unitree_hg::msg::IMUState>::SharedPtr unitree_imu_state_sub_;
 #endif
+    std::shared_ptr<void> unitree_sdk2_lowstate_sub_;
+    std::shared_ptr<void> unitree_sdk2_imu_state_sub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     std::vector<rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr> external_observation_subs_;
 

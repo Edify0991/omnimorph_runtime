@@ -292,8 +292,8 @@ beyondmimic_g1_walk_full_body_w_state_estimation:
     - right_wrist_yaw_joint
   source_contract:
     imu_input:
-      source_type: unitree_hg_lowstate
-      topic: lowstate
+      source_type: unitree_sdk2_lowstate
+      topic: rt/lowstate
       payload: euler_compat
       euler_order: [roll, pitch, yaw]
       euler_unit: rad
@@ -338,6 +338,20 @@ beyondmimic_g1_walk_full_body_w_state_estimation:
       body_quat_order: wxyz
       body_quat_representation: quat
       body_quat_frame: world
+    unitree_sdk2:
+      domain_id: 0
+      network_interface: ""
+      lowcmd_topic: rt/lowcmd
+      lowstate_topic: rt/lowstate
+      imu_topic: rt/secondary_imu
+      queue_len: 1
+      writer_period_us: 2000
+      mode_pr: 0
+      lowstate_timeout_sec: 0.1
+      default_lower_kp: 100.0
+      default_lower_kd: 1.0
+      default_upper_kp: 50.0
+      default_upper_kd: 1.0
   observation_contract:
     canonical:
       joint_order: robot_global_joint_order

@@ -67,6 +67,53 @@ find_package(unitree_hg QUIET)
 find_package(yaml-cpp REQUIRED)
 find_package(SymEngine CONFIG QUIET)
 
+set(UNITREE_SDK2_FOUND FALSE)
+set(UNITREE_SDK2_ROOT "" CACHE PATH "Unitree SDK2 repository root.")
+if(NOT UNITREE_SDK2_ROOT AND DEFINED ENV{UNITREE_SDK2_ROOT})
+  set(UNITREE_SDK2_ROOT "$ENV{UNITREE_SDK2_ROOT}")
+endif()
+if(NOT UNITREE_SDK2_ROOT AND EXISTS "/home/edify/Code/unitree_sdk2")
+  set(UNITREE_SDK2_ROOT "/home/edify/Code/unitree_sdk2")
+endif()
+if(UNITREE_SDK2_ROOT)
+  set(UNITREE_SDK2_INCLUDE_DIR "${UNITREE_SDK2_ROOT}/include")
+  set(UNITREE_SDK2_THIRDPARTY_INCLUDE_DIR "${UNITREE_SDK2_ROOT}/thirdparty/include")
+  set(UNITREE_SDK2_DDSCXX_INCLUDE_DIR "${UNITREE_SDK2_ROOT}/thirdparty/include/ddscxx")
+  set(UNITREE_SDK2_DDSC_INCLUDE_DIR "${UNITREE_SDK2_ROOT}/thirdparty/include/ddsc")
+  set(UNITREE_SDK2_LIBRARY "${UNITREE_SDK2_ROOT}/lib/x86_64/libunitree_sdk2.a")
+  set(UNITREE_SDK2_DDSC_LIBRARY "${UNITREE_SDK2_ROOT}/thirdparty/lib/x86_64/libddsc.so")
+  set(UNITREE_SDK2_DDSCXX_LIBRARY "${UNITREE_SDK2_ROOT}/thirdparty/lib/x86_64/libddscxx.so")
+  if(EXISTS "${UNITREE_SDK2_INCLUDE_DIR}/unitree/robot/channel/channel_factory.hpp" AND
+     EXISTS "${UNITREE_SDK2_LIBRARY}" AND
+     EXISTS "${UNITREE_SDK2_DDSC_LIBRARY}" AND
+     EXISTS "${UNITREE_SDK2_DDSCXX_LIBRARY}")
+    set(UNITREE_SDK2_FOUND TRUE)
+    add_library(rl_master_unitree_ddsc SHARED IMPORTED)
+    set_target_properties(rl_master_unitree_ddsc PROPERTIES
+      IMPORTED_LOCATION "${UNITREE_SDK2_DDSC_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${UNITREE_SDK2_INCLUDE_DIR};${UNITREE_SDK2_THIRDPARTY_INCLUDE_DIR};${UNITREE_SDK2_DDSC_INCLUDE_DIR};${UNITREE_SDK2_DDSCXX_INCLUDE_DIR}"
+      IMPORTED_NO_SONAME TRUE
+    )
+    add_library(rl_master_unitree_ddscxx SHARED IMPORTED)
+    set_target_properties(rl_master_unitree_ddscxx PROPERTIES
+      IMPORTED_LOCATION "${UNITREE_SDK2_DDSCXX_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${UNITREE_SDK2_INCLUDE_DIR};${UNITREE_SDK2_THIRDPARTY_INCLUDE_DIR};${UNITREE_SDK2_DDSC_INCLUDE_DIR};${UNITREE_SDK2_DDSCXX_INCLUDE_DIR}"
+      INTERFACE_LINK_LIBRARIES "rl_master_unitree_ddsc;Threads::Threads"
+      IMPORTED_NO_SONAME TRUE
+    )
+    add_library(rl_master_unitree_sdk2 STATIC IMPORTED)
+    set_target_properties(rl_master_unitree_sdk2 PROPERTIES
+      IMPORTED_LOCATION "${UNITREE_SDK2_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${UNITREE_SDK2_INCLUDE_DIR};${UNITREE_SDK2_THIRDPARTY_INCLUDE_DIR};${UNITREE_SDK2_DDSC_INCLUDE_DIR};${UNITREE_SDK2_DDSCXX_INCLUDE_DIR}"
+      INTERFACE_LINK_LIBRARIES "rl_master_unitree_ddsc;rl_master_unitree_ddscxx;Threads::Threads"
+      LINKER_LANGUAGE CXX
+    )
+    message(STATUS "rl_master: Unitree SDK2 found at '${UNITREE_SDK2_ROOT}'")
+  else()
+    message(WARNING "rl_master: UNITREE_SDK2_ROOT='${UNITREE_SDK2_ROOT}' is missing required headers or libraries; SDK2 backend disabled.")
+  endif()
+endif()
+
 set(_rl_master_ros_prefix_hints "")
 if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
   list(APPEND _rl_master_ros_prefix_hints
@@ -169,6 +216,11 @@ if(DEFINED ENV{ROS_DISTRO} AND NOT "$ENV{ROS_DISTRO}" STREQUAL "")
   if(CMAKE_LIBRARY_ARCHITECTURE)
     list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/$ENV{ROS_DISTRO}/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
   endif()
+endif()
+if(UNITREE_SDK2_FOUND)
+  list(APPEND _rl_master_runtime_rpath_dirs
+    "${UNITREE_SDK2_ROOT}/thirdparty/lib/x86_64"
+    "${UNITREE_SDK2_ROOT}/lib/x86_64")
 endif()
 list(APPEND _rl_master_runtime_rpath_dirs "/opt/ros/humble/lib" "/opt/ros/foxy/lib")
 if(CMAKE_LIBRARY_ARCHITECTURE)
@@ -286,6 +338,7 @@ add_executable(RL_solver
   solver/motor_io_backend.cpp
   solver/motor_shm_io.cpp
   solver/robot_solver.cpp
+  solver/unitree_sdk2_support.cpp
   solver_dds_bridge.cpp
 )
 target_include_directories(RL_solver PUBLIC
@@ -371,6 +424,20 @@ if(unitree_hg_FOUND)
 else()
   message(STATUS "rl_master: unitree_hg not found; Unitree G1 DDS motor IO backend disabled.")
 endif()
+if(UNITREE_SDK2_FOUND)
+  target_sources(RL_solver PRIVATE
+    solver/unitree_g1_sdk2_motor_io.cpp
+  )
+  target_include_directories(RL_solver PRIVATE
+    ${UNITREE_SDK2_INCLUDE_DIR}
+    ${UNITREE_SDK2_THIRDPARTY_INCLUDE_DIR}
+    ${UNITREE_SDK2_DDSC_INCLUDE_DIR}
+    ${UNITREE_SDK2_DDSCXX_INCLUDE_DIR}
+  )
+  target_compile_definitions(RL_solver PRIVATE RL_MASTER_HAS_UNITREE_SDK2=1)
+else()
+  message(STATUS "rl_master: Unitree SDK2 not found; Unitree G1 SDK2 motor IO backend disabled.")
+endif()
 target_link_libraries(RL_solver
   rl_master_runtime
   onnxruntime::onnxruntime
@@ -380,6 +447,13 @@ target_link_libraries(RL_solver
   rl_master_robot_kinematics
   rl_master_arch_flags
 )
+if(UNITREE_SDK2_FOUND)
+  target_link_libraries(RL_solver
+    rl_master_unitree_sdk2
+    rl_master_unitree_ddsc
+    rl_master_unitree_ddscxx
+  )
+endif()
 if(RL_MASTER_SYMENGINE_TARGET)
   target_link_libraries(RL_solver PRIVATE ${RL_MASTER_SYMENGINE_TARGET})
 endif()

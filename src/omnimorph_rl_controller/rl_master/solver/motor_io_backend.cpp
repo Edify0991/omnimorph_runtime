@@ -27,6 +27,9 @@ std::string normalizeBackendId(std::string backend_id)
 #ifdef RL_MASTER_HAS_UNITREE_HG
 std::unique_ptr<MotorIoBackend> createUnitreeG1DdsMotorIoBackend();
 #endif
+#ifdef RL_MASTER_HAS_UNITREE_SDK2
+std::unique_ptr<MotorIoBackend> createUnitreeG1Sdk2MotorIoBackend();
+#endif
 
 std::unique_ptr<MotorIoBackend> createMotorIoBackend(const std::string &backend_id)
 {
@@ -37,8 +40,19 @@ std::unique_ptr<MotorIoBackend> createMotorIoBackend(const std::string &backend_
         return std::make_unique<ShmMotorIoBackend>();
     }
 
-    if (id == "unitree_g1_dds" || id == "unitree_dds" || id == "unitree_sdk2" ||
-        id == "unitree_sdk_bridge")
+    if (id == "unitree_g1_sdk2" || id == "unitree_sdk2" || id == "unitree_sdk_bridge")
+    {
+#ifdef RL_MASTER_HAS_UNITREE_SDK2
+        return createUnitreeG1Sdk2MotorIoBackend();
+#else
+        throw std::runtime_error(
+            "motor_io_backend '" + backend_id +
+            "' requires unitree_sdk2. Set UNITREE_SDK2_ROOT and rebuild rl_master "
+            "with Unitree SDK2 available.");
+#endif
+    }
+
+    if (id == "unitree_g1_dds" || id == "unitree_dds")
     {
 #ifdef RL_MASTER_HAS_UNITREE_HG
         return createUnitreeG1DdsMotorIoBackend();
@@ -52,7 +66,7 @@ std::unique_ptr<MotorIoBackend> createMotorIoBackend(const std::string &backend_
 
     std::ostringstream oss;
     oss << "unsupported motor_io_backend '" << backend_id
-        << "'. Supported backends: shm, unitree_g1_dds";
+        << "'. Supported backends: shm, unitree_g1_sdk2, unitree_g1_dds";
     throw std::runtime_error(oss.str());
 }
 
