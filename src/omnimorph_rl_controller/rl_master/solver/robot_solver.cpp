@@ -833,13 +833,13 @@ void RobotSolver::sendMotorCmd()
         motor_target_all_[i].run_mode = static_cast<uint8_t>(joint_cmd.mode);
         if (joint_cmd.mode == RUN_MODE_R1)
         {
-            motor_target_all_[i].pd[0] = static_cast<uint8_t>(joint_cmd.kp);
-            motor_target_all_[i].pd[1] = static_cast<uint8_t>(joint_cmd.kd);
+            motor_target_all_[i].pd[0] = joint_cmd.kp;
+            motor_target_all_[i].pd[1] = joint_cmd.kd;
         }
         else
         {
-            motor_target_all_[i].pd[0] = 0;
-            motor_target_all_[i].pd[1] = 0;
+            motor_target_all_[i].pd[0] = 0.0f;
+            motor_target_all_[i].pd[1] = 0.0f;
         }
 
         motor_cmd_q_[i] = motor_cmd_[i].q;

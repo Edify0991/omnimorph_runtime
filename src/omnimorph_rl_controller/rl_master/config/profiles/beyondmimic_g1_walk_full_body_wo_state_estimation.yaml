@@ -139,7 +139,7 @@ beyondmimic_g1_walk_full_body_wo_state_estimation:
   action_dim: 29
   motor_N: 29
   RL_control_f: 50
-  solver_control_hz: 500
+  solver_control_hz: 200
   installed_joint_run_modes:
     left_hip_pitch_joint: r1
     left_hip_roll_joint: r1

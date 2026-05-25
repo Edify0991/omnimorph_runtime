@@ -21,7 +21,7 @@ struct MotorHandle
 {
     uint8_t run_mode = 0;
     uint8_t motor_type = 0;
-    uint8_t pd[2] = {0, 0};
+    float pd[2] = {0.0f, 0.0f};
 
     union
     {

@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <mutex>
+#include <sstream>
 #include <system_error>
 #include <stdexcept>
 #include <string>
@@ -39,6 +41,48 @@ float fallbackGain(float raw, float fallback)
     return raw > 0.0f ? raw : fallback;
 }
 
+float sanitizeFiniteScalar(
+    rclcpp::Logger logger,
+    const char *field_name,
+    size_t motor_index,
+    float value)
+{
+    if (std::isfinite(value))
+    {
+        return value;
+    }
+    RCLCPP_WARN(
+        logger,
+        "non-finite Unitree motor command field '%s' at motor %zu; replacing with 0.0",
+        field_name,
+        motor_index);
+    return 0.0f;
+}
+
+std::string summarizeMotorCmd(
+    const unitree_hg::msg::LowCmd &cmd,
+    size_t joint_count)
+{
+    std::ostringstream oss;
+    const size_t count = std::min(joint_count, cmd.motor_cmd.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (i > 0)
+        {
+            oss << " | ";
+        }
+        const auto &mc = cmd.motor_cmd[i];
+        oss << "#" << i
+            << " mode=" << static_cast<int>(mc.mode)
+            << " q=" << mc.q
+            << " dq=" << mc.dq
+            << " tau=" << mc.tau
+            << " kp=" << mc.kp
+            << " kd=" << mc.kd;
+    }
+    return oss.str();
+}
+
 class UnitreeG1DdsMotorIoBackend final : public MotorIoBackend
 {
 public:
@@ -67,6 +111,8 @@ public:
         node_->declare_parameter<double>("unitree_default_lower_kd", default_lower_kd_);
         node_->declare_parameter<double>("unitree_default_upper_kp", default_upper_kp_);
         node_->declare_parameter<double>("unitree_default_upper_kd", default_upper_kd_);
+        node_->declare_parameter<int>("unitree_debug_motor_cmd_cycles", debug_motor_cmd_cycles_);
+        node_->declare_parameter<int>("unitree_debug_motor_cmd_joint_count", debug_motor_cmd_joint_count_);
         node_->get_parameter("unitree_lowstate_topic", lowstate_topic_);
         node_->get_parameter("unitree_lowcmd_topic", lowcmd_topic_);
         node_->get_parameter("unitree_mode_pr", mode_pr_);
@@ -75,6 +121,8 @@ public:
         node_->get_parameter("unitree_default_lower_kd", default_lower_kd_);
         node_->get_parameter("unitree_default_upper_kp", default_upper_kp_);
         node_->get_parameter("unitree_default_upper_kd", default_upper_kd_);
+        node_->get_parameter("unitree_debug_motor_cmd_cycles", debug_motor_cmd_cycles_);
+        node_->get_parameter("unitree_debug_motor_cmd_joint_count", debug_motor_cmd_joint_count_);
 
         lowstate_sub_ = node_->create_subscription<unitree_hg::msg::LowState>(
             lowstate_topic_,
@@ -177,19 +225,39 @@ public:
             const bool pd_loop = usesUnitreePdLoop(slot.run_mode);
 
             cmd.motor_cmd[i].mode = active_mode ? kUnitreeMotorEnable : kUnitreeMotorDisable;
-            cmd.motor_cmd[i].q = pd_loop ? slot.io.target.target_pos : 0.0f;
-            cmd.motor_cmd[i].dq = pd_loop ? slot.io.target.target_speed : 0.0f;
-            cmd.motor_cmd[i].tau = slot.io.target.target_torque;
-            cmd.motor_cmd[i].kp = pd_loop
-                                      ? fallbackGain(
-                                            static_cast<float>(slot.pd[0]),
-                                            static_cast<float>(lower_body ? default_lower_kp_ : default_upper_kp_))
-                                      : 0.0f;
-            cmd.motor_cmd[i].kd = pd_loop
-                                      ? fallbackGain(
-                                            static_cast<float>(slot.pd[1]),
-                                            static_cast<float>(lower_body ? default_lower_kd_ : default_upper_kd_))
-                                      : 0.0f;
+            cmd.motor_cmd[i].q = sanitizeFiniteScalar(
+                node_->get_logger(),
+                "q",
+                i,
+                pd_loop ? slot.io.target.target_pos : 0.0f);
+            cmd.motor_cmd[i].dq = sanitizeFiniteScalar(
+                node_->get_logger(),
+                "dq",
+                i,
+                pd_loop ? slot.io.target.target_speed : 0.0f);
+            cmd.motor_cmd[i].tau = sanitizeFiniteScalar(
+                node_->get_logger(),
+                "tau",
+                i,
+                slot.io.target.target_torque);
+            cmd.motor_cmd[i].kp = sanitizeFiniteScalar(
+                node_->get_logger(),
+                "kp",
+                i,
+                pd_loop
+                    ? fallbackGain(
+                          slot.pd[0],
+                          static_cast<float>(lower_body ? default_lower_kp_ : default_upper_kp_))
+                    : 0.0f);
+            cmd.motor_cmd[i].kd = sanitizeFiniteScalar(
+                node_->get_logger(),
+                "kd",
+                i,
+                pd_loop
+                    ? fallbackGain(
+                          slot.pd[1],
+                          static_cast<float>(lower_body ? default_lower_kd_ : default_upper_kd_))
+                    : 0.0f);
         }
 
 #ifdef OMNIMORPH_HAS_UNITREE_CRC
@@ -199,6 +267,20 @@ public:
             node_->get_logger(),
             "Unitree CRC helper was not found at build time; set UNITREE_ROS2_ROOT and rebuild before real hardware use.");
 #endif
+
+        if (debug_publish_count_ < debug_motor_cmd_cycles_)
+        {
+            RCLCPP_INFO(
+                node_->get_logger(),
+                "Unitree LowCmd sample %d/%d: %s",
+                debug_publish_count_ + 1,
+                debug_motor_cmd_cycles_,
+                summarizeMotorCmd(
+                    cmd,
+                    static_cast<size_t>(std::max(0, debug_motor_cmd_joint_count_)))
+                    .c_str());
+            ++debug_publish_count_;
+        }
 
         lowcmd_pub_->publish(cmd);
     }
@@ -234,6 +316,9 @@ private:
     double default_lower_kd_ = 1.0;
     double default_upper_kp_ = 50.0;
     double default_upper_kd_ = 1.0;
+    int debug_motor_cmd_cycles_ = 0;
+    int debug_motor_cmd_joint_count_ = 6;
+    int debug_publish_count_ = 0;
 
     std::mutex feedback_mutex_;
     std::array<MotorHandle, kMotorShmSlotCount> latest_feedback_{};

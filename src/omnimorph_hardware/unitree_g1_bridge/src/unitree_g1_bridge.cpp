@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -33,6 +34,48 @@ bool usesUnitreePdLoop(uint8_t run_mode)
 {
     return run_mode == RUN_MODE_R1 || run_mode == RUN_MODE_CSP;
 }
+
+float sanitizeFiniteScalar(
+    rclcpp::Logger logger,
+    const char *field_name,
+    size_t motor_index,
+    float value)
+{
+    if (std::isfinite(value))
+    {
+        return value;
+    }
+    RCLCPP_WARN(
+        logger,
+        "non-finite Unitree motor command field '%s' at motor %zu; replacing with 0.0",
+        field_name,
+        motor_index);
+    return 0.0f;
+}
+
+std::string summarizeMotorCmd(
+    const unitree_hg::msg::LowCmd &cmd,
+    size_t joint_count)
+{
+    std::ostringstream oss;
+    const size_t count = std::min(joint_count, cmd.motor_cmd.size());
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (i > 0)
+        {
+            oss << " | ";
+        }
+        const auto &mc = cmd.motor_cmd[i];
+        oss << "#" << i
+            << " mode=" << static_cast<int>(mc.mode)
+            << " q=" << mc.q
+            << " dq=" << mc.dq
+            << " tau=" << mc.tau
+            << " kp=" << mc.kp
+            << " kd=" << mc.kd;
+    }
+    return oss.str();
+}
 } // namespace
 
 class UnitreeG1Bridge final : public rclcpp::Node
@@ -50,6 +93,8 @@ public:
         default_upper_kd_ = declare_parameter<double>("default_upper_kd", 1.0);
         mode_pr_ = declare_parameter<int>("mode_pr", 0);
         disable_when_no_target_ = declare_parameter<bool>("disable_when_no_target", false);
+        debug_motor_cmd_cycles_ = declare_parameter<int>("debug_motor_cmd_cycles", 0);
+        debug_motor_cmd_joint_count_ = declare_parameter<int>("debug_motor_cmd_joint_count", 6);
 
         if (control_hz_ <= 0.0)
         {
@@ -171,19 +216,39 @@ private:
             const bool pd_loop = usesUnitreePdLoop(target.run_mode);
 
             cmd.motor_cmd[i].mode = (enabled && active_mode) ? kUnitreeMotorEnable : kUnitreeMotorDisable;
-            cmd.motor_cmd[i].q = pd_loop ? target.io.target.target_pos : 0.0f;
-            cmd.motor_cmd[i].dq = pd_loop ? target.io.target.target_speed : 0.0f;
-            cmd.motor_cmd[i].tau = target.io.target.target_torque;
-            cmd.motor_cmd[i].kp = pd_loop
-                                      ? fallbackGain(
-                                            static_cast<float>(target.pd[0]),
-                                            static_cast<float>(lower_body ? default_lower_kp_ : default_upper_kp_))
-                                      : 0.0f;
-            cmd.motor_cmd[i].kd = pd_loop
-                                      ? fallbackGain(
-                                            static_cast<float>(target.pd[1]),
-                                            static_cast<float>(lower_body ? default_lower_kd_ : default_upper_kd_))
-                                      : 0.0f;
+            cmd.motor_cmd[i].q = sanitizeFiniteScalar(
+                get_logger(),
+                "q",
+                i,
+                pd_loop ? target.io.target.target_pos : 0.0f);
+            cmd.motor_cmd[i].dq = sanitizeFiniteScalar(
+                get_logger(),
+                "dq",
+                i,
+                pd_loop ? target.io.target.target_speed : 0.0f);
+            cmd.motor_cmd[i].tau = sanitizeFiniteScalar(
+                get_logger(),
+                "tau",
+                i,
+                target.io.target.target_torque);
+            cmd.motor_cmd[i].kp = sanitizeFiniteScalar(
+                get_logger(),
+                "kp",
+                i,
+                pd_loop
+                    ? fallbackGain(
+                          target.pd[0],
+                          static_cast<float>(lower_body ? default_lower_kp_ : default_upper_kp_))
+                    : 0.0f);
+            cmd.motor_cmd[i].kd = sanitizeFiniteScalar(
+                get_logger(),
+                "kd",
+                i,
+                pd_loop
+                    ? fallbackGain(
+                          target.pd[1],
+                          static_cast<float>(lower_body ? default_lower_kd_ : default_upper_kd_))
+                    : 0.0f);
         }
 
 #ifdef OMNIMORPH_HAS_UNITREE_CRC
@@ -193,6 +258,20 @@ private:
             get_logger(),
             "Unitree CRC helper was not found at build time; source official unitree_ros2 and rebuild before real hardware use.");
 #endif
+
+        if (debug_publish_count_ < debug_motor_cmd_cycles_)
+        {
+            RCLCPP_INFO(
+                get_logger(),
+                "Unitree LowCmd sample %d/%d: %s",
+                debug_publish_count_ + 1,
+                debug_motor_cmd_cycles_,
+                summarizeMotorCmd(
+                    cmd,
+                    static_cast<size_t>(std::max(0, debug_motor_cmd_joint_count_)))
+                    .c_str());
+            ++debug_publish_count_;
+        }
 
         lowcmd_pub_->publish(cmd);
         if (!has_lowstate_)
@@ -217,6 +296,9 @@ private:
     bool disable_when_no_target_ = false;
     bool has_target_ = false;
     bool has_lowstate_ = false;
+    int debug_motor_cmd_cycles_ = 0;
+    int debug_motor_cmd_joint_count_ = 6;
+    int debug_publish_count_ = 0;
 
     std::array<MotorHandle, rl_master::hardware::kMotorShmSlotCount> target_slots_{};
     std::array<MotorHandle, rl_master::hardware::kMotorShmSlotCount> feedback_slots_{};
