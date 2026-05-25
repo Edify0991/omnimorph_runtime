@@ -909,6 +909,18 @@ public:
         std::map<std::string, int> delay;
     };
 
+    class CommandLimitsCfg
+    {
+    public:
+        bool enabled = false;
+        float vx_min = 0.0f;
+        float vx_max = 0.0f;
+        float vy_min = 0.0f;
+        float vy_max = 0.0f;
+        float dyaw_min = 0.0f;
+        float dyaw_max = 0.0f;
+    };
+
     std::string omnimorph_root_dir;
     std::string humanoid_rl_root_dir;
     std::string robot_id;
@@ -941,6 +953,8 @@ public:
     float clip_observations = 100.0f;
     float clip_actions = 100.0f;
     float action_scale = 1.0f;
+    std::string action_clip_stage = "raw_action"; // raw_action / target_delta
+    float target_delta_clip = 0.0f;
 
     std::string policy_path;
     int device_id = 0;
@@ -990,6 +1004,7 @@ public:
     SourceContract source_contract;
     ObservationCanonicalContract observation_canonical_contract;
     SimPaceMotorCfg sim_pace_motor;
+    CommandLimitsCfg command_limits;
     GaitConfig gait;
 
     std::string startup_completion_action = "hold";
@@ -1059,6 +1074,7 @@ public:
             source_contract = SourceContract{};
             observation_canonical_contract = ObservationCanonicalContract{};
             sim_pace_motor = SimPaceMotorCfg{};
+            command_limits = CommandLimitsCfg{};
             gait = GaitConfig{};
             logging = RuntimeLoggingConfig{};
 
@@ -1299,6 +1315,59 @@ public:
             clip_actions = cfg["clip_actions"].as<float>();
             const bool has_scalar_action_scale = static_cast<bool>(cfg["action_scale"]);
             action_scale = yamlReadOr<float>(cfg, "action_scale", 1.0f);
+            action_clip_stage = yamlReadOr<std::string>(cfg, "action_clip_stage", "raw_action");
+            std::transform(
+                action_clip_stage.begin(),
+                action_clip_stage.end(),
+                action_clip_stage.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (action_clip_stage != "raw_action" && action_clip_stage != "target_delta")
+            {
+                throw std::runtime_error("action_clip_stage must be one of: raw_action, target_delta");
+            }
+            target_delta_clip = yamlReadOr<float>(cfg, "target_delta_clip", 0.0f);
+            if (target_delta_clip < 0.0f)
+            {
+                throw std::runtime_error("target_delta_clip must be >= 0");
+            }
+            if (action_clip_stage == "target_delta" && target_delta_clip <= 0.0f)
+            {
+                throw std::runtime_error("target_delta_clip must be > 0 when action_clip_stage is target_delta");
+            }
+
+            const YAML::Node command_limits_cfg = cfg["command_limits"];
+            if (command_limits_cfg)
+            {
+                if (!command_limits_cfg.IsMap())
+                {
+                    throw std::runtime_error("command_limits must be a map when provided");
+                }
+                command_limits.enabled = yamlReadOr<bool>(command_limits_cfg, "enabled", false);
+                auto readRange = [&](const char *key, float *min_value, float *max_value) {
+                    const YAML::Node range_node = command_limits_cfg[key];
+                    if (!range_node)
+                    {
+                        if (command_limits.enabled)
+                        {
+                            throw std::runtime_error(std::string("command_limits.") + key + " is required when command_limits.enabled is true");
+                        }
+                        return;
+                    }
+                    if (!range_node.IsSequence() || range_node.size() != 2)
+                    {
+                        throw std::runtime_error(std::string("command_limits.") + key + " must be a [min, max] sequence");
+                    }
+                    *min_value = range_node[0].as<float>();
+                    *max_value = range_node[1].as<float>();
+                    if (*min_value > *max_value)
+                    {
+                        throw std::runtime_error(std::string("command_limits.") + key + " min must be <= max");
+                    }
+                };
+                readRange("vx", &command_limits.vx_min, &command_limits.vx_max);
+                readRange("vy", &command_limits.vy_min, &command_limits.vy_max);
+                readRange("dyaw", &command_limits.dyaw_min, &command_limits.dyaw_max);
+            }
 
             device_id = cfg["device_id"].as<int>();
             obs_dim = cfg["obs_dim"].as<int>();

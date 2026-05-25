@@ -1,0 +1,27 @@
+observation_manifest:
+  schema_version: 3
+  profile: "jingchu01_formal_locomotion"
+  # One frame: 47
+  # Stacked actor input: frame-major 15-frame history = 705
+  terms:
+    - name: phase
+      enabled: true
+      count: 2
+    - name: command
+      enabled: true
+      components: [vx, vy, dyaw]
+    - name: joint_pos
+      enabled: true
+      count: 12
+    - name: joint_vel
+      enabled: true
+      count: 12
+    - name: last_action
+      enabled: true
+      count: 12
+    - name: base_ang_vel
+      enabled: true
+      components: [x, y, z]
+    - name: base_euler
+      enabled: true
+      components: [roll, pitch, yaw]

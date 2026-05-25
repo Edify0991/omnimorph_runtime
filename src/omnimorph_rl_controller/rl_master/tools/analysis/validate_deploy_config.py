@@ -143,9 +143,10 @@ SUPPORTED_ONNX_INPUT_SOURCES = {
 
 SUPPORTED_OBSERVATION_STACK_LAYOUTS = {"frame_major", "term_major"}
 ISAACLAB_LOCOMOTION_SECTIONS = {
-    "jingchu01_dcmotor_newpd_baseline",
-    "jingchu01_pacedcmotor_group_delay_qdq_newpd",
+    "jingchu01_dcmotor_formal",
+    "jingchu01_pacedcmotor_formal",
 }
+ISAACLAB_FORMAL_PACE_SECTION = "jingchu01_pacedcmotor_formal"
 ISAACLAB_LEFT_FIRST_JOINT_ORDER = [
     "left_hip_roll",
     "left_hip_yaw",
@@ -175,13 +176,40 @@ ISAACLAB_ARTICULATION_JOINT_ORDER = [
     "right_ankle_roll",
 ]
 ISAACLAB_LOCOMOTION_TERM_ORDER = [
-    "base_ang_vel",
-    "projected_gravity",
+    "phase",
     "command",
     "joint_pos",
     "joint_vel",
     "last_action",
+    "base_ang_vel",
+    "base_euler",
 ]
+ISAACLAB_FORMAL_PD_STIFFNESS = {
+    "hip_roll": 200.0,
+    "hip_yaw": 60.0,
+    "hip_pitch": 150.0,
+    "knee_pitch": 200.0,
+    "ankle_pitch": 60.0,
+    "ankle_roll": 60.0,
+}
+ISAACLAB_FORMAL_PD_DAMPING = {
+    "hip_roll": 5.0,
+    "hip_yaw": 3.0,
+    "hip_pitch": 5.0,
+    "knee_pitch": 10.0,
+    "ankle_pitch": 3.0,
+    "ankle_roll": 3.0,
+}
+ISAACLAB_FORMAL_PACE_JOINTS = {
+    "left_hip_roll",
+    "left_hip_yaw",
+    "left_hip_pitch",
+    "left_knee_pitch",
+    "right_hip_roll",
+    "right_hip_yaw",
+    "right_hip_pitch",
+    "right_knee_pitch",
+}
 
 SUPPORTED_IMU_PAYLOADS = {"euler_compat", "quaternion"}
 SUPPORTED_IMU_SOURCE_TYPES = {"sensor_msgs_imu", "unitree_hg_lowstate", "unitree_hg_imu_state"}
@@ -950,6 +978,7 @@ def check_observation_stack_layout(
 
 
 def check_isaaclab_locomotion_profile(
+    section_name: str,
     section_cfg: Dict[str, Any],
     manifest_path: Path,
     manifest_dim: int,
@@ -964,60 +993,119 @@ def check_isaaclab_locomotion_profile(
     obs_stack_n = as_int(section_cfg.get("obs_stack_N"), 0)
     action_dim = as_int(section_cfg.get("action_dim"), 0)
     action_scale = float(section_cfg.get("action_scale", 0.0) or 0.0)
-    clip_actions = float(section_cfg.get("clip_actions", 0.0) or 0.0)
+    action_filter = float(section_cfg.get("action_filter", 0.0) or 0.0)
+    action_clip_stage = normalize_token(section_cfg.get("action_clip_stage", "raw_action"))
+    target_delta_clip = float(section_cfg.get("target_delta_clip", 0.0) or 0.0)
+    command_limits = to_dict(section_cfg.get("command_limits"))
     source_contract = to_dict(section_cfg.get("source_contract"))
     sim_base = to_dict(source_contract.get("sim_base"))
     velocity_source = normalize_token(sim_base.get("velocity_source", "freejoint_qvel"))
     actor_input_dim = obs_dim * obs_stack_n if obs_dim > 0 and obs_stack_n > 0 else 0
 
-    if manifest_path.name != "observation_manifest_jingchu01_isaaclab_locomotion.yaml":
+    if str(section_cfg.get("policy_name", "")) != section_name:
+        issues.error(context, f"Jingchu01 formal policy_name must equal section name '{section_name}'")
+    if manifest_path.name != "observation_manifest_jingchu01_formal.yaml":
         issues.error(
             context,
-            "IsaacLab locomotion profiles must use observation_manifest_jingchu01_isaaclab_locomotion.yaml",
+            "Jingchu01 formal profiles must use observation_manifest_jingchu01_formal.yaml",
         )
-    if manifest_dim != 45:
-        issues.error(context, f"IsaacLab locomotion manifest dim must be 45, got {manifest_dim}")
-    if obs_dim != 45:
-        issues.error(context, f"IsaacLab locomotion obs_dim must be 45, got {obs_dim}")
-    if obs_stack_n != 5:
-        issues.error(context, f"IsaacLab locomotion obs_stack_N must be 5, got {obs_stack_n}")
-    if observation_stack_layout != "term_major":
-        issues.error(context, "IsaacLab locomotion profiles must set observation_stack_layout: term_major")
-    if actor_input_dim != 225:
-        issues.error(context, f"IsaacLab locomotion stacked actor input must be 225, got {actor_input_dim}")
+    if manifest_dim != 47:
+        issues.error(context, f"Jingchu01 formal manifest dim must be 47, got {manifest_dim}")
+    if obs_dim != 47:
+        issues.error(context, f"Jingchu01 formal obs_dim must be 47, got {obs_dim}")
+    if obs_stack_n != 15:
+        issues.error(context, f"Jingchu01 formal obs_stack_N must be 15, got {obs_stack_n}")
+    if observation_stack_layout != "frame_major":
+        issues.error(context, "Jingchu01 formal profiles must set observation_stack_layout: frame_major")
+    if actor_input_dim != 705:
+        issues.error(context, f"Jingchu01 formal stacked actor input must be 705, got {actor_input_dim}")
     if action_dim != 12:
-        issues.error(context, f"IsaacLab locomotion action_dim must be 12, got {action_dim}")
-    if not math.isclose(action_scale, 0.25, rel_tol=0.0, abs_tol=1.0e-6):
-        issues.error(context, f"IsaacLab locomotion action_scale must be 0.25, got {action_scale}")
-    if not math.isclose(clip_actions, 2.0, rel_tol=0.0, abs_tol=1.0e-6):
-        issues.error(context, f"IsaacLab locomotion clip_actions must match training clip 2.0, got {clip_actions}")
+        issues.error(context, f"Jingchu01 formal action_dim must be 12, got {action_dim}")
+    if not math.isclose(action_scale, 0.5, rel_tol=0.0, abs_tol=1.0e-6):
+        issues.error(context, f"Jingchu01 formal action_scale must be 0.5, got {action_scale}")
+    if action_clip_stage != "target_delta":
+        issues.error(context, f"Jingchu01 formal action_clip_stage must be target_delta, got {action_clip_stage}")
+    if not math.isclose(target_delta_clip, 2.0, rel_tol=0.0, abs_tol=1.0e-6):
+        issues.error(context, f"Jingchu01 formal target_delta_clip must be 2.0, got {target_delta_clip}")
+    if not math.isclose(action_filter, 0.0, rel_tol=0.0, abs_tol=1.0e-6):
+        issues.error(context, f"Jingchu01 formal action_filter must be 0.0, got {action_filter}")
     if velocity_source != "body_object_velocity_root_local":
         issues.error(
             context,
-            "IsaacLab locomotion sim_base.velocity_source must be body_object_velocity_root_local "
+            "Jingchu01 formal sim_base.velocity_source must be body_object_velocity_root_local "
             f"for body-frame IMU angular velocity semantics, got {velocity_source}",
         )
 
     term_names = enabled_manifest_term_names(manifest_terms)
-    forbidden_terms = sorted({"base_rpy", "phase"} & set(term_names))
+    forbidden_terms = sorted({"base_rpy", "projected_gravity"} & set(term_names))
     if forbidden_terms:
         issues.error(
             context,
-            "IsaacLab locomotion manifest must not include forbidden terms: "
+            "Jingchu01 formal manifest must not include forbidden terms: "
             + ", ".join(forbidden_terms),
         )
     if term_names != ISAACLAB_LOCOMOTION_TERM_ORDER:
         issues.error(
             context,
-            "IsaacLab locomotion manifest term order must be "
+            "Jingchu01 formal manifest term order must be "
             + ", ".join(ISAACLAB_LOCOMOTION_TERM_ORDER),
         )
 
     if list(action_order) != ISAACLAB_LEFT_FIRST_JOINT_ORDER:
-        issues.error(context, "IsaacLab locomotion action_joint_order must be left-first training order")
+        issues.error(context, "Jingchu01 formal action_joint_order must be left-first training order")
     effective_obs_order = list(obs_order) if obs_order else list(action_order)
-    if effective_obs_order != ISAACLAB_ARTICULATION_JOINT_ORDER:
-        issues.error(context, "IsaacLab locomotion obs_joint_order must be IsaacLab articulation joint order")
+    if effective_obs_order != ISAACLAB_LEFT_FIRST_JOINT_ORDER:
+        issues.error(context, "Jingchu01 formal obs_joint_order must be left-first training order")
+
+    if not as_bool(command_limits.get("enabled"), False):
+        issues.error(context, "Jingchu01 formal command_limits.enabled must be true")
+    expected_command_limits = {
+        "vx": [0.0, 1.0],
+        "vy": [-0.5, 0.5],
+        "dyaw": [-0.5, 0.5],
+    }
+    for key, expected in expected_command_limits.items():
+        raw_range = to_list(command_limits.get(key))
+        if len(raw_range) != 2:
+            issues.error(context, f"Jingchu01 formal command_limits.{key} must be [min, max]")
+            continue
+        try:
+            actual = [float(raw_range[0]), float(raw_range[1])]
+        except Exception:
+            issues.error(context, f"Jingchu01 formal command_limits.{key} must contain numeric values")
+            continue
+        if any(not math.isclose(a, b, rel_tol=0.0, abs_tol=1.0e-6) for a, b in zip(actual, expected)):
+            issues.error(context, f"Jingchu01 formal command_limits.{key} must be {expected}, got {actual}")
+
+    kps = to_dict(section_cfg.get("kps"))
+    kds = to_dict(section_cfg.get("kds"))
+    for joint_name in ISAACLAB_LEFT_FIRST_JOINT_ORDER:
+        suffix = joint_name.removeprefix("left_").removeprefix("right_")
+        expected_kp = ISAACLAB_FORMAL_PD_STIFFNESS[suffix]
+        expected_kd = ISAACLAB_FORMAL_PD_DAMPING[suffix]
+        actual_kp = float(kps.get(joint_name, float("nan")))
+        actual_kd = float(kds.get(joint_name, float("nan")))
+        if not math.isclose(actual_kp, expected_kp, rel_tol=0.0, abs_tol=1.0e-6):
+            issues.error(context, f"Jingchu01 formal kps[{joint_name}] must be {expected_kp}, got {actual_kp}")
+        if not math.isclose(actual_kd, expected_kd, rel_tol=0.0, abs_tol=1.0e-6):
+            issues.error(context, f"Jingchu01 formal kds[{joint_name}] must be {expected_kd}, got {actual_kd}")
+
+    sim_pace = to_dict(section_cfg.get("sim_pace_motor"))
+    if section_name == ISAACLAB_FORMAL_PACE_SECTION:
+        if not as_bool(sim_pace.get("enabled"), False):
+            issues.error(context, "Jingchu01 PaceDCMotor formal sim_pace_motor.enabled must be true")
+        for field_name in ("armature", "frictionloss", "encoder_bias", "delay"):
+            value_map = to_dict(sim_pace.get(field_name))
+            joints = set(str(k) for k in value_map.keys())
+            if joints != ISAACLAB_FORMAL_PACE_JOINTS:
+                issues.error(
+                    context,
+                    f"Jingchu01 PaceDCMotor formal sim_pace_motor.{field_name} must cover hip/knee joints only",
+                )
+        if as_int(sim_pace.get("max_delay"), -1) != 4:
+            issues.error(context, "Jingchu01 PaceDCMotor formal sim_pace_motor.max_delay must be 4")
+    elif as_bool(sim_pace.get("enabled"), False):
+        issues.error(context, "Jingchu01 DCMotor formal must not enable sim_pace_motor")
 
 
 def load_manifest_terms(
@@ -2274,6 +2362,7 @@ def validate_profile(
         )
     if section_name in ISAACLAB_LOCOMOTION_SECTIONS:
         check_isaaclab_locomotion_profile(
+            section_name,
             section_cfg,
             manifest_path,
             manifest_dim,

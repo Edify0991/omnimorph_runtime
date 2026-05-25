@@ -121,11 +121,11 @@ deploy_mode_profiles:
   config_section: engineaigym_stand_lower_body
   tag: stand
 - mode_id: 4
-  config_section: jingchu01_dcmotor_newpd_baseline
-  tag: jc01_dcmotor_newpd
+  config_section: jingchu01_dcmotor_formal
+  tag: jc01_dcmotor_formal
 - mode_id: 5
-  config_section: jingchu01_pacedcmotor_group_delay_qdq_newpd
-  tag: jc01_pacedc_group_delay_qdq_newpd
+  config_section: jingchu01_pacedcmotor_formal
+  tag: jc01_pacedcmotor_formal
 - mode_id: 6
   config_section: beyondmimic_jc01_walk_lower_body_w_state_estimation
   tag: beyondmimic_jc01_walk_lower_body_w_state_estimation
@@ -138,8 +138,8 @@ config_files:
   beyondmimic_jc01_dance_full_body_wo_state_estimation: profiles/beyondmimic_jc01_dance_full_body_wo_state_estimation.yaml
   engineaigym_walk_lower_body: profiles/engineaigym_walk_lower_body.yaml
   engineaigym_stand_lower_body: profiles/engineaigym_stand_lower_body.yaml
-  jingchu01_dcmotor_newpd_baseline: profiles/jingchu01_dcmotor_newpd_baseline.yaml
-  jingchu01_pacedcmotor_group_delay_qdq_newpd: profiles/jingchu01_pacedcmotor_group_delay_qdq_newpd.yaml
+  jingchu01_dcmotor_formal: profiles/jingchu01_dcmotor_formal.yaml
+  jingchu01_pacedcmotor_formal: profiles/jingchu01_pacedcmotor_formal.yaml
   amp_tienkunglab_jc01_walk_full_body: profiles/amp_tienkunglab_jc01_walk_full_body.yaml
 path_variables:
   robot_assets_dir: ${ROBOT_ASSETS_DIR}

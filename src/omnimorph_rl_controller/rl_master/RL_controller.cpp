@@ -1294,6 +1294,14 @@ void RL_controller::updateStateFromIO(const rl_master::RobotStateData &state)
 
 void RL_controller::updateCommandFromIO(const rl_master::TeleopCommand &command)
 {
+    const auto &limits = activePolicyCfg().command_limits;
+    if (limits.enabled)
+    {
+        cmd.vx = std::clamp(command.vx, limits.vx_min, limits.vx_max);
+        cmd.vy = std::clamp(command.vy, limits.vy_min, limits.vy_max);
+        cmd.dyaw = std::clamp(command.dyaw, limits.dyaw_min, limits.dyaw_max);
+        return;
+    }
     cmd.vx = command.vx;
     cmd.vy = command.vy;
     cmd.dyaw = command.dyaw;
@@ -2321,9 +2329,12 @@ std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs
     std::vector<float> target_action = std::move(policy_output.action);
     latest_policy_extra_outputs_ = std::move(policy_output.extra_outputs);
 
-    for (auto &value : target_action)
+    if (active_cfg.action_clip_stage == "raw_action")
     {
-        value = std::clamp(value, -active_cfg.clip_actions, active_cfg.clip_actions);
+        for (auto &value : target_action)
+        {
+            value = std::clamp(value, -active_cfg.clip_actions, active_cfg.clip_actions);
+        }
     }
 
     if (action.size() != target_action.size())
@@ -2431,9 +2442,17 @@ std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &p
         }
         const float joint_action_scale =
             policy_idx < active_cfg.action_scales.size() ? active_cfg.action_scales[policy_idx] : active_cfg.action_scale;
+        float target_delta = policy_action[policy_idx] * joint_action_scale;
+        if (active_cfg.action_clip_stage == "target_delta" && active_cfg.target_delta_clip > 0.0f)
+        {
+            target_delta = std::clamp(
+                target_delta,
+                -active_cfg.target_delta_clip,
+                active_cfg.target_delta_clip);
+        }
         target_q[static_cast<size_t>(robot_idx)] =
             robot->default_angle[static_cast<size_t>(robot_idx)] +
-            policy_action[policy_idx] * joint_action_scale;
+            target_delta;
     }
 
     joint_target_q = target_q;
