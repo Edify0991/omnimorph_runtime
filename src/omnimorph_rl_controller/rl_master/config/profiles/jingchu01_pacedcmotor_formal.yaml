@@ -1,5 +1,6 @@
 jingchu01_pacedcmotor_formal:
   policy_name: jingchu01_pacedcmotor_formal
+  policy_file: policies/jingchu01_pacedcmotor_baselinepd_model3000.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 15
@@ -31,6 +32,33 @@ jingchu01_pacedcmotor_formal:
     right_knee_pitch: 10.0
     right_ankle_pitch: 3.0
     right_ankle_roll: 3.0
+  # Hard PD alternative:
+  # kps:
+  #   left_hip_roll: 394.213
+  #   left_hip_yaw: 99.511
+  #   left_hip_pitch: 394.213
+  #   left_knee_pitch: 300.0
+  #   left_ankle_pitch: 138.023
+  #   left_ankle_roll: 138.023
+  #   right_hip_roll: 394.213
+  #   right_hip_yaw: 99.511
+  #   right_hip_pitch: 394.213
+  #   right_knee_pitch: 300.0
+  #   right_ankle_pitch: 138.023
+  #   right_ankle_roll: 138.023
+  # kds:
+  #   left_hip_roll: 23.005
+  #   left_hip_yaw: 5.007
+  #   left_hip_pitch: 23.005
+  #   left_knee_pitch: 17.507
+  #   left_ankle_pitch: 8.055
+  #   left_ankle_roll: 8.055
+  #   right_hip_roll: 23.005
+  #   right_hip_yaw: 5.007
+  #   right_hip_pitch: 23.005
+  #   right_knee_pitch: 17.507
+  #   right_ankle_pitch: 8.055
+  #   right_ankle_roll: 8.055
   tau_limit:
     left_hip_roll: 300.0
     left_hip_yaw: 300.0
