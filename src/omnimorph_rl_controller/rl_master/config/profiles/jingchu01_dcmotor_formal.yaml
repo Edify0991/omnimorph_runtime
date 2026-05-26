@@ -47,8 +47,8 @@ jingchu01_dcmotor_formal:
   clip_observations: 100.0
   clip_actions: 100.0
   action_scale: 0.5
-  action_clip_stage: target_delta
-  target_delta_clip: 2.0
+  action_clip_stage: target_q
+  target_q_clip: 2.0
   command_limits:
     enabled: true
     vx: [0.0, 1.0]

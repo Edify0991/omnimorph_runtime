@@ -995,7 +995,7 @@ def check_isaaclab_locomotion_profile(
     action_scale = float(section_cfg.get("action_scale", 0.0) or 0.0)
     action_filter = float(section_cfg.get("action_filter", 0.0) or 0.0)
     action_clip_stage = normalize_token(section_cfg.get("action_clip_stage", "raw_action"))
-    target_delta_clip = float(section_cfg.get("target_delta_clip", 0.0) or 0.0)
+    target_q_clip = float(section_cfg.get("target_q_clip", 0.0) or 0.0)
     command_limits = to_dict(section_cfg.get("command_limits"))
     source_contract = to_dict(section_cfg.get("source_contract"))
     sim_base = to_dict(source_contract.get("sim_base"))
@@ -1023,10 +1023,10 @@ def check_isaaclab_locomotion_profile(
         issues.error(context, f"Jingchu01 formal action_dim must be 12, got {action_dim}")
     if not math.isclose(action_scale, 0.5, rel_tol=0.0, abs_tol=1.0e-6):
         issues.error(context, f"Jingchu01 formal action_scale must be 0.5, got {action_scale}")
-    if action_clip_stage != "target_delta":
-        issues.error(context, f"Jingchu01 formal action_clip_stage must be target_delta, got {action_clip_stage}")
-    if not math.isclose(target_delta_clip, 2.0, rel_tol=0.0, abs_tol=1.0e-6):
-        issues.error(context, f"Jingchu01 formal target_delta_clip must be 2.0, got {target_delta_clip}")
+    if action_clip_stage != "target_q":
+        issues.error(context, f"Jingchu01 formal action_clip_stage must be target_q, got {action_clip_stage}")
+    if not math.isclose(target_q_clip, 2.0, rel_tol=0.0, abs_tol=1.0e-6):
+        issues.error(context, f"Jingchu01 formal target_q_clip must be 2.0, got {target_q_clip}")
     if not math.isclose(action_filter, 0.0, rel_tol=0.0, abs_tol=1.0e-6):
         issues.error(context, f"Jingchu01 formal action_filter must be 0.0, got {action_filter}")
     if velocity_source != "body_object_velocity_root_local":

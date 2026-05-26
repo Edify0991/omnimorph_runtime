@@ -953,8 +953,9 @@ public:
     float clip_observations = 100.0f;
     float clip_actions = 100.0f;
     float action_scale = 1.0f;
-    std::string action_clip_stage = "raw_action"; // raw_action / target_delta
+    std::string action_clip_stage = "raw_action"; // raw_action / target_delta / target_q
     float target_delta_clip = 0.0f;
+    float target_q_clip = 0.0f;
 
     std::string policy_path;
     int device_id = 0;
@@ -1321,9 +1322,11 @@ public:
                 action_clip_stage.end(),
                 action_clip_stage.begin(),
                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (action_clip_stage != "raw_action" && action_clip_stage != "target_delta")
+            if (action_clip_stage != "raw_action" &&
+                action_clip_stage != "target_delta" &&
+                action_clip_stage != "target_q")
             {
-                throw std::runtime_error("action_clip_stage must be one of: raw_action, target_delta");
+                throw std::runtime_error("action_clip_stage must be one of: raw_action, target_delta, target_q");
             }
             target_delta_clip = yamlReadOr<float>(cfg, "target_delta_clip", 0.0f);
             if (target_delta_clip < 0.0f)
@@ -1333,6 +1336,15 @@ public:
             if (action_clip_stage == "target_delta" && target_delta_clip <= 0.0f)
             {
                 throw std::runtime_error("target_delta_clip must be > 0 when action_clip_stage is target_delta");
+            }
+            target_q_clip = yamlReadOr<float>(cfg, "target_q_clip", 0.0f);
+            if (target_q_clip < 0.0f)
+            {
+                throw std::runtime_error("target_q_clip must be >= 0");
+            }
+            if (action_clip_stage == "target_q" && target_q_clip <= 0.0f)
+            {
+                throw std::runtime_error("target_q_clip must be > 0 when action_clip_stage is target_q");
             }
 
             const YAML::Node command_limits_cfg = cfg["command_limits"];

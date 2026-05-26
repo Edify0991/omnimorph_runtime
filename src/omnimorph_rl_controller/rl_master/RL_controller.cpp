@@ -2450,9 +2450,17 @@ std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &p
                 -active_cfg.target_delta_clip,
                 active_cfg.target_delta_clip);
         }
-        target_q[static_cast<size_t>(robot_idx)] =
+        float target_position =
             robot->default_angle[static_cast<size_t>(robot_idx)] +
             target_delta;
+        if (active_cfg.action_clip_stage == "target_q" && active_cfg.target_q_clip > 0.0f)
+        {
+            target_position = std::clamp(
+                target_position,
+                -active_cfg.target_q_clip,
+                active_cfg.target_q_clip);
+        }
+        target_q[static_cast<size_t>(robot_idx)] = target_position;
     }
 
     joint_target_q = target_q;
