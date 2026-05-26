@@ -35,6 +35,11 @@ bool usesUnitreePdLoop(uint8_t run_mode)
     return run_mode == RUN_MODE_R1 || run_mode == RUN_MODE_CSP;
 }
 
+bool usesUnitreeTorqueCommand(uint8_t run_mode)
+{
+    return run_mode == RUN_MODE_CST;
+}
+
 float sanitizeFiniteScalar(
     rclcpp::Logger logger,
     const char *field_name,
@@ -214,6 +219,7 @@ private:
             const bool active_mode = target.run_mode != 0;
             const bool lower_body = i < 15;
             const bool pd_loop = usesUnitreePdLoop(target.run_mode);
+            const bool torque_loop = usesUnitreeTorqueCommand(target.run_mode);
 
             cmd.motor_cmd[i].mode = (enabled && active_mode) ? kUnitreeMotorEnable : kUnitreeMotorDisable;
             cmd.motor_cmd[i].q = sanitizeFiniteScalar(
@@ -230,7 +236,7 @@ private:
                 get_logger(),
                 "tau",
                 i,
-                target.io.target.target_torque);
+                torque_loop ? target.io.target.target_torque : 0.0f);
             cmd.motor_cmd[i].kp = sanitizeFiniteScalar(
                 get_logger(),
                 "kp",

@@ -32,15 +32,16 @@ This bridge maps repository modes to Unitree fields as follows:
 
 | Repository run mode | Unitree command fields | Intended use |
 | --- | --- | --- |
-| `r1` | `q`, `dq`, `kp`, `kd`, `tau` | mixed position/velocity PD plus feed-forward torque |
+| `r1` | `q`, `dq`, `kp`, `kd`, `tau=0` from the Unitree DDS bridge | mixed position/velocity PD without extra feed-forward torque |
 | `csp` | `q`, `dq`, `kp`, `kd`, `tau=0` from the solver path | position tracking |
 | `cst` | `tau` only, with `q=dq=kp=kd=0` | pure torque test path only |
 
 For the current G1 BeyondMimic profile, use `r1`. The policy produces target
 joint positions, and `RL_controller` computes a PD torque from `target_q`,
-current `q/dq`, `kps`, and `kds`; the hardware command should therefore carry
-the same `q/kp/kd` context plus torque feed-forward, not a repository-side pure
-torque-only `cst` command.
+current `q/dq`, `kps`, and `kds`; that torque remains available in runtime logs
+for diagnostics, but the Unitree DDS bridge zeroes the LowCmd `tau` field in
+`r1`/`csp` so the hardware does not receive a duplicate software-PD torque. Use
+`cst` only for explicit torque tests.
 
 The configured 29DOF hardware order matches Unitree's official `G1JointIndex`:
 

@@ -36,6 +36,11 @@ bool usesUnitreePdLoop(uint8_t run_mode)
     return run_mode == RUN_MODE_R1 || run_mode == RUN_MODE_CSP;
 }
 
+bool usesUnitreeTorqueCommand(uint8_t run_mode)
+{
+    return run_mode == RUN_MODE_CST;
+}
+
 float fallbackGain(float raw, float fallback)
 {
     return raw > 0.0f ? raw : fallback;
@@ -223,6 +228,7 @@ public:
             const bool active_mode = slot.run_mode != 0;
             const bool lower_body = i < 15;
             const bool pd_loop = usesUnitreePdLoop(slot.run_mode);
+            const bool torque_loop = usesUnitreeTorqueCommand(slot.run_mode);
 
             cmd.motor_cmd[i].mode = active_mode ? kUnitreeMotorEnable : kUnitreeMotorDisable;
             cmd.motor_cmd[i].q = sanitizeFiniteScalar(
@@ -239,7 +245,7 @@ public:
                 node_->get_logger(),
                 "tau",
                 i,
-                slot.io.target.target_torque);
+                torque_loop ? slot.io.target.target_torque : 0.0f);
             cmd.motor_cmd[i].kp = sanitizeFiniteScalar(
                 node_->get_logger(),
                 "kp",
