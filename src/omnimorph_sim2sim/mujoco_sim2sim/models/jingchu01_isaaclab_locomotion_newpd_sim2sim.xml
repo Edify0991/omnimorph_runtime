@@ -1,5 +1,5 @@
 <mujoco model="JC01-URDF">
-  <compiler angle="radian" meshdir="/data/asset_isaacsim5_1_0/Assets/Isaac/5.1/Isaac/Robots/Jingchu/Jingchu01/meshes/" autolimits="true" />
+  <compiler angle="radian" meshdir="/data/backup_20260322/user/lyc/jingchu01-18s-20260130/meshes/" autolimits="true" />
   <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast" />
   <size nconmax="5000" njmax="10000" />
   <default>

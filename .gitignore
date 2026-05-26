@@ -44,6 +44,7 @@ src/humanoid_rl_controller/rl_master/data/
 src/motor_test/test_data/
 
 thirdparty/
+third_party/
 
 # src/humanoid_rl_controller/rl_master/policies
 

@@ -278,6 +278,7 @@ install(FILES README.md
 )
 
 install(PROGRAMS
+  scripts/keyboard_teleop.py
   scripts/mujoco_velocity_source_probe.py
   scripts/mujoco_sim_viewer_frontend.py
   DESTINATION lib/${PROJECT_NAME}
