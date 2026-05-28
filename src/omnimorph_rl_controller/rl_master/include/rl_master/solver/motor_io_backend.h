@@ -6,6 +6,7 @@
 #include <string>
 
 #include "rl_master/hardware/motor_shm_contract.h"
+#include "rl_master/kinematics/joint_data.h"
 
 struct SourceContract;
 
@@ -24,6 +25,21 @@ public:
     virtual void updateSourceContract(const SourceContract &source_contract)
     {
         (void)source_contract;
+    }
+    virtual void writePdGains(MotorHandle *target, const JointData &joint_cmd) const
+    {
+        if (!target)
+        {
+            return;
+        }
+        if (joint_cmd.mode == RUN_MODE_R1)
+        {
+            target->pd[0] = joint_cmd.kp;
+            target->pd[1] = joint_cmd.kd;
+            return;
+        }
+        target->pd[0] = 0.0f;
+        target->pd[1] = 0.0f;
     }
     virtual void connect() = 0;
     virtual void readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback) = 0;

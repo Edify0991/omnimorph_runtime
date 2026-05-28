@@ -20,6 +20,7 @@ public:
 
     std::string backendId() const override;
     void connect() override;
+    void writePdGains(MotorHandle *target, const JointData &joint_cmd) const override;
 
     void readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback) override;
     void writeTarget(const std::array<MotorHandle, kMotorShmSlotCount> &target) override;

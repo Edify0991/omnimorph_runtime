@@ -836,10 +836,9 @@ void RobotSolver::sendMotorCmd()
         motor_target_all_[i].io.target.target_pos = motor_cmd_[i].q;
         motor_target_all_[i].io.target.target_torque = motor_cmd_[i].tau;
         motor_target_all_[i].run_mode = static_cast<uint8_t>(joint_cmd.mode);
-        if (joint_cmd.mode == RUN_MODE_R1)
+        if (motor_io_backend_)
         {
-            motor_target_all_[i].pd[0] = joint_cmd.kp;
-            motor_target_all_[i].pd[1] = joint_cmd.kd;
+            motor_io_backend_->writePdGains(&motor_target_all_[i], joint_cmd);
         }
         else
         {

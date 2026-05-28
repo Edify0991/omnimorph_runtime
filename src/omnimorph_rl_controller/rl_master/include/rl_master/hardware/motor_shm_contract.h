@@ -19,9 +19,13 @@ constexpr int kMotorFeedbackShmKeyNum = 0x02;
 
 struct MotorHandle
 {
-    uint8_t run_mode = 0;
-    uint8_t motor_type = 0;
-    float pd[2] = {0.0f, 0.0f};
+    uint8_t run_mode;
+    uint8_t motor_type;
+    union
+    {
+        float pd[2];
+        uint32_t pd_uint[2];
+    };
 
     union
     {
@@ -39,6 +43,14 @@ struct MotorHandle
             float feedback_torque;
         } feedback;
     } io{};
+
+    MotorHandle()
+        : run_mode(0),
+          motor_type(0),
+          pd{0.0f, 0.0f},
+          io{}
+    {
+    }
 };
 
 } // namespace rl_master::hardware
