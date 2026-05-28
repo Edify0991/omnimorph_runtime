@@ -838,12 +838,12 @@ void RobotSolver::sendMotorCmd()
         motor_target_all_[i].run_mode = static_cast<uint8_t>(joint_cmd.mode);
         if (motor_io_backend_)
         {
-            motor_io_backend_->writePdGains(&motor_target_all_[i], joint_cmd);
+            motor_io_backend_->writePdGains(i, &motor_target_all_[i], joint_cmd);
         }
         else
         {
-            motor_target_all_[i].pd[0] = 0.0f;
-            motor_target_all_[i].pd[1] = 0.0f;
+            motor_target_all_[i].reserved[0] = 0U;
+            motor_target_all_[i].reserved[1] = 0U;
         }
 
         motor_cmd_q_[i] = motor_cmd_[i].q;

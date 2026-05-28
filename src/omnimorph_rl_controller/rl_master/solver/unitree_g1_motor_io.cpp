@@ -96,6 +96,27 @@ public:
         return "unitree_g1_dds";
     }
 
+    void writePdGains(size_t motor_index, MotorHandle *target, const JointData &joint_cmd) override
+    {
+        if (target)
+        {
+            target->reserved[0] = 0U;
+            target->reserved[1] = 0U;
+        }
+        if (motor_index >= commanded_kp_.size() || motor_index >= commanded_kd_.size())
+        {
+            return;
+        }
+        if (joint_cmd.mode == RUN_MODE_R1 || joint_cmd.mode == RUN_MODE_CSP)
+        {
+            commanded_kp_[motor_index] = joint_cmd.kp;
+            commanded_kd_[motor_index] = joint_cmd.kd;
+            return;
+        }
+        commanded_kp_[motor_index] = 0.0f;
+        commanded_kd_[motor_index] = 0.0f;
+    }
+
     void connect() override
     {
         if (!rclcpp::ok())
@@ -252,7 +273,7 @@ public:
                 i,
                 pd_loop
                     ? fallbackGain(
-                          slot.pd[0],
+                          commanded_kp_[i],
                           static_cast<float>(lower_body ? default_lower_kp_ : default_upper_kp_))
                     : 0.0f);
             cmd.motor_cmd[i].kd = sanitizeFiniteScalar(
@@ -261,7 +282,7 @@ public:
                 i,
                 pd_loop
                     ? fallbackGain(
-                          slot.pd[1],
+                          commanded_kd_[i],
                           static_cast<float>(lower_body ? default_lower_kd_ : default_upper_kd_))
                     : 0.0f);
         }
@@ -328,6 +349,8 @@ private:
 
     std::mutex feedback_mutex_;
     std::array<MotorHandle, kMotorShmSlotCount> latest_feedback_{};
+    std::array<float, kMotorShmSlotCount> commanded_kp_{};
+    std::array<float, kMotorShmSlotCount> commanded_kd_{};
     double latest_lowstate_time_sec_ = 0.0;
     bool has_lowstate_ = false;
 

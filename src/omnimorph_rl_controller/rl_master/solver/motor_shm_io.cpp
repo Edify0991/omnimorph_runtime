@@ -20,31 +20,32 @@ std::string ShmMotorIoBackend::backendId() const
 
 namespace
 {
-uint32_t encodeShmPdGain(float raw_gain)
+uint8_t encodeShmPdGain(float raw_gain)
 {
     if (!std::isfinite(raw_gain) || raw_gain <= 0.0f)
     {
         return 0U;
     }
-    const float clamped = std::min(raw_gain, static_cast<float>(std::numeric_limits<uint32_t>::max()));
-    return static_cast<uint32_t>(clamped + 0.5f);
+    const float clamped = std::min(raw_gain, static_cast<float>(std::numeric_limits<uint8_t>::max()));
+    return static_cast<uint8_t>(clamped + 0.5f);
 }
 } // namespace
 
-void ShmMotorIoBackend::writePdGains(MotorHandle *target, const JointData &joint_cmd) const
+void ShmMotorIoBackend::writePdGains(size_t motor_index, MotorHandle *target, const JointData &joint_cmd)
 {
+    (void)motor_index;
     if (!target)
     {
         return;
     }
     if (joint_cmd.mode == RUN_MODE_R1 || joint_cmd.mode == RUN_MODE_CSP)
     {
-        target->pd_uint[0] = encodeShmPdGain(joint_cmd.kp);
-        target->pd_uint[1] = encodeShmPdGain(joint_cmd.kd);
+        target->reserved[0] = encodeShmPdGain(joint_cmd.kp);
+        target->reserved[1] = encodeShmPdGain(joint_cmd.kd);
         return;
     }
-    target->pd_uint[0] = 0U;
-    target->pd_uint[1] = 0U;
+    target->reserved[0] = 0U;
+    target->reserved[1] = 0U;
 }
 
 void ShmMotorIoBackend::connect()

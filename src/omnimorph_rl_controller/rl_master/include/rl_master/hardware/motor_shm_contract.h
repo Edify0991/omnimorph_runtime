@@ -21,11 +21,7 @@ struct MotorHandle
 {
     uint8_t run_mode;
     uint8_t motor_type;
-    union
-    {
-        float pd[2];
-        uint32_t pd_uint[2];
-    };
+    uint8_t reserved[2];
 
     union
     {
@@ -47,11 +43,13 @@ struct MotorHandle
     MotorHandle()
         : run_mode(0),
           motor_type(0),
-          pd{0.0f, 0.0f},
+          reserved{0, 0},
           io{}
     {
     }
 };
+
+static_assert(sizeof(MotorHandle) == 16, "MotorHandle must match JC01 shared-memory ABI");
 
 } // namespace rl_master::hardware
 

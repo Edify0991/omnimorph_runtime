@@ -30,6 +30,11 @@ float fallbackGain(float raw, float fallback)
     return raw > 0.0f ? raw : fallback;
 }
 
+float decodeSharedMemoryGainByte(uint8_t raw, float fallback)
+{
+    return raw > 0U ? static_cast<float>(raw) : fallback;
+}
+
 bool usesUnitreePdLoop(uint8_t run_mode)
 {
     return run_mode == RUN_MODE_R1 || run_mode == RUN_MODE_CSP;
@@ -242,8 +247,8 @@ private:
                 "kp",
                 i,
                 pd_loop
-                    ? fallbackGain(
-                          target.pd[0],
+                    ? decodeSharedMemoryGainByte(
+                          target.reserved[0],
                           static_cast<float>(lower_body ? default_lower_kp_ : default_upper_kp_))
                     : 0.0f);
             cmd.motor_cmd[i].kd = sanitizeFiniteScalar(
@@ -251,8 +256,8 @@ private:
                 "kd",
                 i,
                 pd_loop
-                    ? fallbackGain(
-                          target.pd[1],
+                    ? decodeSharedMemoryGainByte(
+                          target.reserved[1],
                           static_cast<float>(lower_body ? default_lower_kd_ : default_upper_kd_))
                     : 0.0f);
         }

@@ -26,20 +26,15 @@ public:
     {
         (void)source_contract;
     }
-    virtual void writePdGains(MotorHandle *target, const JointData &joint_cmd) const
+    virtual void writePdGains(size_t motor_index, MotorHandle *target, const JointData &joint_cmd)
     {
+        (void)motor_index;
         if (!target)
         {
             return;
         }
-        if (joint_cmd.mode == RUN_MODE_R1)
-        {
-            target->pd[0] = joint_cmd.kp;
-            target->pd[1] = joint_cmd.kd;
-            return;
-        }
-        target->pd[0] = 0.0f;
-        target->pd[1] = 0.0f;
+        target->reserved[0] = 0U;
+        target->reserved[1] = 0U;
     }
     virtual void connect() = 0;
     virtual void readFeedback(std::array<MotorHandle, kMotorShmSlotCount> *feedback) = 0;

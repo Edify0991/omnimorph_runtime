@@ -67,6 +67,28 @@ public:
         return "unitree_g1_sdk2";
     }
 
+    void writePdGains(size_t motor_index, MotorHandle *target, const JointData &joint_cmd) override
+    {
+        std::lock_guard<std::mutex> lock(target_mutex_);
+        if (target)
+        {
+            target->reserved[0] = 0U;
+            target->reserved[1] = 0U;
+        }
+        if (motor_index >= latest_commanded_kp_.size() || motor_index >= latest_commanded_kd_.size())
+        {
+            return;
+        }
+        if (joint_cmd.mode == RUN_MODE_R1 || joint_cmd.mode == RUN_MODE_CSP)
+        {
+            latest_commanded_kp_[motor_index] = joint_cmd.kp;
+            latest_commanded_kd_[motor_index] = joint_cmd.kd;
+            return;
+        }
+        latest_commanded_kp_[motor_index] = 0.0f;
+        latest_commanded_kd_[motor_index] = 0.0f;
+    }
+
     void updateSourceContract(const SourceContract &source_contract) override
     {
         std::lock_guard<std::mutex> lock(config_mutex_);
@@ -203,6 +225,8 @@ private:
     {
         SourceContractUnitreeSdk2 cfg;
         std::array<MotorHandle, kMotorShmSlotCount> target{};
+        std::array<float, kMotorShmSlotCount> commanded_kp{};
+        std::array<float, kMotorShmSlotCount> commanded_kd{};
         {
             std::lock_guard<std::mutex> config_lock(config_mutex_);
             cfg = sdk2_cfg_;
@@ -210,6 +234,8 @@ private:
         {
             std::lock_guard<std::mutex> target_lock(target_mutex_);
             target = latest_target_;
+            commanded_kp = latest_commanded_kp_;
+            commanded_kd = latest_commanded_kd_;
         }
 
         unitree_hg::msg::dds_::LowCmd_ cmd;
@@ -242,13 +268,13 @@ private:
                 "kp",
                 i,
                 pd_loop
-                    ? fallbackGain(slot.pd[0], lower_body ? cfg.default_lower_kp : cfg.default_upper_kp)
+                    ? fallbackGain(commanded_kp[i], lower_body ? cfg.default_lower_kp : cfg.default_upper_kp)
                     : 0.0f));
             motor_cmd.kd(sanitizeFiniteScalar(
                 "kd",
                 i,
                 pd_loop
-                    ? fallbackGain(slot.pd[1], lower_body ? cfg.default_lower_kd : cfg.default_upper_kd)
+                    ? fallbackGain(commanded_kd[i], lower_body ? cfg.default_lower_kd : cfg.default_upper_kd)
                     : 0.0f));
             motor_cmd.reserve(0U);
         }
@@ -293,6 +319,8 @@ private:
 
     std::mutex target_mutex_;
     std::array<MotorHandle, kMotorShmSlotCount> latest_target_{};
+    std::array<float, kMotorShmSlotCount> latest_commanded_kp_{};
+    std::array<float, kMotorShmSlotCount> latest_commanded_kd_{};
 
     std::atomic<bool> stop_requested_{false};
     std::thread writer_thread_;
