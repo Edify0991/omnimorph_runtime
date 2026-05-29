@@ -46,7 +46,8 @@ void IntegratedControllerRuntime::initialize(int startup_mode_id)
 rl_master::RobotCommandData IntegratedControllerRuntime::step(
     const rl_master::RobotStateData &state,
     const std::optional<rl_master::TeleopCommand> &teleop_sample,
-    const std::optional<int> &mode_command_sample)
+    const std::optional<int> &mode_command_sample,
+    const std::optional<double> &phase_time_sample)
 {
     if (!controller_)
     {
@@ -62,9 +63,11 @@ rl_master::RobotCommandData IntegratedControllerRuntime::step(
         mode_command_cache_ = *mode_command_sample;
     }
 
-    const double phase_t = std::chrono::duration_cast<std::chrono::duration<double>>(
-                               std::chrono::steady_clock::now() - phase_start_)
-                               .count();
+    const double phase_t =
+        phase_time_sample.value_or(
+            std::chrono::duration_cast<std::chrono::duration<double>>(
+                std::chrono::steady_clock::now() - phase_start_)
+                .count());
     return controller_->step(state, latest_teleop_, mode_command_cache_, phase_t);
 }
 

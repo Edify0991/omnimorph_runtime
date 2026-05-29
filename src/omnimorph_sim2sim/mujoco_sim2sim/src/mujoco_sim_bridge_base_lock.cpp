@@ -102,6 +102,23 @@ void MujocoSimBridge::applyPreposeSnap()
     RCLCPP_INFO(this->get_logger(), "Applied sim prepose snap before fixed-base zeroing.");
 }
 
+void MujocoSimBridge::zeroLockedPreRunJointVelocities()
+{
+    if (!enable_prepose_snap_ || !dynamic_base_lock_active_ ||
+        dynamic_base_lock_reason_ == BaseLockReason::kNone)
+    {
+        return;
+    }
+
+    for (const int qvel_adr : qvel_addrs_)
+    {
+        if (qvel_adr >= 0 && qvel_adr < model_->nv)
+        {
+            data_->qvel[qvel_adr] = 0.0;
+        }
+    }
+}
+
 bool MujocoSimBridge::maybeApplyRunningStartReferenceSync(
     const rl_master::logging::ControllerLogSnapshot &controller_snapshot)
 {
@@ -550,6 +567,8 @@ void MujocoSimBridge::deactivateDynamicBaseLock(const char *reason)
     {
         return;
     }
+    enforceBaseLock();
+    mj_forward(model_, data_);
     dynamic_base_lock_active_ = false;
     dynamic_base_lock_reason_ = BaseLockReason::kNone;
     zeroing_injection_pending_ = false;

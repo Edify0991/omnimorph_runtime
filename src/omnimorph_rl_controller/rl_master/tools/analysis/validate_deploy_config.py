@@ -200,6 +200,14 @@ ISAACLAB_FORMAL_PD_DAMPING = {
     "ankle_pitch": 3.0,
     "ankle_roll": 3.0,
 }
+ISAACLAB_FORMAL_VELOCITY_LIMIT = {
+    "hip_roll": 2.094,
+    "hip_yaw": 2.618,
+    "hip_pitch": 3.926,
+    "knee_pitch": 2.770,
+    "ankle_pitch": 3.124,
+    "ankle_roll": 4.160,
+}
 ISAACLAB_FORMAL_PACE_JOINTS = {
     "left_hip_roll",
     "left_hip_yaw",
@@ -1060,8 +1068,8 @@ def check_isaaclab_locomotion_profile(
     if not as_bool(command_limits.get("enabled"), False):
         issues.error(context, "Jingchu01 formal command_limits.enabled must be true")
     expected_command_limits = {
-        "vx": [0.0, 1.0],
-        "vy": [-0.5, 0.5],
+        "vx": [-0.8, 0.8],
+        "vy": [-0.3, 0.3],
         "dyaw": [-0.5, 0.5],
     }
     for key, expected in expected_command_limits.items():
@@ -1089,6 +1097,28 @@ def check_isaaclab_locomotion_profile(
             issues.error(context, f"Jingchu01 formal kps[{joint_name}] must be {expected_kp}, got {actual_kp}")
         if not math.isclose(actual_kd, expected_kd, rel_tol=0.0, abs_tol=1.0e-6):
             issues.error(context, f"Jingchu01 formal kds[{joint_name}] must be {expected_kd}, got {actual_kd}")
+
+    sim_dc = to_dict(section_cfg.get("sim_dc_motor"))
+    if not as_bool(sim_dc.get("enabled"), False):
+        issues.error(context, "Jingchu01 formal sim_dc_motor.enabled must be true")
+    saturation_effort = float(sim_dc.get("saturation_effort", float("nan")))
+    effort_limit = float(sim_dc.get("effort_limit", float("nan")))
+    if not math.isclose(saturation_effort, 300.0, rel_tol=0.0, abs_tol=1.0e-6):
+        issues.error(context, f"Jingchu01 formal sim_dc_motor.saturation_effort must be 300.0, got {saturation_effort}")
+    if not math.isclose(effort_limit, 300.0, rel_tol=0.0, abs_tol=1.0e-6):
+        issues.error(context, f"Jingchu01 formal sim_dc_motor.effort_limit must be 300.0, got {effort_limit}")
+    velocity_limit = to_dict(sim_dc.get("velocity_limit"))
+    if set(str(k) for k in velocity_limit.keys()) != set(ISAACLAB_LEFT_FIRST_JOINT_ORDER):
+        issues.error(context, "Jingchu01 formal sim_dc_motor.velocity_limit must cover all action joints")
+    for joint_name in ISAACLAB_LEFT_FIRST_JOINT_ORDER:
+        suffix = joint_name.removeprefix("left_").removeprefix("right_")
+        expected_limit = ISAACLAB_FORMAL_VELOCITY_LIMIT[suffix]
+        actual_limit = float(velocity_limit.get(joint_name, float("nan")))
+        if not math.isclose(actual_limit, expected_limit, rel_tol=0.0, abs_tol=1.0e-6):
+            issues.error(
+                context,
+                f"Jingchu01 formal sim_dc_motor.velocity_limit[{joint_name}] must be {expected_limit}, got {actual_limit}",
+            )
 
     sim_pace = to_dict(section_cfg.get("sim_pace_motor"))
     if section_name == ISAACLAB_FORMAL_PACE_SECTION:

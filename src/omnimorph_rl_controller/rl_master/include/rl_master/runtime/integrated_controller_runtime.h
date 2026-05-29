@@ -28,7 +28,8 @@ public:
     rl_master::RobotCommandData step(
         const rl_master::RobotStateData &state,
         const std::optional<rl_master::TeleopCommand> &teleop_sample = std::nullopt,
-        const std::optional<int> &mode_command_sample = std::nullopt);
+        const std::optional<int> &mode_command_sample = std::nullopt,
+        const std::optional<double> &phase_time_sample = std::nullopt);
     void estop();
 
     bool initialized() const;

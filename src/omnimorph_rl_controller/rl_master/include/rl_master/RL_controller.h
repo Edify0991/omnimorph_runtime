@@ -63,6 +63,7 @@ public:
     const rl_master::logging::ControllerLogSnapshot &latestLogSnapshot() const;
     std::vector<std::string> activeResolvedReferenceBodyNames() const;
     std::string activeResolvedReferenceAnchorBody() const;
+    std::vector<float> activeZeroPose() const;
     void setExternalObservationFeature(const std::string &name, const std::vector<float> &values);
     void setExternalObservationFeature(const std::string &name, const std::vector<float> &values, double monotonic_time_sec);
     std::vector<rl_master::logging::RuntimeSourceSampleRecord> drainExternalObservationSamplesForLogging();
@@ -121,7 +122,6 @@ private:
     const ObservationBuilder &activeObservationBuilder() const;
     PolicyRuntimeGroup &activePolicyGroup();
     const ReferenceMotionProvider &activeReferenceMotionProvider() const;
-    std::vector<float> activeZeroPose() const;
     void refreshPolicyMode(int requested_mode, bool sanitize_invalid_mode = true);
     void handlePolicySwitch();
     int sanitizeRuntimeModeCommand(int mode_command);

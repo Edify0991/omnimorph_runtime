@@ -35,6 +35,27 @@ std::vector<float> fitDim(const std::vector<float> &values, size_t dim)
     return out;
 }
 
+float applyDcMotorTorqueSpeedClip(
+    float effort,
+    float joint_vel,
+    float saturation_effort,
+    float effort_limit,
+    float velocity_limit)
+{
+    if (saturation_effort <= 0.0f || effort_limit <= 0.0f || velocity_limit <= 0.0f)
+    {
+        return effort;
+    }
+
+    const float vel_at_effort_limit = velocity_limit * (1.0f + effort_limit / saturation_effort);
+    const float clipped_joint_vel = std::clamp(joint_vel, -vel_at_effort_limit, vel_at_effort_limit);
+    const float torque_speed_top = saturation_effort * (1.0f - clipped_joint_vel / velocity_limit);
+    const float torque_speed_bottom = saturation_effort * (-1.0f - clipped_joint_vel / velocity_limit);
+    const float max_effort = std::min(torque_speed_top, effort_limit);
+    const float min_effort = std::max(torque_speed_bottom, -effort_limit);
+    return std::clamp(effort, min_effort, max_effort);
+}
+
 std::array<float, 3> rotateVectorByQuat(
     const std::array<float, 3> &vec,
     const std::array<float, 4> &quat_xyzw)
@@ -2405,6 +2426,21 @@ std::vector<float> RL_controller::get_joint_target_torque(const std::vector<floa
             (target_q[joint_idx] - q[joint_idx]) * active_cfg.kps[policy_idx] +
             (0.0f - dq[joint_idx]) * active_cfg.kds[policy_idx];
 
+        if (active_cfg.sim_dc_motor.enabled && policy_idx < active_cfg.action_joint_order.size())
+        {
+            const std::string &joint_name = active_cfg.action_joint_order[policy_idx];
+            const auto vel_limit_it = active_cfg.sim_dc_motor.velocity_limit.find(joint_name);
+            if (vel_limit_it != active_cfg.sim_dc_motor.velocity_limit.end())
+            {
+                tau = applyDcMotorTorqueSpeedClip(
+                    tau,
+                    dq[joint_idx],
+                    active_cfg.sim_dc_motor.saturation_effort,
+                    active_cfg.sim_dc_motor.effort_limit,
+                    vel_limit_it->second);
+            }
+        }
+
         float limit = 0.0f;
         if (policy_idx < active_cfg.tau_limit.size())
         {
@@ -2459,6 +2495,20 @@ std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &p
                 target_position,
                 -active_cfg.target_q_clip,
                 active_cfg.target_q_clip);
+        }
+        if (active_cfg.clamp_target_q_to_joint_limits && policy_idx < active_cfg.action_joint_order.size())
+        {
+            const std::string &joint_name = active_cfg.action_joint_order[policy_idx];
+            const auto limit_it = active_cfg.robotCfg.joint_limit_range.find(joint_name);
+            if (limit_it != active_cfg.robotCfg.joint_limit_range.end() && limit_it->second.size() >= 2)
+            {
+                const float lower = limit_it->second[0] + active_cfg.target_q_joint_limit_margin;
+                const float upper = limit_it->second[1] - active_cfg.target_q_joint_limit_margin;
+                if (lower <= upper)
+                {
+                    target_position = std::clamp(target_position, lower, upper);
+                }
+            }
         }
         target_q[static_cast<size_t>(robot_idx)] = target_position;
     }
