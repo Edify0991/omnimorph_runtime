@@ -63,6 +63,7 @@ public:
     void configure(const Sim2realCfg &cfg);
     void initialize(const std::vector<float> &current_q, const std::vector<float> &zero_pose, int initial_mode);
     void setZeroPose(const std::vector<float> &zero_pose);
+    void forceLocomotionMode(int mode);
     void setHotSwitchPredicate(std::function<bool(int, int)> predicate);
     DeployStateOutput update(
         int control_word,

@@ -110,6 +110,7 @@ private:
         std::unique_ptr<ObservationBuilder> observation_builder;
         PolicyRuntimeGroup policy_group;
         ReferenceMotionProvider reference_motion;
+        int resolved_reference_end_total_steps = -1;
         ReferenceFeatureRequirements required_reference_features;
         std::unique_ptr<rl_master::PinocchioMotionFeatures> pinocchio_motion_features;
     };
@@ -149,6 +150,9 @@ private:
         const ReferenceFeatureRequirements &required_features,
         ReferenceMotionProvider *provider,
         const std::string &tag);
+    int resolveReferenceEndAutoSwitchTotalSteps(const ModeProfile &profile) const;
+    void scheduleReferenceEndAutoModeSwitch();
+    bool applyPendingAutoModeSwitch(double phase_t);
     ObservationFeatureContext buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t);
     void buildStackedObservation(
         const std::deque<std::vector<float>> &observation_history,
@@ -196,6 +200,9 @@ private:
     bool phase_reset_pending_ = true;
     bool observation_history_prefill_pending_ = false;
     bool running_start_reference_observation_seed_pending_ = false;
+    int pending_auto_mode_switch_target_mode_id_ = -1;
+    uint64_t pending_auto_mode_switch_trigger_step_ = 0;
+    std::string pending_auto_mode_switch_reason_;
 
     std::vector<float> action;
     std::vector<float> joint_target_q;

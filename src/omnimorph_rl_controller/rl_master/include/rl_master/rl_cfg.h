@@ -939,6 +939,24 @@ public:
         float dyaw_max = 0.0f;
     };
 
+    class AutoSwitchOnReferenceEndCfg
+    {
+    public:
+        bool enabled = false;
+        int target_mode_id = -1;
+        int total_steps = -1;
+        std::vector<std::string> metadata_keys = {
+            "motion_num_frames",
+            "reference_frame_count",
+            "reference_frames",
+            "motion_frame_count",
+            "frame_count",
+            "num_frames",
+            "sequence_length",
+            "total_steps",
+        };
+    };
+
     std::string omnimorph_root_dir;
     std::string humanoid_rl_root_dir;
     std::string robot_id;
@@ -1024,6 +1042,7 @@ public:
     ObservationCanonicalContract observation_canonical_contract;
     SimPaceMotorCfg sim_pace_motor;
     CommandLimitsCfg command_limits;
+    AutoSwitchOnReferenceEndCfg auto_switch_on_reference_end;
     GaitConfig gait;
 
     std::string startup_completion_action = "hold";
@@ -1702,6 +1721,21 @@ public:
             required_metadata_keys =
                 yamlReadOr<std::vector<std::string>>(policy_io_cfg, "required_metadata_keys", {});
             expected_metadata = yamlReadStringMapOr(policy_io_cfg, "expected_metadata");
+            if (cfg["auto_switch_on_reference_end"])
+            {
+                const YAML::Node auto_switch_cfg = cfg["auto_switch_on_reference_end"];
+                auto_switch_on_reference_end.enabled =
+                    yamlReadOr<bool>(auto_switch_cfg, "enabled", false);
+                auto_switch_on_reference_end.target_mode_id =
+                    yamlReadOr<int>(auto_switch_cfg, "target_mode_id", -1);
+                auto_switch_on_reference_end.total_steps =
+                    yamlReadOr<int>(auto_switch_cfg, "total_steps", -1);
+                auto_switch_on_reference_end.metadata_keys =
+                    yamlReadOr<std::vector<std::string>>(
+                        auto_switch_cfg,
+                        "metadata_keys",
+                        auto_switch_on_reference_end.metadata_keys);
+            }
 
             if (cfg["sub_models"])
             {
@@ -2241,6 +2275,23 @@ public:
             {
                 throw std::runtime_error(
                     "startup_completion_action must be 'hold' or 'running'");
+            }
+            if (auto_switch_on_reference_end.enabled)
+            {
+                constexpr int kSupportedModeCodeMin = 0;
+                constexpr int kSupportedModeCodeMax = 999;
+                if (auto_switch_on_reference_end.target_mode_id < kSupportedModeCodeMin ||
+                    auto_switch_on_reference_end.target_mode_id > kSupportedModeCodeMax)
+                {
+                    throw std::runtime_error(
+                        "auto_switch_on_reference_end.target_mode_id is out of supported mode range");
+                }
+                if (auto_switch_on_reference_end.total_steps == 0 ||
+                    auto_switch_on_reference_end.total_steps < -1)
+                {
+                    throw std::runtime_error(
+                        "auto_switch_on_reference_end.total_steps must be -1 or > 0");
+                }
             }
             policy_startup_warmup_steps = yamlReadOr<int>(cfg, "policy_startup_warmup_steps", 0);
             if (policy_startup_warmup_steps < 0)

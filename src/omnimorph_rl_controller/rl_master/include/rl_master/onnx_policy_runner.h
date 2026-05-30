@@ -46,6 +46,7 @@ public:
 
     const std::vector<std::string> &input_names() const { return input_names_; }
     const std::vector<std::string> &output_names() const { return output_names_; }
+    const std::unordered_map<std::string, std::string> &customMetadata() const { return custom_metadata_; }
     std::string summary() const;
 
 private:
@@ -103,6 +104,7 @@ private:
     std::vector<AuxInputBuffer> input_buffers_;
     std::vector<int> selected_output_indices_;
     std::vector<std::string> selected_output_names_;
+    std::unordered_map<std::string, std::string> custom_metadata_;
     bool warned_action_size_mismatch_ = false;
     int64_t time_step_ = 0;
 };

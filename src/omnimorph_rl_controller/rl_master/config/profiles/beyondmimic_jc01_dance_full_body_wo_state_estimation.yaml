@@ -2,7 +2,7 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
   policy_name: beyondmimic_jc01_dance_wo_state_estimation
   policy_family: beyondmimic
   policy_adapter: onnx
-  policy_file: policies/beyondmimic_jc01_dance_wo_state_estimation.onnx
+  policy_file: policies/beyondmimic_jc01_taichi_wo_state_estimation.onnx
   inference_strategy: sync_step
   # For chunked/generative policies, switch to:
   # inference_strategy: chunked_receding
@@ -366,6 +366,11 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
       - body_lin_vel_w
       - body_ang_vel_w
     onnx_inputs: []
+  auto_switch_on_reference_end:
+    enabled: true
+    target_mode_id: 2
+    metadata_keys:
+      - motion_num_frames
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12
   loop_overrun_warn_us: 2000

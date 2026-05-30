@@ -67,6 +67,7 @@ public:
     std::unordered_map<std::string, std::vector<float>> prefetchExtraOutputs(
         const std::vector<std::string> &extra_output_names,
         const PolicyExecutionRequest &request) override;
+    const std::unordered_map<std::string, std::string> &customMetadata() const;
     std::string summary() const override;
 
 private:

@@ -35,6 +35,40 @@ std::vector<float> fitDim(const std::vector<float> &values, size_t dim)
     return out;
 }
 
+bool parsePositiveIntValue(const std::string &text, int *out)
+{
+    if (!out)
+    {
+        return false;
+    }
+    const auto first = text.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+    {
+        return false;
+    }
+    const auto last = text.find_last_not_of(" \t\r\n");
+    const std::string trimmed = text.substr(first, last - first + 1);
+    try
+    {
+        size_t parsed_count = 0;
+        const int value = std::stoi(trimmed, &parsed_count, 10);
+        if (parsed_count != trimmed.size())
+        {
+            return false;
+        }
+        if (value <= 0)
+        {
+            return false;
+        }
+        *out = value;
+        return true;
+    }
+    catch (const std::exception &)
+    {
+        return false;
+    }
+}
+
 std::array<float, 3> rotateVectorByQuat(
     const std::array<float, 3> &vec,
     const std::array<float, 4> &quat_xyzw)
@@ -649,6 +683,9 @@ void RL_controller::handlePolicySwitch()
     observation_history_prefill_pending_ = true;
     prefetched_policy_extra_outputs_.clear();
     latest_policy_extra_outputs_.clear();
+    pending_auto_mode_switch_target_mode_id_ = -1;
+    pending_auto_mode_switch_trigger_step_ = 0;
+    pending_auto_mode_switch_reason_.clear();
     resetPolicyScheduler();
     phase_reset_pending_ = true;
     auto &profile = activeModeProfile();
@@ -1127,6 +1164,8 @@ void RL_controller::initModeProfiles()
             profile.required_reference_features,
             &profile.reference_motion,
             profile.tag);
+        profile.resolved_reference_end_total_steps =
+            resolveReferenceEndAutoSwitchTotalSteps(profile);
         validateRequiredNamedBodyLayout(
             profile.cfg,
             profile.required_reference_features,
@@ -1166,6 +1205,33 @@ void RL_controller::initModeProfiles()
     default_mode_id_ = mode_profiles_.front().mode_id;
     active_mode_id_ = default_mode_id_;
     active_profile_index_ = profileIndexForMode(default_mode_id_, false);
+
+    for (const auto &profile : mode_profiles_)
+    {
+        const auto &auto_cfg = profile.cfg.auto_switch_on_reference_end;
+        if (!auto_cfg.enabled)
+        {
+            continue;
+        }
+        if (!isKnownMode(auto_cfg.target_mode_id))
+        {
+            throw std::runtime_error(
+                "[RL_controller][" + profile.tag +
+                "] auto_switch_on_reference_end.target_mode_id is not present in deploy_mode_profiles: " +
+                std::to_string(auto_cfg.target_mode_id));
+        }
+        if (profile.resolved_reference_end_total_steps <= 0)
+        {
+            throw std::runtime_error(
+                "[RL_controller][" + profile.tag +
+                "] auto_switch_on_reference_end is enabled but total reference steps could not be resolved.");
+        }
+        std::cout << "[RL_controller][" << profile.tag
+                  << "] reference-end auto switch armed: total_steps="
+                  << profile.resolved_reference_end_total_steps
+                  << ", target_mode_id=" << auto_cfg.target_mode_id
+                  << std::endl;
+    }
 
     std::cout << "[RL_controller] mode profiles loaded: " << mode_profiles_.size() << std::endl;
     for (const auto &profile : mode_profiles_)
@@ -1646,6 +1712,159 @@ void RL_controller::initReferenceMotionProvider(
               << ", body_count=" << metadata.body_names.size() << std::endl;
 }
 
+int RL_controller::resolveReferenceEndAutoSwitchTotalSteps(const ModeProfile &profile) const
+{
+    const auto &auto_cfg = profile.cfg.auto_switch_on_reference_end;
+    if (!auto_cfg.enabled)
+    {
+        return -1;
+    }
+    if (auto_cfg.total_steps > 0)
+    {
+        return auto_cfg.total_steps;
+    }
+
+    if (!profile.policy_group.runners.empty() &&
+        profile.policy_group.runners.front().runner)
+    {
+        const auto *onnx_adapter =
+            dynamic_cast<const OnnxPolicyAdapter *>(profile.policy_group.runners.front().runner.get());
+        if (onnx_adapter)
+        {
+            const auto &metadata = onnx_adapter->customMetadata();
+            for (const auto &key : auto_cfg.metadata_keys)
+            {
+                const auto it = metadata.find(key);
+                if (it == metadata.end())
+                {
+                    continue;
+                }
+                int total_steps = -1;
+                if (parsePositiveIntValue(it->second, &total_steps))
+                {
+                    return total_steps;
+                }
+            }
+        }
+    }
+
+    if (profile.reference_motion.available())
+    {
+        const size_t frame_count = profile.reference_motion.frameCount();
+        if (frame_count > 0 && frame_count <= static_cast<size_t>(std::numeric_limits<int>::max()))
+        {
+            return static_cast<int>(frame_count);
+        }
+    }
+
+    return -1;
+}
+
+void RL_controller::scheduleReferenceEndAutoModeSwitch()
+{
+    const auto &profile = activeModeProfile();
+    const auto &auto_cfg = profile.cfg.auto_switch_on_reference_end;
+    if (!auto_cfg.enabled || auto_cfg.target_mode_id < 0)
+    {
+        return;
+    }
+    if (profile.resolved_reference_end_total_steps <= 0)
+    {
+        return;
+    }
+    if (pending_auto_mode_switch_target_mode_id_ >= 0)
+    {
+        return;
+    }
+    if (static_cast<int>(policy_step_counter_) < profile.resolved_reference_end_total_steps)
+    {
+        return;
+    }
+
+    pending_auto_mode_switch_target_mode_id_ = auto_cfg.target_mode_id;
+    pending_auto_mode_switch_trigger_step_ = static_cast<uint64_t>(policy_step_counter_);
+    pending_auto_mode_switch_reason_ = "reference_end";
+
+    const std::string message =
+        "schedule automatic hot switch after reference end";
+    std::cout << "[RL_controller] " << message
+              << ": from mode_id=" << active_mode_id_
+              << " to mode_id=" << pending_auto_mode_switch_target_mode_id_
+              << ", trigger_step=" << pending_auto_mode_switch_trigger_step_
+              << ", resolved_total_steps=" << profile.resolved_reference_end_total_steps
+              << std::endl;
+    queueRuntimeWarningEvent(
+        "reference_end_auto_mode_switch_scheduled",
+        message,
+        {
+            {"from_mode_id", std::to_string(active_mode_id_)},
+            {"to_mode_id", std::to_string(pending_auto_mode_switch_target_mode_id_)},
+            {"trigger_step", std::to_string(pending_auto_mode_switch_trigger_step_)},
+            {"resolved_total_steps", std::to_string(profile.resolved_reference_end_total_steps)},
+        });
+}
+
+bool RL_controller::applyPendingAutoModeSwitch(double phase_t)
+{
+    if (pending_auto_mode_switch_target_mode_id_ < 0)
+    {
+        return false;
+    }
+
+    const int target_mode_id = pending_auto_mode_switch_target_mode_id_;
+    const uint64_t trigger_step = pending_auto_mode_switch_trigger_step_;
+    const std::string reason = pending_auto_mode_switch_reason_;
+    pending_auto_mode_switch_target_mode_id_ = -1;
+    pending_auto_mode_switch_trigger_step_ = 0;
+    pending_auto_mode_switch_reason_.clear();
+
+    if (!isKnownMode(target_mode_id))
+    {
+        const std::string message =
+            "drop automatic hot switch because target mode is unknown";
+        std::cerr << "[RL_controller] " << message
+                  << ": target_mode_id=" << target_mode_id << std::endl;
+        queueRuntimeWarningEvent(
+            "reference_end_auto_mode_switch_ignored",
+            message,
+            {
+                {"target_mode_id", std::to_string(target_mode_id)},
+                {"trigger_step", std::to_string(trigger_step)},
+                {"reason", reason},
+            });
+        return false;
+    }
+    if (target_mode_id == active_mode_id_)
+    {
+        return false;
+    }
+
+    refreshPolicyMode(target_mode_id, false);
+    handlePolicySwitch();
+    deploy_state_machine_.forceLocomotionMode(target_mode_id);
+    phase_origin_t_ = phase_t;
+    phase_origin_initialized_ = true;
+    phase_reset_pending_ = false;
+    running_start_reference_observation_seed_pending_ =
+        activePolicyCfg().seed_running_start_observation_from_reference;
+
+    const std::string message =
+        "apply automatic hot switch after reference end";
+    std::cout << "[RL_controller] " << message
+              << ": target_mode_id=" << target_mode_id
+              << ", trigger_step=" << trigger_step
+              << std::endl;
+    queueRuntimeWarningEvent(
+        "reference_end_auto_mode_switch_applied",
+        message,
+        {
+            {"target_mode_id", std::to_string(target_mode_id)},
+            {"trigger_step", std::to_string(trigger_step)},
+            {"reason", reason},
+        });
+    return true;
+}
+
 ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Sim2realCfg &cfg, double phase_t)
 {
     ObservationFeatureContext feature_context;
@@ -1961,6 +2180,8 @@ rl_master::RobotCommandData RL_controller::step(
         last_deploy_state_ = deploy_state_machine_.state();
     }
 
+    const bool auto_hot_switch_applied = applyPendingAutoModeSwitch(phase_t);
+
     const double now_s = rl_master::monotonicTimeSec();
     const int sanitized_mode_command = sanitizeRuntimeModeCommand(mode_command);
     const auto deploy_output = deploy_state_machine_.update(
@@ -1995,12 +2216,13 @@ rl_master::RobotCommandData RL_controller::step(
     const bool entered_running =
         (deploy_output.state == rl_master::DeployLifecycleState::kRunning) &&
         (previous_state != rl_master::DeployLifecycleState::kRunning);
-    if (!phase_origin_initialized_ || phase_reset_pending_ || entered_running)
+    const bool policy_context_restarted = auto_hot_switch_applied;
+    if (!phase_origin_initialized_ || phase_reset_pending_ || entered_running || policy_context_restarted)
     {
         phase_origin_t_ = phase_t;
         phase_origin_initialized_ = true;
         phase_reset_pending_ = false;
-        if (entered_running)
+        if (entered_running || policy_context_restarted)
         {
             resetPolicyScheduler();
             running_start_reference_observation_seed_pending_ =
@@ -2038,7 +2260,7 @@ rl_master::RobotCommandData RL_controller::step(
 
         if (should_run_policy)
         {
-            if (entered_running)
+            if (entered_running || policy_context_restarted)
             {
                 warmStartPolicyState(local_phase_t);
             }
@@ -2072,6 +2294,7 @@ rl_master::RobotCommandData RL_controller::step(
             last_policy_sample_phase_t_ = local_phase_t;
             policy_ran_this_tick = true;
             ++policy_step_counter_;
+            scheduleReferenceEndAutoModeSwitch();
 
             // The policy forward above has already consumed the current
             // time_step. Prefetch the next reference frame immediately so the

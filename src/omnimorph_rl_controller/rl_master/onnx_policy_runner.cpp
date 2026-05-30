@@ -607,15 +607,12 @@ std::vector<float> OnnxPolicyRunner::resolveInputData(
 
 void OnnxPolicyRunner::validateModelMetadata()
 {
-    if (!cfg_.enable_metadata_check)
-    {
-        return;
-    }
     if (!session_)
     {
         throw std::runtime_error("[" + policy_tag_ + "] metadata check called before init()");
     }
 
+    custom_metadata_.clear();
     const bool strict = cfg_.metadata_check_strict;
     auto emitIssue = [&](const std::string &detail) {
         const std::string message = "[" + policy_tag_ + "] ONNX metadata check: " + detail;
@@ -686,6 +683,13 @@ void OnnxPolicyRunner::validateModelMetadata()
     catch (const std::exception &e)
     {
         emitIssue(std::string("failed to read metadata: ") + e.what());
+        return;
+    }
+
+    custom_metadata_ = custom_metadata;
+
+    if (!cfg_.enable_metadata_check)
+    {
         return;
     }
 

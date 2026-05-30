@@ -47,6 +47,12 @@ void DeployStateMachine::setZeroPose(const std::vector<float> &zero_pose)
     zeroing_target_pose_ = zero_pose;
 }
 
+void DeployStateMachine::forceLocomotionMode(int mode)
+{
+    active_locomotion_mode_ = mode;
+    pending_locomotion_mode_ = mode;
+}
+
 void DeployStateMachine::setHotSwitchPredicate(std::function<bool(int, int)> predicate)
 {
     hot_switch_predicate_ = std::move(predicate);

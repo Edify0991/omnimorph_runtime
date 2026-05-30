@@ -73,6 +73,11 @@ std::unordered_map<std::string, std::vector<float>> OnnxPolicyAdapter::prefetchE
         request.advance_time_step);
 }
 
+const std::unordered_map<std::string, std::string> &OnnxPolicyAdapter::customMetadata() const
+{
+    return runner_->customMetadata();
+}
+
 std::string OnnxPolicyAdapter::summary() const
 {
     return runner_->summary();
