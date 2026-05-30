@@ -144,7 +144,7 @@ config_files:
   amp_tienkunglab_jc01_walk_full_body: profiles/amp_tienkunglab_jc01_walk_full_body.yaml
 path_variables:
   robot_assets_dir: ${ROBOT_ASSETS_DIR}
-  jc01_pinocchio_urdf: ${robot_assets_dir}/jc01.urdf
+  jc01_pinocchio_urdf: ${robot_assets_dir}/JC01-URDF.urdf
   jc01_scene_xml: ${robot_assets_dir}/scene_jingchu01.xml
   jc01_isaaclab_locomotion_newpd_sim2sim_xml: ../../../omnimorph_sim2sim/mujoco_sim2sim/models/jingchu01_isaaclab_locomotion_newpd_sim2sim.xml
   jc01_legs_xml: ${robot_assets_dir}/jingchu01_legs.xml

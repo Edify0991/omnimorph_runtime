@@ -25,6 +25,83 @@ namespace
 {
 constexpr long kNanosecondsPerSecond = 1'000'000'000L;
 
+bool parseTaggedModeId(
+    const std::map<std::string, std::string> &tags,
+    const char *key,
+    int *mode_id)
+{
+    if (!key || !mode_id)
+    {
+        return false;
+    }
+    const auto it = tags.find(key);
+    if (it == tags.end())
+    {
+        return false;
+    }
+    try
+    {
+        *mode_id = std::stoi(it->second);
+        return true;
+    }
+    catch (const std::exception &)
+    {
+        return false;
+    }
+}
+
+std::optional<int> suggestedLatchedModeCommandFromSnapshot(
+    const rl_master::logging::ControllerLogSnapshot &snapshot)
+{
+    if (!snapshot.valid)
+    {
+        return std::nullopt;
+    }
+
+    int target_mode_id = -1;
+    if (snapshot.runtime_warning_type == "reference_end_auto_mode_switch_scheduled" &&
+        parseTaggedModeId(snapshot.runtime_warning_tags, "to_mode_id", &target_mode_id))
+    {
+        return rl_master::kCtrlWordSetModeBase + target_mode_id;
+    }
+    if (snapshot.runtime_warning_type == "reference_end_auto_mode_switch_applied" &&
+        parseTaggedModeId(snapshot.runtime_warning_tags, "target_mode_id", &target_mode_id))
+    {
+        return rl_master::kCtrlWordSetModeBase + target_mode_id;
+    }
+    return std::nullopt;
+}
+
+int demoteLatchedStartModeCommand(
+    int raw_control_word,
+    const rl_master::logging::ControllerLogSnapshot &snapshot)
+{
+    if (!snapshot.valid)
+    {
+        return raw_control_word;
+    }
+    if (static_cast<rl_master::DeployLifecycleState>(snapshot.deploy_state) !=
+        rl_master::DeployLifecycleState::kRunning)
+    {
+        return raw_control_word;
+    }
+    if (raw_control_word < rl_master::kCtrlWordStartModeBase ||
+        raw_control_word >= (rl_master::kCtrlWordStartModeBase + rl_master::kCtrlWordModeRange))
+    {
+        return raw_control_word;
+    }
+
+    const rl_master::DecodedControlWord decoded =
+        rl_master::DeployStateMachine::decodeControlWord(
+            raw_control_word,
+            snapshot.active_mode_id);
+    if (!decoded.request_start || decoded.locomotion_mode != snapshot.active_mode_id)
+    {
+        return raw_control_word;
+    }
+    return rl_master::kCtrlWordSetModeBase + decoded.locomotion_mode;
+}
+
 long resolveControlPeriodNs(const Sim2realCfg &cfg)
 {
     const long solver_control_hz = std::max(1L, static_cast<long>(cfg.solver_control_hz));
@@ -1465,8 +1542,9 @@ void RobotSolver::run()
             {
                 mode_command_cache_ = mode_control_word_value;
             }
+            const int raw_mode_control_word = mode_command_cache_;
             const int effective_mode_control_word =
-                prepareModeControlWordForTick(mode_command_cache_);
+                prepareModeControlWordForTick(raw_mode_control_word);
 
             rl_master::TeleopCommand teleop_command{};
             std::optional<rl_master::TeleopCommand> teleop_sample;
@@ -1493,6 +1571,20 @@ void RobotSolver::run()
             syncRuntimeCfgFromController();
             const long control_period_ns = resolveControlPeriodNs(sim2real_cfg_);
             const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
+            if (const auto rewritten_mode_command =
+                    suggestedLatchedModeCommandFromSnapshot(controller_snapshot))
+            {
+                mode_command_cache_ = *rewritten_mode_command;
+            }
+            else
+            {
+                const int demoted_mode_command =
+                    demoteLatchedStartModeCommand(raw_mode_control_word, controller_snapshot);
+                if (demoted_mode_command != raw_mode_control_word)
+                {
+                    mode_command_cache_ = demoted_mode_command;
+                }
+            }
             emitDerivedRuntimeEvents(controller_snapshot);
             updateModeControlPreprocessState(controller_snapshot);
             applyRuntimeCommand(runtime_command, latest_cmd_fresh_);

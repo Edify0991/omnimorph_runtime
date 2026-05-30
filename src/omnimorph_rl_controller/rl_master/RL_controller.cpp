@@ -67,6 +67,8 @@ bool parsePositiveIntValue(const std::string &text, int *out)
     {
         return false;
     }
+}
+
 float applyDcMotorTorqueSpeedClip(
     float effort,
     float joint_vel,
