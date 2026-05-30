@@ -80,13 +80,13 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
     right_hip_roll: 330.0
     right_hip_yaw: 150.0
     right_hip_pitch: 330.0
-    right_knee_pitch: 306.0
+    right_knee_pitch: 2000.0
     right_ankle_pitch: 90.0
     right_ankle_roll: 90.0
     left_hip_roll: 330.0
     left_hip_yaw: 150.0
     left_hip_pitch: 330.0
-    left_knee_pitch: 306.0
+    left_knee_pitch: 2000.0
     left_ankle_pitch: 90.0
     left_ankle_roll: 90.0
     waist_roll: 330.0
@@ -141,7 +141,7 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
   action_dim: 28
   motor_N: 28
   RL_control_f: 50
-  solver_control_hz: 200
+  solver_control_hz: 500
   installed_joint_run_modes:
     right_hip_roll: cst
     right_hip_yaw: cst
