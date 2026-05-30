@@ -1,6 +1,6 @@
 mujoco_sim_bridge:
   ros__parameters:
-    model_path: "${jc01_scene_xml}"
+    model_path: "${jc01_isaaclab_locomotion_newpd_sim2sim_xml}"
 
     base_body_name: "Body"
     base_free_joint_name: ""
@@ -158,21 +158,36 @@ mujoco_sim_bridge:
       left_wrist_pitch: 36.0
       left_wrist_roll: 36.0
 
-    control_hz: 500.0
-    sim_dt: 0.001
+    control_hz: 200.0
+    sim_dt: 0.005
     command_timeout_sec: 0.1
     open_rl_enable_threshold: 1.0
     pause_when_no_command: false
-    no_command_behavior: "hold_last"
+    no_command_behavior: "hold_position"
     fix_base: false
-    fixed_base_height: 0.89
+    # This MJCF keeps the floor at z=-0.505 and the nominal base at z=0.375.
+    # Using 0.89 here lifts the robot roughly 0.5m above the ground before release.
+    fixed_base_height: 0.375
     enable_fixed_base_zeroing: true
     enable_fixed_base_hold_after_zeroing: true
     enable_release_before_running: true
-    post_release_settle_ticks: 200
+    # Start policy on the same tick as base release. Waiting here lets the
+    # unsupported default pose pitch backward before the first policy action,
+    # which is not part of the IsaacLab reset distribution.
+    post_release_settle_ticks: 0
     post_zeroing_hold_settle_ticks: 250
-    enable_prepose_snap: false
-    sim_only_force_policy_csp: true
+    enable_prepose_snap: true
+    prepose_joint_q: [
+      0.0, 0.0, -0.24, 0.48, -0.24, 0.0,
+      0.0, 0.0, -0.24, 0.48, -0.24, 0.0,
+      0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    ]
+    # Jingchu formal profiles use CST torque semantics. Keep the sim bridge on
+    # the controller-computed target_tau path so RL_controller motor clipping
+    # matches the IsaacLab DCMotor/Pace training contract.
+    sim_only_force_policy_csp: false
 
     enable_viewer: false
     enable_python_viewer_stream: false

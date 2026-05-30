@@ -19,6 +19,7 @@ Makefile
 
 # 日志文件
 *.log
+*.mcap
 log/
 MUJOCO_LOG.TXT
 

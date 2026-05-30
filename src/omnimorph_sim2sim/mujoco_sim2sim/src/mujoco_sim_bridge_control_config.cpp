@@ -150,6 +150,14 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
     }
 
     std::map<std::string, float> hold_source_targets;
+    const std::vector<float> active_zero_pose = controller_runtime_.controller().activeZeroPose();
+    if (active_zero_pose.size() == joint_names_.size())
+    {
+        for (size_t i = 0; i < joint_names_.size(); ++i)
+        {
+            hold_source_targets[joint_names_[i]] = active_zero_pose[i];
+        }
+    }
     for (const auto &entry : active_cfg.robotCfg.zero_joint_angles)
     {
         hold_source_targets[entry.first] = entry.second;
@@ -160,6 +168,7 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
     resolved_policy_profile_kp_.assign(joint_names_.size(), 0.0);
     resolved_policy_profile_kd_.assign(joint_names_.size(), 0.0);
     resolved_policy_profile_torque_limit_.assign(joint_names_.size(), 0.0);
+    resolved_dc_motor_velocity_limit_.assign(joint_names_.size(), 0.0);
     resolved_pace_encoder_bias_.assign(joint_names_.size(), 0.0);
     resolved_pace_torque_delay_ticks_.assign(joint_names_.size(), 0);
     pace_torque_delay_buffers_.assign(joint_names_.size(), {});
@@ -251,6 +260,16 @@ void MujocoSimBridge::resolvePerJointControlConfig(int active_mode_id)
                     static_cast<double>(delay_it->second) * active_cfg.sim_pace_motor.delay_step_dt_s;
                 resolved_pace_torque_delay_ticks_[i] =
                     std::max(0, static_cast<int>(std::lround(delay_seconds * control_hz_)));
+            }
+        }
+
+        if (active_cfg.sim_dc_motor.enabled && joint_is_policy_controlled_[i])
+        {
+            const auto velocity_limit_it = active_cfg.sim_dc_motor.velocity_limit.find(joint_name);
+            if (velocity_limit_it != active_cfg.sim_dc_motor.velocity_limit.end())
+            {
+                resolved_dc_motor_velocity_limit_[i] =
+                    std::max(0.0, static_cast<double>(velocity_limit_it->second));
             }
         }
 

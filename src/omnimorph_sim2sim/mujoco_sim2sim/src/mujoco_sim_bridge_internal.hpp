@@ -114,6 +114,7 @@ private:
     void activateDynamicBaseLock(BaseLockReason reason, bool apply_prepose);
     void deactivateDynamicBaseLock(const char *reason);
     void applyPreposeSnap();
+    void zeroLockedPreRunJointVelocities();
     bool maybeApplyRunningStartReferenceSync(
         const rl_master::logging::ControllerLogSnapshot &controller_snapshot);
     bool applyReferencePoseReplayFrame(
@@ -239,6 +240,7 @@ private:
     std::vector<double> resolved_policy_profile_kp_;
     std::vector<double> resolved_policy_profile_kd_;
     std::vector<double> resolved_policy_profile_torque_limit_;
+    std::vector<double> resolved_dc_motor_velocity_limit_;
     std::vector<double> resolved_pace_encoder_bias_;
     std::vector<int> resolved_pace_torque_delay_ticks_;
     std::vector<std::deque<double>> pace_torque_delay_buffers_;

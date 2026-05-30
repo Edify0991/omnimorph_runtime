@@ -28,6 +28,7 @@ void MujocoSimBridge::enforceBaseLock()
     {
         data_->qvel[base_free_qvel_adr_ + i] = 0.0;
     }
+    zeroLockedPreRunJointVelocities();
 }
 
 int MujocoSimBridge::prepareModeControlWordForTick(int raw_control_word)
@@ -132,8 +133,9 @@ void MujocoSimBridge::controlLoopTick()
 
     const rl_master::RobotStateData state = buildRobotState();
     const rl_master::TeleopCommand teleop_command = latestTeleopCommand();
+    const double sim_phase_t = data_ != nullptr ? data_->time : 0.0;
     rl_master::RobotCommandData command =
-        controller_runtime_.step(state, teleop_command, effective_mode_control_word);
+        controller_runtime_.step(state, teleop_command, effective_mode_control_word, sim_phase_t);
     const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
     emitDerivedRuntimeEvents(controller_snapshot);
     bool runtime_command_fresh = true;
@@ -263,8 +265,48 @@ void MujocoSimBridge::controlLoopTick()
     {
         for (int i = 0; i < speed_substeps; ++i)
         {
+            std::vector<double> pre_step_q(joint_names_.size(), 0.0);
+            for (size_t joint_idx = 0; joint_idx < joint_names_.size(); ++joint_idx)
+            {
+                const int qpos_adr = (joint_idx < qpos_addrs_.size()) ? qpos_addrs_[joint_idx] : -1;
+                if (qpos_adr >= 0 && qpos_adr < model_->nq)
+                {
+                    pre_step_q[joint_idx] = data_->qpos[qpos_adr];
+                }
+            }
+
             enforceBaseLock();
             mj_step(model_, data_);
+            const double step_dt = std::max(1.0e-9, static_cast<double>(model_->opt.timestep));
+            if (control_active)
+            {
+                for (size_t joint_idx = 0; joint_idx < joint_names_.size(); ++joint_idx)
+                {
+                    if (joint_idx >= resolved_dc_motor_velocity_limit_.size() ||
+                        resolved_dc_motor_velocity_limit_[joint_idx] <= 0.0)
+                    {
+                        continue;
+                    }
+                    const int qpos_adr = (joint_idx < qpos_addrs_.size()) ? qpos_addrs_[joint_idx] : -1;
+                    const int qvel_adr = (joint_idx < qvel_addrs_.size()) ? qvel_addrs_[joint_idx] : -1;
+                    if (qpos_adr < 0 || qpos_adr >= model_->nq || qvel_adr < 0 || qvel_adr >= model_->nv)
+                    {
+                        continue;
+                    }
+                    const double max_delta = resolved_dc_motor_velocity_limit_[joint_idx] * step_dt;
+                    const double delta = data_->qpos[qpos_adr] - pre_step_q[joint_idx];
+                    if (delta > max_delta)
+                    {
+                        data_->qpos[qpos_adr] = pre_step_q[joint_idx] + max_delta;
+                        data_->qvel[qvel_adr] = resolved_dc_motor_velocity_limit_[joint_idx];
+                    }
+                    else if (delta < -max_delta)
+                    {
+                        data_->qpos[qpos_adr] = pre_step_q[joint_idx] - max_delta;
+                        data_->qvel[qvel_adr] = -resolved_dc_motor_velocity_limit_[joint_idx];
+                    }
+                }
+            }
             enforceBaseLock();
         }
         mj_forward(model_, data_);

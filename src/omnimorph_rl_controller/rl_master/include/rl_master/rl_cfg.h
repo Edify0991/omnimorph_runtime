@@ -927,6 +927,15 @@ public:
         std::map<std::string, int> delay;
     };
 
+    class SimDcMotorCfg
+    {
+    public:
+        bool enabled = false;
+        float saturation_effort = 0.0f;
+        float effort_limit = 0.0f;
+        std::map<std::string, float> velocity_limit;
+    };
+
     class CommandLimitsCfg
     {
     public:
@@ -992,6 +1001,8 @@ public:
     std::string action_clip_stage = "raw_action"; // raw_action / target_delta / target_q
     float target_delta_clip = 0.0f;
     float target_q_clip = 0.0f;
+    bool clamp_target_q_to_joint_limits = false;
+    float target_q_joint_limit_margin = 0.0f;
 
     std::string policy_path;
     int device_id = 0;
@@ -1041,6 +1052,7 @@ public:
     SourceContract source_contract;
     ObservationCanonicalContract observation_canonical_contract;
     SimPaceMotorCfg sim_pace_motor;
+    SimDcMotorCfg sim_dc_motor;
     CommandLimitsCfg command_limits;
     AutoSwitchOnReferenceEndCfg auto_switch_on_reference_end;
     GaitConfig gait;
@@ -1112,6 +1124,7 @@ public:
             source_contract = SourceContract{};
             observation_canonical_contract = ObservationCanonicalContract{};
             sim_pace_motor = SimPaceMotorCfg{};
+            sim_dc_motor = SimDcMotorCfg{};
             command_limits = CommandLimitsCfg{};
             gait = GaitConfig{};
             logging = RuntimeLoggingConfig{};
@@ -1383,7 +1396,12 @@ public:
             {
                 throw std::runtime_error("target_q_clip must be > 0 when action_clip_stage is target_q");
             }
-
+            clamp_target_q_to_joint_limits = yamlReadOr<bool>(cfg, "clamp_target_q_to_joint_limits", false);
+            target_q_joint_limit_margin = yamlReadOr<float>(cfg, "target_q_joint_limit_margin", 0.0f);
+            if (target_q_joint_limit_margin < 0.0f)
+            {
+                throw std::runtime_error("target_q_joint_limit_margin must be >= 0");
+            }
             const YAML::Node command_limits_cfg = cfg["command_limits"];
             if (command_limits_cfg)
             {
@@ -1664,6 +1682,39 @@ public:
                 validateOptionalActionJointMap(sim_pace_motor.frictionloss, "frictionloss");
                 validateOptionalActionJointMap(sim_pace_motor.encoder_bias, "encoder_bias");
                 validateOptionalActionJointMap(sim_pace_motor.delay, "delay");
+            }
+
+            const YAML::Node sim_dc_cfg = cfg["sim_dc_motor"];
+            if (sim_dc_cfg)
+            {
+                if (!sim_dc_cfg.IsMap())
+                {
+                    throw std::runtime_error("sim_dc_motor must be a map when provided");
+                }
+                sim_dc_motor.enabled = yamlReadOr<bool>(sim_dc_cfg, "enabled", false);
+                sim_dc_motor.saturation_effort = yamlReadOr<float>(sim_dc_cfg, "saturation_effort", 0.0f);
+                sim_dc_motor.effort_limit = yamlReadOr<float>(sim_dc_cfg, "effort_limit", 0.0f);
+                sim_dc_motor.velocity_limit = yamlReadFloatMapOr(sim_dc_cfg, "velocity_limit");
+                if (sim_dc_motor.enabled)
+                {
+                    if (sim_dc_motor.saturation_effort <= 0.0f)
+                    {
+                        throw std::runtime_error("sim_dc_motor.saturation_effort must be > 0 when enabled");
+                    }
+                    if (sim_dc_motor.effort_limit <= 0.0f)
+                    {
+                        throw std::runtime_error("sim_dc_motor.effort_limit must be > 0 when enabled");
+                    }
+                    validateNamedActionJointValueMap(sim_dc_motor.velocity_limit, "sim_dc_motor.velocity_limit");
+                    for (const auto &entry : sim_dc_motor.velocity_limit)
+                    {
+                        if (entry.second <= 0.0f)
+                        {
+                            throw std::runtime_error(
+                                "sim_dc_motor.velocity_limit for joint '" + entry.first + "' must be > 0");
+                        }
+                    }
+                }
             }
 
             const std::string policy_file = yamlReadOr<std::string>(cfg, "policy_file", "");

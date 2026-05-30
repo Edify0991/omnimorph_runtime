@@ -72,6 +72,23 @@ jingchu01_pacedcmotor_formal:
     right_knee_pitch: 300.0
     right_ankle_pitch: 300.0
     right_ankle_roll: 300.0
+  sim_dc_motor:
+    enabled: true
+    saturation_effort: 300.0
+    effort_limit: 300.0
+    velocity_limit:
+      left_hip_roll: 2.094
+      left_hip_yaw: 2.618
+      left_hip_pitch: 3.926
+      left_knee_pitch: 2.770
+      left_ankle_pitch: 3.124
+      left_ankle_roll: 4.160
+      right_hip_roll: 2.094
+      right_hip_yaw: 2.618
+      right_hip_pitch: 3.926
+      right_knee_pitch: 2.770
+      right_ankle_pitch: 3.124
+      right_ankle_roll: 4.160
   sim_pace_motor:
     enabled: true
     delay_step_dt_s: 0.005
@@ -113,21 +130,21 @@ jingchu01_pacedcmotor_formal:
       right_hip_pitch: 3
       right_knee_pitch: 1
   clip_observations: 100.0
-  clip_actions: 100.0
+  clip_actions: 2.0
   action_scale: 0.5
   action_clip_stage: target_q
   target_q_clip: 2.0
   command_limits:
     enabled: true
-    vx: [0.0, 1.0]
-    vy: [-0.5, 0.5]
+    vx: [-0.8, 0.8]
+    vy: [-0.3, 0.3]
     dyaw: [-0.5, 0.5]
   device_id: 0
   obs_dim: 47
   action_dim: 12
   motor_N: 12
   RL_control_f: 50
-  solver_control_hz: 500
+  solver_control_hz: 200
   installed_joint_run_modes:
     right_hip_roll: cst
     right_hip_yaw: cst
@@ -191,6 +208,7 @@ jingchu01_pacedcmotor_formal:
     - right_ankle_pitch
     - right_ankle_roll
   observation_manifest_file: observation_manifest_jingchu01_formal.yaml
+  observation_manifest_path: config/observation_manifest_jingchu01_formal.yaml
   enable_reference_motion: false
   source_contract:
     imu_input:
