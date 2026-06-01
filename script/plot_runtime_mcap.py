@@ -156,6 +156,15 @@ def select_ticks(
     return [tick for tick in ticks if isinstance(tick, dict) and int(tick.get("deploy_state", 0)) == 3]
 
 
+def infer_vector_count(ticks: Sequence[Dict[str, Any]], field: str) -> int:
+    max_count = 0
+    for tick in ticks:
+        values = tick.get(field)
+        if isinstance(values, list):
+            max_count = max(max_count, len(values))
+    return max_count
+
+
 def print_event_timeline(events: Sequence[Dict[str, Any]]) -> None:
     print("=== Event Timeline ===")
     for event in events:
@@ -321,6 +330,254 @@ def plot_joint_tracking(
     save_or_show(fig, output_dir, "joint_tracking", show)
 
 
+def plot_joint_velocity_tracking(
+    ticks: Sequence[Dict[str, Any]],
+    joint_names: Sequence[str],
+    joint_indices: Sequence[int],
+    output_dir: Optional[Path],
+    show: bool,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    if not ticks or not joint_indices:
+        return
+
+    t0 = float(ticks[0]["monotonic_time_sec"])
+    ts = [float(tick["monotonic_time_sec"]) - t0 for tick in ticks]
+
+    count = len(joint_indices)
+    cols = 3
+    rows = math.ceil(count / cols)
+    fig, axes = plt.subplots(rows, cols, figsize=(14, max(4, rows * 2.8)), sharex=True)
+    axes = axes if isinstance(axes, list) else getattr(axes, "flatten", lambda: [axes])()
+    if not isinstance(axes, list):
+        axes = list(axes)
+
+    for plot_idx, joint_idx in enumerate(joint_indices):
+        axis = axes[plot_idx]
+        dq = [
+            (tick.get("joint_dq") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_dq") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        cmd_dq = [
+            (tick.get("joint_cmd_dq") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_cmd_dq") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        joint_label = joint_names[joint_idx] if joint_idx < len(joint_names) else f"joint_{joint_idx}"
+        axis.plot(ts, dq, label="joint_dq", linewidth=1.0)
+        axis.plot(ts, cmd_dq, label="joint_cmd_dq", linewidth=1.0)
+        axis.set_title(f"{joint_idx}: {joint_label}")
+        axis.grid(alpha=0.3)
+
+    for axis in axes[count:]:
+        axis.axis("off")
+
+    axes[0].legend()
+    fig.suptitle("Joint Velocity Tracking")
+    fig.tight_layout()
+    save_or_show(fig, output_dir, "joint_velocity_tracking", show)
+
+
+def plot_joint_position_torque_overlay(
+    ticks: Sequence[Dict[str, Any]],
+    joint_names: Sequence[str],
+    joint_indices: Sequence[int],
+    output_dir: Optional[Path],
+    show: bool,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    if not ticks or not joint_indices:
+        return
+
+    t0 = float(ticks[0]["monotonic_time_sec"])
+    ts = [float(tick["monotonic_time_sec"]) - t0 for tick in ticks]
+
+    count = len(joint_indices)
+    cols = 3
+    rows = math.ceil(count / cols)
+    fig, axes = plt.subplots(rows, cols, figsize=(16, max(4, rows * 3.0)), sharex=True)
+    axes = axes if isinstance(axes, list) else getattr(axes, "flatten", lambda: [axes])()
+    if not isinstance(axes, list):
+        axes = list(axes)
+
+    legend_handles = None
+    legend_labels = None
+
+    for plot_idx, joint_idx in enumerate(joint_indices):
+        axis = axes[plot_idx]
+        q = [
+            (tick.get("joint_q") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_q") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        target_q = [
+            (tick.get("joint_target_q") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_target_q") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        joint_tau = [
+            (tick.get("joint_tau") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_tau") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        target_tau = [
+            (tick.get("joint_target_tau") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_target_tau") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+
+        pos_q = axis.plot(ts, q, label="q", linewidth=1.0, color="tab:blue")
+        pos_tgt = axis.plot(ts, target_q, label="target_q", linewidth=1.0, linestyle="--", color="tab:orange")
+        axis.set_ylabel("pos")
+        axis.grid(alpha=0.3)
+
+        torque_axis = axis.twinx()
+        tau_q = torque_axis.plot(ts, joint_tau, label="joint_tau", linewidth=0.9, color="tab:green", alpha=0.9)
+        tau_tgt = torque_axis.plot(
+            ts,
+            target_tau,
+            label="target_tau",
+            linewidth=0.9,
+            linestyle="--",
+            color="tab:red",
+            alpha=0.9,
+        )
+        torque_axis.set_ylabel("tau")
+
+        joint_label = joint_names[joint_idx] if joint_idx < len(joint_names) else f"joint_{joint_idx}"
+        axis.set_title(f"{joint_idx}: {joint_label}")
+
+        if plot_idx == 0:
+            legend_handles = pos_q + pos_tgt + tau_q + tau_tgt
+            legend_labels = [line.get_label() for line in legend_handles]
+
+    for axis in axes[count:]:
+        axis.axis("off")
+
+    if legend_handles and legend_labels:
+        axes[0].legend(legend_handles, legend_labels, loc="upper right")
+
+    fig.suptitle("Joint Position and Torque Overlay")
+    fig.tight_layout()
+    save_or_show(fig, output_dir, "joint_position_torque_overlay", show)
+
+
+def plot_joint_state_triplet_overlay(
+    ticks: Sequence[Dict[str, Any]],
+    joint_names: Sequence[str],
+    joint_indices: Sequence[int],
+    output_dir: Optional[Path],
+    show: bool,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    if not ticks or not joint_indices:
+        return
+
+    t0 = float(ticks[0]["monotonic_time_sec"])
+    ts = [float(tick["monotonic_time_sec"]) - t0 for tick in ticks]
+
+    count = len(joint_indices)
+    cols = 3
+    rows = math.ceil(count / cols)
+    fig, axes = plt.subplots(rows, cols, figsize=(18, max(4, rows * 3.2)), sharex=True)
+    axes = axes if isinstance(axes, list) else getattr(axes, "flatten", lambda: [axes])()
+    if not isinstance(axes, list):
+        axes = list(axes)
+
+    legend_handles = None
+    legend_labels = None
+
+    for plot_idx, joint_idx in enumerate(joint_indices):
+        axis = axes[plot_idx]
+        q = [
+            (tick.get("joint_q") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_q") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        target_q = [
+            (tick.get("joint_target_q") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_target_q") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        dq = [
+            (tick.get("joint_dq") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_dq") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        cmd_dq = [
+            (tick.get("joint_cmd_dq") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_cmd_dq") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        joint_tau = [
+            (tick.get("joint_tau") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_tau") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+        target_tau = [
+            (tick.get("joint_target_tau") or [math.nan] * (joint_idx + 1))[joint_idx]
+            if len(tick.get("joint_target_tau") or []) > joint_idx
+            else math.nan
+            for tick in ticks
+        ]
+
+        pos_lines = axis.plot(ts, q, label="q", linewidth=1.0, color="tab:blue")
+        pos_lines += axis.plot(ts, target_q, label="target_q", linewidth=1.0, linestyle="--", color="tab:orange")
+        axis.set_ylabel("pos")
+        axis.grid(alpha=0.3)
+
+        vel_axis = axis.twinx()
+        vel_lines = vel_axis.plot(ts, dq, label="joint_dq", linewidth=0.9, color="tab:green")
+        vel_lines += vel_axis.plot(ts, cmd_dq, label="joint_cmd_dq", linewidth=0.9, linestyle="--", color="tab:red")
+        vel_axis.set_ylabel("vel")
+
+        tau_axis = axis.twinx()
+        tau_axis.spines["right"].set_position(("outward", 42))
+        tau_lines = tau_axis.plot(ts, joint_tau, label="joint_tau", linewidth=0.85, color="tab:purple", alpha=0.9)
+        tau_lines += tau_axis.plot(
+            ts,
+            target_tau,
+            label="target_tau",
+            linewidth=0.85,
+            linestyle="--",
+            color="tab:brown",
+            alpha=0.9,
+        )
+        tau_axis.set_ylabel("tau")
+
+        joint_label = joint_names[joint_idx] if joint_idx < len(joint_names) else f"joint_{joint_idx}"
+        axis.set_title(f"{joint_idx}: {joint_label}")
+
+        if plot_idx == 0:
+            legend_handles = pos_lines + vel_lines + tau_lines
+            legend_labels = [line.get_label() for line in legend_handles]
+
+    for axis in axes[count:]:
+        axis.axis("off")
+
+    if legend_handles and legend_labels:
+        axes[0].legend(legend_handles, legend_labels, loc="upper right", fontsize=8)
+
+    fig.suptitle("Joint Position, Velocity, and Torque Overlay")
+    fig.tight_layout()
+    save_or_show(fig, output_dir, "joint_state_triplet_overlay", show)
+
+
 def plot_torque_tracking(
     ticks: Sequence[Dict[str, Any]],
     joint_names: Sequence[str],
@@ -423,6 +680,282 @@ def plot_motor_tracking(
     fig.suptitle("Motor Position Tracking")
     fig.tight_layout()
     save_or_show(fig, output_dir, "motor_tracking", show)
+
+
+def plot_motor_velocity_tracking(
+    ticks: Sequence[Dict[str, Any]],
+    motor_names: Sequence[str],
+    motor_indices: Sequence[int],
+    output_dir: Optional[Path],
+    show: bool,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    if not ticks or not motor_indices:
+        return
+
+    t0 = float(ticks[0]["monotonic_time_sec"])
+    ts = [float(tick["monotonic_time_sec"]) - t0 for tick in ticks]
+
+    count = len(motor_indices)
+    cols = 3
+    rows = math.ceil(count / cols)
+    fig, axes = plt.subplots(rows, cols, figsize=(14, max(4, rows * 2.8)), sharex=True)
+    axes = axes if isinstance(axes, list) else getattr(axes, "flatten", lambda: [axes])()
+    if not isinstance(axes, list):
+        axes = list(axes)
+
+    for plot_idx, motor_idx in enumerate(motor_indices):
+        axis = axes[plot_idx]
+        motor_dq = [
+            (tick.get("motor_state_dq") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_state_dq") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_cmd_dq = [
+            (tick.get("motor_cmd_dq") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_cmd_dq") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_label = motor_names[motor_idx] if motor_idx < len(motor_names) else f"motor_{motor_idx}"
+        axis.plot(ts, motor_dq, label="motor_state_dq", linewidth=1.0)
+        axis.plot(ts, motor_cmd_dq, label="motor_cmd_dq", linewidth=1.0)
+        axis.set_title(f"{motor_idx}: {motor_label}")
+        axis.grid(alpha=0.3)
+
+    for axis in axes[count:]:
+        axis.axis("off")
+
+    axes[0].legend()
+    fig.suptitle("Motor Velocity Tracking")
+    fig.tight_layout()
+    save_or_show(fig, output_dir, "motor_velocity_tracking", show)
+
+
+def plot_motor_position_torque_overlay(
+    ticks: Sequence[Dict[str, Any]],
+    motor_names: Sequence[str],
+    motor_indices: Sequence[int],
+    output_dir: Optional[Path],
+    show: bool,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    if not ticks or not motor_indices:
+        return
+
+    t0 = float(ticks[0]["monotonic_time_sec"])
+    ts = [float(tick["monotonic_time_sec"]) - t0 for tick in ticks]
+
+    count = len(motor_indices)
+    cols = 3
+    rows = math.ceil(count / cols)
+    fig, axes = plt.subplots(rows, cols, figsize=(16, max(4, rows * 3.0)), sharex=True)
+    axes = axes if isinstance(axes, list) else getattr(axes, "flatten", lambda: [axes])()
+    if not isinstance(axes, list):
+        axes = list(axes)
+
+    legend_handles = None
+    legend_labels = None
+
+    for plot_idx, motor_idx in enumerate(motor_indices):
+        axis = axes[plot_idx]
+        motor_q = [
+            (tick.get("motor_state_q") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_state_q") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_cmd_q = [
+            (tick.get("motor_cmd_q") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_cmd_q") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_tau = [
+            (tick.get("motor_state_tau") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_state_tau") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_cmd_tau = [
+            (tick.get("motor_cmd_tau") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_cmd_tau") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+
+        pos_q = axis.plot(ts, motor_q, label="motor_state_q", linewidth=1.0, color="tab:blue")
+        pos_tgt = axis.plot(
+            ts,
+            motor_cmd_q,
+            label="motor_cmd_q",
+            linewidth=1.0,
+            linestyle="--",
+            color="tab:orange",
+        )
+        axis.set_ylabel("pos")
+        axis.grid(alpha=0.3)
+
+        torque_axis = axis.twinx()
+        tau_q = torque_axis.plot(
+            ts,
+            motor_tau,
+            label="motor_state_tau",
+            linewidth=0.9,
+            color="tab:green",
+            alpha=0.9,
+        )
+        tau_tgt = torque_axis.plot(
+            ts,
+            motor_cmd_tau,
+            label="motor_cmd_tau",
+            linewidth=0.9,
+            linestyle="--",
+            color="tab:red",
+            alpha=0.9,
+        )
+        torque_axis.set_ylabel("tau")
+
+        motor_label = motor_names[motor_idx] if motor_idx < len(motor_names) else f"motor_{motor_idx}"
+        axis.set_title(f"{motor_idx}: {motor_label}")
+
+        if plot_idx == 0:
+            legend_handles = pos_q + pos_tgt + tau_q + tau_tgt
+            legend_labels = [line.get_label() for line in legend_handles]
+
+    for axis in axes[count:]:
+        axis.axis("off")
+
+    if legend_handles and legend_labels:
+        axes[0].legend(legend_handles, legend_labels, loc="upper right")
+
+    fig.suptitle("Motor Position and Torque Overlay")
+    fig.tight_layout()
+    save_or_show(fig, output_dir, "motor_position_torque_overlay", show)
+
+
+def plot_motor_state_triplet_overlay(
+    ticks: Sequence[Dict[str, Any]],
+    motor_names: Sequence[str],
+    motor_indices: Sequence[int],
+    output_dir: Optional[Path],
+    show: bool,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    if not ticks or not motor_indices:
+        return
+
+    t0 = float(ticks[0]["monotonic_time_sec"])
+    ts = [float(tick["monotonic_time_sec"]) - t0 for tick in ticks]
+
+    count = len(motor_indices)
+    cols = 3
+    rows = math.ceil(count / cols)
+    fig, axes = plt.subplots(rows, cols, figsize=(18, max(4, rows * 3.2)), sharex=True)
+    axes = axes if isinstance(axes, list) else getattr(axes, "flatten", lambda: [axes])()
+    if not isinstance(axes, list):
+        axes = list(axes)
+
+    legend_handles = None
+    legend_labels = None
+
+    for plot_idx, motor_idx in enumerate(motor_indices):
+        axis = axes[plot_idx]
+        motor_q = [
+            (tick.get("motor_state_q") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_state_q") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_cmd_q = [
+            (tick.get("motor_cmd_q") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_cmd_q") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_dq = [
+            (tick.get("motor_state_dq") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_state_dq") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_cmd_dq = [
+            (tick.get("motor_cmd_dq") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_cmd_dq") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_tau = [
+            (tick.get("motor_state_tau") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_state_tau") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+        motor_cmd_tau = [
+            (tick.get("motor_cmd_tau") or [math.nan] * (motor_idx + 1))[motor_idx]
+            if len(tick.get("motor_cmd_tau") or []) > motor_idx
+            else math.nan
+            for tick in ticks
+        ]
+
+        pos_lines = axis.plot(ts, motor_q, label="motor_state_q", linewidth=1.0, color="tab:blue")
+        pos_lines += axis.plot(ts, motor_cmd_q, label="motor_cmd_q", linewidth=1.0, linestyle="--", color="tab:orange")
+        axis.set_ylabel("pos")
+        axis.grid(alpha=0.3)
+
+        vel_axis = axis.twinx()
+        vel_lines = vel_axis.plot(ts, motor_dq, label="motor_state_dq", linewidth=0.9, color="tab:green")
+        vel_lines += vel_axis.plot(
+            ts,
+            motor_cmd_dq,
+            label="motor_cmd_dq",
+            linewidth=0.9,
+            linestyle="--",
+            color="tab:red",
+        )
+        vel_axis.set_ylabel("vel")
+
+        tau_axis = axis.twinx()
+        tau_axis.spines["right"].set_position(("outward", 42))
+        tau_lines = tau_axis.plot(
+            ts,
+            motor_tau,
+            label="motor_state_tau",
+            linewidth=0.85,
+            color="tab:purple",
+            alpha=0.9,
+        )
+        tau_lines += tau_axis.plot(
+            ts,
+            motor_cmd_tau,
+            label="motor_cmd_tau",
+            linewidth=0.85,
+            linestyle="--",
+            color="tab:brown",
+            alpha=0.9,
+        )
+        tau_axis.set_ylabel("tau")
+
+        motor_label = motor_names[motor_idx] if motor_idx < len(motor_names) else f"motor_{motor_idx}"
+        axis.set_title(f"{motor_idx}: {motor_label}")
+
+        if plot_idx == 0:
+            legend_handles = pos_lines + vel_lines + tau_lines
+            legend_labels = [line.get_label() for line in legend_handles]
+
+    for axis in axes[count:]:
+        axis.axis("off")
+
+    if legend_handles and legend_labels:
+        axes[0].legend(legend_handles, legend_labels, loc="upper right", fontsize=8)
+
+    fig.suptitle("Motor Position, Velocity, and Torque Overlay")
+    fig.tight_layout()
+    save_or_show(fig, output_dir, "motor_state_triplet_overlay", show)
 
 
 def plot_motor_torque_tracking(
@@ -542,14 +1075,23 @@ def main() -> int:
         motor_names = []
     motor_names = [str(name) for name in motor_names]
 
+    inferred_joint_count = max(
+        len(joint_names),
+        infer_vector_count(selected_ticks, "joint_q"),
+        infer_vector_count(selected_ticks, "joint_target_q"),
+    )
+    inferred_motor_count = max(
+        len(motor_names),
+        infer_vector_count(selected_ticks, "motor_state_q"),
+        infer_vector_count(selected_ticks, "motor_cmd_q"),
+    )
+
     joint_indices = parse_indices(args.joint_indices)
     if not joint_indices:
-        default_joint_count = min(12, len(joint_names) if joint_names else 12)
-        joint_indices = list(range(default_joint_count))
+        joint_indices = list(range(inferred_joint_count))
     motor_indices = parse_indices(args.motor_indices)
     if not motor_indices:
-        default_motor_count = min(12, len(motor_names) if motor_names else 12)
-        motor_indices = list(range(default_motor_count))
+        motor_indices = list(range(inferred_motor_count))
 
     print(f"mcap_path: {mcap_path}")
     print(
@@ -570,10 +1112,16 @@ def main() -> int:
 
     plot_motion_overview(selected_ticks, term_slices, output_dir, show)
     plot_joint_tracking(selected_ticks, joint_names, joint_indices, output_dir, show)
+    plot_joint_velocity_tracking(selected_ticks, joint_names, joint_indices, output_dir, show)
+    plot_joint_position_torque_overlay(selected_ticks, joint_names, joint_indices, output_dir, show)
+    plot_joint_state_triplet_overlay(selected_ticks, joint_names, joint_indices, output_dir, show)
     if not args.skip_torque:
         plot_torque_tracking(selected_ticks, joint_names, joint_indices, output_dir, show)
     if not args.skip_motor:
         plot_motor_tracking(selected_ticks, motor_names, motor_indices, output_dir, show)
+        plot_motor_velocity_tracking(selected_ticks, motor_names, motor_indices, output_dir, show)
+        plot_motor_position_torque_overlay(selected_ticks, motor_names, motor_indices, output_dir, show)
+        plot_motor_state_triplet_overlay(selected_ticks, motor_names, motor_indices, output_dir, show)
         plot_motor_torque_tracking(selected_ticks, motor_names, motor_indices, output_dir, show)
 
     return 0

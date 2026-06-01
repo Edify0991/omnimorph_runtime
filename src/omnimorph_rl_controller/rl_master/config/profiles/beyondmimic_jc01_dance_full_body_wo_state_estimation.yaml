@@ -368,7 +368,7 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
     onnx_inputs: []
   auto_switch_on_reference_end:
     enabled: true
-    target_mode_id: 2
+    target_mode_id: 0
     metadata_keys:
       - motion_num_frames
   enable_cmd_watchdog: true
@@ -476,13 +476,13 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
       right_hip_roll: 330.0
       right_hip_yaw: 150.0
       right_hip_pitch: 330.0
-      right_knee_pitch: 306.0
+      right_knee_pitch: 2000.0
       right_ankle_pitch: 90.0
       right_ankle_roll: 90.0
       left_hip_roll: 330.0
       left_hip_yaw: 150.0
       left_hip_pitch: 330.0
-      left_knee_pitch: 306.0
+      left_knee_pitch: 2000.0
       left_ankle_pitch: 90.0
       left_ankle_roll: 90.0
       waist_roll: 330.0
