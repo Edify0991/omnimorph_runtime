@@ -141,6 +141,7 @@ SUPPORTED_ONNX_INPUT_SOURCES = {
     "feature",
     "feature_concat",
     "constant",
+    "random_normal",
 }
 
 SUPPORTED_COMPUTED_FEATURE_SOURCES = {
@@ -1470,6 +1471,54 @@ def normalize_named_action_joint_value_map(
     return named_values
 
 
+def check_target_q_velocity_envelope(
+    section_cfg: Dict[str, Any],
+    action_order: Sequence[str],
+    issues: IssueCollector,
+    context: str,
+) -> None:
+    envelope = to_dict(section_cfg.get("target_q_velocity_envelope"))
+    if not envelope:
+        return
+    if not as_bool(envelope.get("enabled"), False):
+        return
+
+    try:
+        zero_velocity_epsilon = float(envelope.get("zero_velocity_epsilon", 0.01) or 0.0)
+    except Exception:
+        issues.error(context, "target_q_velocity_envelope.zero_velocity_epsilon must be numeric")
+        zero_velocity_epsilon = 0.0
+    if zero_velocity_epsilon < 0.0:
+        issues.error(context, "target_q_velocity_envelope.zero_velocity_epsilon must be >= 0")
+
+    maps = {
+        name: normalize_named_action_joint_value_map(
+            envelope.get(name),
+            f"target_q_velocity_envelope.{name}",
+            action_order,
+            issues,
+            context,
+        )
+        for name in ("x1", "x2", "y1", "y2")
+    }
+
+    for joint_name in action_order:
+        if any(joint_name not in value_map for value_map in maps.values()):
+            continue
+        x1 = maps["x1"][joint_name]
+        x2 = maps["x2"][joint_name]
+        y1 = maps["y1"][joint_name]
+        y2 = maps["y2"][joint_name]
+        if x1 < 0.0:
+            issues.error(context, f"target_q_velocity_envelope.x1[{joint_name}] must be >= 0")
+        if x2 <= x1:
+            issues.error(context, f"target_q_velocity_envelope.x2[{joint_name}] must be > x1")
+        if y1 <= 0.0:
+            issues.error(context, f"target_q_velocity_envelope.y1[{joint_name}] must be > 0")
+        if y2 <= 0.0:
+            issues.error(context, f"target_q_velocity_envelope.y2[{joint_name}] must be > 0")
+
+
 def build_feature_dim_map(
     section_cfg: Dict[str, Any],
     reference_order: List[str],
@@ -1902,6 +1951,65 @@ def check_named_body_layout_contract(
             context,
             f"enabled body-name-based observation terms require anchor_body '{effective_anchor}' to be present in effective body_names",
         )
+
+
+def check_reference_anchor_fk_contract(
+    section_cfg: Dict[str, Any],
+    root_dir: Path,
+    path_variables: Dict[str, str],
+    issues: IssueCollector,
+    context: str,
+) -> None:
+    source = normalize_token(section_cfg.get("reference_anchor_current_source", "base_quat"))
+    if source not in {"base_quat", "fk_onnx"}:
+        issues.error(context, "reference_anchor_current_source must be 'base_quat' or 'fk_onnx'")
+        return
+    if source != "fk_onnx":
+        return
+
+    fk_path_raw = str(section_cfg.get("reference_anchor_fk_path", "")).strip()
+    fk_file_raw = str(section_cfg.get("reference_anchor_fk_file", "")).strip()
+    if fk_path_raw:
+        fk_path = resolve_path(fk_path_raw, root_dir, path_variables)
+    elif fk_file_raw:
+        fk_path = resolve_path(fk_file_raw, root_dir, path_variables)
+    else:
+        issues.error(context, "reference_anchor_fk_path/reference_anchor_fk_file is required for fk_onnx")
+        fk_path = None
+    if fk_path is not None and not fk_path.exists():
+        issues.error(context, f"reference_anchor_fk ONNX file not found: {fk_path}")
+
+    joint_indices = [as_int(x, -1) for x in to_list(section_cfg.get("reference_anchor_fk_joint_indices"))]
+    if not joint_indices:
+        issues.error(context, "reference_anchor_fk_joint_indices must be non-empty for fk_onnx")
+    for idx, joint_index in enumerate(joint_indices):
+        if joint_index < 0:
+            issues.error(context, f"reference_anchor_fk_joint_indices[{idx}] must be >= 0")
+
+    base_pos = to_list(section_cfg.get("reference_anchor_fk_base_pos"))
+    if len(base_pos) != 3:
+        issues.error(context, "reference_anchor_fk_base_pos must contain exactly 3 values")
+    for idx, value in enumerate(base_pos):
+        try:
+            parsed = float(value)
+        except Exception:
+            issues.error(context, f"reference_anchor_fk_base_pos[{idx}] is not numeric: {value}")
+            continue
+        if not math.isfinite(parsed):
+            issues.error(context, f"reference_anchor_fk_base_pos[{idx}] is not finite: {value}")
+
+    for key in (
+        "reference_anchor_fk_joint_angles_input_name",
+        "reference_anchor_fk_base_pos_input_name",
+        "reference_anchor_fk_base_quat_input_name",
+        "reference_anchor_fk_output_quat_name",
+    ):
+        if not str(section_cfg.get(key, "")).strip():
+            issues.error(context, f"{key} must be non-empty for fk_onnx")
+
+    quat_order = normalize_token(section_cfg.get("reference_anchor_fk_output_quat_order", "wxyz"))
+    if quat_order not in SUPPORTED_QUAT_ORDERS:
+        issues.error(context, "reference_anchor_fk_output_quat_order must be 'wxyz' or 'xyzw'")
 
 
 def parse_int_metadata(value: str) -> Optional[int]:
@@ -2470,6 +2578,7 @@ def validate_profile(
         issues,
         context,
     )
+    check_target_q_velocity_envelope(section_cfg, action_order, issues, context)
     kps_map = normalize_named_action_joint_value_map(
         section_cfg.get("kps"),
         "kps",
@@ -2498,6 +2607,8 @@ def validate_profile(
         issues,
         context,
     )
+    if as_int(section_cfg.get("reference_motion_step_offset"), 0) < 0:
+        issues.error(context, "reference_motion_step_offset must be >= 0")
     global_joint_order = get_global_robot_joint_order(root_cfg, issues)
     joint_groups = get_joint_groups(root_cfg, global_joint_order, issues)
     if len(global_joint_order) > 30:
@@ -2559,6 +2670,7 @@ def validate_profile(
         issues,
         context,
     )
+    check_reference_anchor_fk_contract(section_cfg, root_dir, path_variables, issues, context)
     feature_dims = build_feature_dim_map(section_cfg, reference_order, computed_features)
 
     manifest_dim = parse_manifest_dim(manifest_path, issues, context)

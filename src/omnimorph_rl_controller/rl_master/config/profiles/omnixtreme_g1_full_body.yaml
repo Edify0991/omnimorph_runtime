@@ -241,8 +241,18 @@ omnixtreme_g1_full_body:
   enable_reference_motion: true
   reference_motion_dim: 0
   reference_motion_sampling: step
+  reference_motion_step_offset: 1
   reference_motion_source: file
   reference_motion_path: /home/edify/Code/OmniXtreme/policy/motion.npz
+  reference_anchor_current_source: fk_onnx
+  reference_anchor_fk_path: /home/edify/Code/OmniXtreme/policy/fk_trt.onnx
+  reference_anchor_fk_joint_indices: [12, 13, 14]
+  reference_anchor_fk_base_pos: [0.0, 0.0, 0.79]
+  reference_anchor_fk_joint_angles_input_name: joint_angles
+  reference_anchor_fk_base_pos_input_name: base_pos
+  reference_anchor_fk_base_quat_input_name: base_quat
+  reference_anchor_fk_output_quat_name: rot
+  reference_anchor_fk_output_quat_order: wxyz
   reference_anchor_body: torso_link
   motion_reference_alignment: startup_anchor_pos_yaw
   reference_body_names:
@@ -396,13 +406,8 @@ omnixtreme_g1_full_body:
         source: stacked_observation
         shape: [1, 1350]
       - name: initial_noise
-        source: constant
+        source: random_normal
         shape: [1, 29]
-        constant: [
-          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-        ]
   sub_models:
     - name: residual
       enabled: true
@@ -442,6 +447,129 @@ omnixtreme_g1_full_body:
   zeroing_velocity_tolerance: 100.0
   control_mode: sim2real
   action_filter: 0.0
+  target_q_velocity_envelope:
+    enabled: true
+    zero_velocity_epsilon: 0.01
+    x1:
+      left_hip_pitch_joint: 14.5
+      left_hip_roll_joint: 14.5
+      left_hip_yaw_joint: 22.63
+      left_knee_joint: 14.5
+      left_ankle_pitch_joint: 30.86
+      left_ankle_roll_joint: 30.86
+      right_hip_pitch_joint: 14.5
+      right_hip_roll_joint: 14.5
+      right_hip_yaw_joint: 22.63
+      right_knee_joint: 14.5
+      right_ankle_pitch_joint: 30.86
+      right_ankle_roll_joint: 30.86
+      waist_yaw_joint: 22.63
+      waist_roll_joint: 30.86
+      waist_pitch_joint: 30.86
+      left_shoulder_pitch_joint: 30.86
+      left_shoulder_roll_joint: 30.86
+      left_shoulder_yaw_joint: 30.86
+      left_elbow_joint: 30.86
+      left_wrist_roll_joint: 30.86
+      left_wrist_pitch_joint: 15.3
+      left_wrist_yaw_joint: 15.3
+      right_shoulder_pitch_joint: 30.86
+      right_shoulder_roll_joint: 30.86
+      right_shoulder_yaw_joint: 30.86
+      right_elbow_joint: 30.86
+      right_wrist_roll_joint: 30.86
+      right_wrist_pitch_joint: 15.3
+      right_wrist_yaw_joint: 15.3
+    x2:
+      left_hip_pitch_joint: 22.7
+      left_hip_roll_joint: 22.7
+      left_hip_yaw_joint: 35.52
+      left_knee_joint: 22.7
+      left_ankle_pitch_joint: 40.13
+      left_ankle_roll_joint: 40.13
+      right_hip_pitch_joint: 22.7
+      right_hip_roll_joint: 22.7
+      right_hip_yaw_joint: 35.52
+      right_knee_joint: 22.7
+      right_ankle_pitch_joint: 40.13
+      right_ankle_roll_joint: 40.13
+      waist_yaw_joint: 35.52
+      waist_roll_joint: 40.13
+      waist_pitch_joint: 40.13
+      left_shoulder_pitch_joint: 40.13
+      left_shoulder_roll_joint: 40.13
+      left_shoulder_yaw_joint: 40.13
+      left_elbow_joint: 40.13
+      left_wrist_roll_joint: 40.13
+      left_wrist_pitch_joint: 24.76
+      left_wrist_yaw_joint: 24.76
+      right_shoulder_pitch_joint: 40.13
+      right_shoulder_roll_joint: 40.13
+      right_shoulder_yaw_joint: 40.13
+      right_elbow_joint: 40.13
+      right_wrist_roll_joint: 40.13
+      right_wrist_pitch_joint: 24.76
+      right_wrist_yaw_joint: 24.76
+    y1:
+      left_hip_pitch_joint: 111.0
+      left_hip_roll_joint: 111.0
+      left_hip_yaw_joint: 71.0
+      left_knee_joint: 111.0
+      left_ankle_pitch_joint: 24.8
+      left_ankle_roll_joint: 24.8
+      right_hip_pitch_joint: 111.0
+      right_hip_roll_joint: 111.0
+      right_hip_yaw_joint: 71.0
+      right_knee_joint: 111.0
+      right_ankle_pitch_joint: 24.8
+      right_ankle_roll_joint: 24.8
+      waist_yaw_joint: 71.0
+      waist_roll_joint: 24.8
+      waist_pitch_joint: 24.8
+      left_shoulder_pitch_joint: 24.8
+      left_shoulder_roll_joint: 24.8
+      left_shoulder_yaw_joint: 24.8
+      left_elbow_joint: 24.8
+      left_wrist_roll_joint: 24.8
+      left_wrist_pitch_joint: 4.8
+      left_wrist_yaw_joint: 4.8
+      right_shoulder_pitch_joint: 24.8
+      right_shoulder_roll_joint: 24.8
+      right_shoulder_yaw_joint: 24.8
+      right_elbow_joint: 24.8
+      right_wrist_roll_joint: 24.8
+      right_wrist_pitch_joint: 4.8
+      right_wrist_yaw_joint: 4.8
+    y2:
+      left_hip_pitch_joint: 131.0
+      left_hip_roll_joint: 131.0
+      left_hip_yaw_joint: 83.3
+      left_knee_joint: 131.0
+      left_ankle_pitch_joint: 31.9
+      left_ankle_roll_joint: 31.9
+      right_hip_pitch_joint: 131.0
+      right_hip_roll_joint: 131.0
+      right_hip_yaw_joint: 83.3
+      right_knee_joint: 131.0
+      right_ankle_pitch_joint: 31.9
+      right_ankle_roll_joint: 31.9
+      waist_yaw_joint: 83.3
+      waist_roll_joint: 31.9
+      waist_pitch_joint: 31.9
+      left_shoulder_pitch_joint: 31.9
+      left_shoulder_roll_joint: 31.9
+      left_shoulder_yaw_joint: 31.9
+      left_elbow_joint: 31.9
+      left_wrist_roll_joint: 31.9
+      left_wrist_pitch_joint: 8.6
+      left_wrist_yaw_joint: 8.6
+      right_shoulder_pitch_joint: 31.9
+      right_shoulder_roll_joint: 31.9
+      right_shoulder_yaw_joint: 31.9
+      right_elbow_joint: 31.9
+      right_wrist_roll_joint: 31.9
+      right_wrist_pitch_joint: 8.6
+      right_wrist_yaw_joint: 8.6
   robot:
     default_joint_angles:
       left_hip_pitch_joint: -0.312

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -619,6 +620,16 @@ std::vector<float> OnnxPolicyRunner::resolveInputData(
     else if (source == "constant")
     {
         source_data = binding.constant;
+    }
+    else if (source == "random_normal")
+    {
+        thread_local std::mt19937 rng(std::random_device{}());
+        thread_local std::normal_distribution<float> normal(0.0f, 1.0f);
+        source_data.resize(target_count);
+        for (float &value : source_data)
+        {
+            value = normal(rng);
+        }
     }
     else
     {

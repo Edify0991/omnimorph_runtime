@@ -707,7 +707,7 @@ struct ExternalObservationSpec
 struct OnnxInputSpec
 {
     std::string name;
-    std::string source = "stacked_observation"; // stacked_observation / observation / last_action / time_step / feature / feature_concat / constant
+    std::string source = "stacked_observation"; // stacked_observation / observation / last_action / time_step / feature / feature_concat / constant / random_normal
     std::string feature_name;
     std::vector<std::string> feature_names;
     std::vector<int64_t> shape;
@@ -957,6 +957,17 @@ public:
         std::map<std::string, float> velocity_limit;
     };
 
+    class TargetQVelocityEnvelopeCfg
+    {
+    public:
+        bool enabled = false;
+        float zero_velocity_epsilon = 1.0e-2f;
+        std::map<std::string, float> x1;
+        std::map<std::string, float> x2;
+        std::map<std::string, float> y1;
+        std::map<std::string, float> y2;
+    };
+
     class CommandLimitsCfg
     {
     public:
@@ -1065,8 +1076,19 @@ public:
     std::string reference_motion_path;
     std::string reference_motion_sampling = "phase"; // phase / step
     std::string reference_motion_source = "auto";    // auto / file / policy_outputs
+    int reference_motion_step_offset = 0;
     std::string reference_anchor_body = "base";
     std::string motion_reference_alignment = "current_robot_anchor"; // current_robot_anchor / startup_anchor_pos_yaw
+    std::string reference_anchor_current_source = "base_quat";        // base_quat / fk_onnx
+    std::string reference_anchor_fk_file;
+    std::string reference_anchor_fk_path;
+    std::vector<int> reference_anchor_fk_joint_indices;
+    std::vector<float> reference_anchor_fk_base_pos{0.0f, 0.0f, 0.0f};
+    std::string reference_anchor_fk_joint_angles_input_name = "joint_angles";
+    std::string reference_anchor_fk_base_pos_input_name = "base_pos";
+    std::string reference_anchor_fk_base_quat_input_name = "base_quat";
+    std::string reference_anchor_fk_output_quat_name = "rot";
+    std::string reference_anchor_fk_output_quat_order = "wxyz";
     std::vector<std::string> reference_body_names;
     std::vector<std::string> reference_joint_order;
     std::string pinocchio_urdf_file;
@@ -1076,6 +1098,7 @@ public:
     ObservationCanonicalContract observation_canonical_contract;
     SimPaceMotorCfg sim_pace_motor;
     SimDcMotorCfg sim_dc_motor;
+    TargetQVelocityEnvelopeCfg target_q_velocity_envelope;
     CommandLimitsCfg command_limits;
     AutoSwitchOnReferenceEndCfg auto_switch_on_reference_end;
     GaitConfig gait;
@@ -1379,7 +1402,8 @@ public:
                         spec.source != "time_step" &&
                         spec.source != "feature" &&
                         spec.source != "feature_concat" &&
-                        spec.source != "constant")
+                        spec.source != "constant" &&
+                        spec.source != "random_normal")
                     {
                         throw std::runtime_error(item_name + " unsupported source: " + spec.source);
                     }
@@ -1858,6 +1882,66 @@ public:
                 }
             }
 
+            const YAML::Node target_q_velocity_envelope_cfg = cfg["target_q_velocity_envelope"];
+            if (target_q_velocity_envelope_cfg)
+            {
+                if (!target_q_velocity_envelope_cfg.IsMap())
+                {
+                    throw std::runtime_error("target_q_velocity_envelope must be a map when provided");
+                }
+                target_q_velocity_envelope.enabled =
+                    yamlReadOr<bool>(target_q_velocity_envelope_cfg, "enabled", false);
+                target_q_velocity_envelope.zero_velocity_epsilon =
+                    yamlReadOr<float>(target_q_velocity_envelope_cfg, "zero_velocity_epsilon", 1.0e-2f);
+                target_q_velocity_envelope.x1 =
+                    yamlReadFloatMapOr(target_q_velocity_envelope_cfg, "x1");
+                target_q_velocity_envelope.x2 =
+                    yamlReadFloatMapOr(target_q_velocity_envelope_cfg, "x2");
+                target_q_velocity_envelope.y1 =
+                    yamlReadFloatMapOr(target_q_velocity_envelope_cfg, "y1");
+                target_q_velocity_envelope.y2 =
+                    yamlReadFloatMapOr(target_q_velocity_envelope_cfg, "y2");
+
+                if (target_q_velocity_envelope.enabled)
+                {
+                    if (target_q_velocity_envelope.zero_velocity_epsilon < 0.0f)
+                    {
+                        throw std::runtime_error("target_q_velocity_envelope.zero_velocity_epsilon must be >= 0");
+                    }
+                    validateNamedActionJointValueMap(target_q_velocity_envelope.x1, "target_q_velocity_envelope.x1");
+                    validateNamedActionJointValueMap(target_q_velocity_envelope.x2, "target_q_velocity_envelope.x2");
+                    validateNamedActionJointValueMap(target_q_velocity_envelope.y1, "target_q_velocity_envelope.y1");
+                    validateNamedActionJointValueMap(target_q_velocity_envelope.y2, "target_q_velocity_envelope.y2");
+                    for (const std::string &joint_name : action_joint_order)
+                    {
+                        const float x1 = target_q_velocity_envelope.x1[joint_name];
+                        const float x2 = target_q_velocity_envelope.x2[joint_name];
+                        const float y1 = target_q_velocity_envelope.y1[joint_name];
+                        const float y2 = target_q_velocity_envelope.y2[joint_name];
+                        if (x1 < 0.0f)
+                        {
+                            throw std::runtime_error(
+                                "target_q_velocity_envelope.x1 for joint '" + joint_name + "' must be >= 0");
+                        }
+                        if (x2 <= x1)
+                        {
+                            throw std::runtime_error(
+                                "target_q_velocity_envelope.x2 for joint '" + joint_name + "' must be > x1");
+                        }
+                        if (y1 <= 0.0f)
+                        {
+                            throw std::runtime_error(
+                                "target_q_velocity_envelope.y1 for joint '" + joint_name + "' must be > 0");
+                        }
+                        if (y2 <= 0.0f)
+                        {
+                            throw std::runtime_error(
+                                "target_q_velocity_envelope.y2 for joint '" + joint_name + "' must be > 0");
+                        }
+                    }
+                }
+            }
+
             const std::string policy_file = yamlReadOr<std::string>(cfg, "policy_file", "");
             const std::string policy_path_raw = yamlReadOr<std::string>(cfg, "policy_path", "");
             if (!policy_path_raw.empty())
@@ -1995,11 +2079,52 @@ public:
             reference_motion_file = yamlReadOr<std::string>(cfg, "reference_motion_file", "");
             reference_motion_sampling = yamlReadOr<std::string>(cfg, "reference_motion_sampling", "phase");
             reference_motion_source = yamlReadOr<std::string>(cfg, "reference_motion_source", "auto");
+            reference_motion_step_offset = yamlReadOr<int>(cfg, "reference_motion_step_offset", 0);
             reference_anchor_body = yamlReadOr<std::string>(cfg, "reference_anchor_body", "base");
             motion_reference_alignment = yamlReadOr<std::string>(
                 cfg,
                 "motion_reference_alignment",
                 motion_reference_alignment);
+            reference_anchor_current_source =
+                yamlReadOr<std::string>(
+                    cfg,
+                    "reference_anchor_current_source",
+                    reference_anchor_current_source);
+            reference_anchor_fk_file = yamlReadOr<std::string>(cfg, "reference_anchor_fk_file", "");
+            const std::string reference_anchor_fk_path_raw =
+                yamlReadOr<std::string>(cfg, "reference_anchor_fk_path", "");
+            reference_anchor_fk_joint_indices =
+                yamlReadOr<std::vector<int>>(cfg, "reference_anchor_fk_joint_indices", {});
+            reference_anchor_fk_base_pos =
+                yamlReadOr<std::vector<float>>(
+                    cfg,
+                    "reference_anchor_fk_base_pos",
+                    reference_anchor_fk_base_pos);
+            reference_anchor_fk_joint_angles_input_name =
+                yamlReadOr<std::string>(
+                    cfg,
+                    "reference_anchor_fk_joint_angles_input_name",
+                    reference_anchor_fk_joint_angles_input_name);
+            reference_anchor_fk_base_pos_input_name =
+                yamlReadOr<std::string>(
+                    cfg,
+                    "reference_anchor_fk_base_pos_input_name",
+                    reference_anchor_fk_base_pos_input_name);
+            reference_anchor_fk_base_quat_input_name =
+                yamlReadOr<std::string>(
+                    cfg,
+                    "reference_anchor_fk_base_quat_input_name",
+                    reference_anchor_fk_base_quat_input_name);
+            reference_anchor_fk_output_quat_name =
+                yamlReadOr<std::string>(
+                    cfg,
+                    "reference_anchor_fk_output_quat_name",
+                    reference_anchor_fk_output_quat_name);
+            reference_anchor_fk_output_quat_order =
+                yamlReadOr<std::string>(
+                    cfg,
+                    "reference_anchor_fk_output_quat_order",
+                    reference_anchor_fk_output_quat_order);
             reference_body_names = yamlReadOr<std::vector<std::string>>(cfg, "reference_body_names", {});
             reference_joint_order = yamlReadOr<std::vector<std::string>>(cfg, "reference_joint_order", {});
             pinocchio_urdf_file = yamlReadOr<std::string>(cfg, "pinocchio_urdf_file", "");
@@ -2021,6 +2146,14 @@ public:
             else if (!pinocchio_urdf_file.empty())
             {
                 pinocchio_urdf_path = resolvePath(pinocchio_urdf_file);
+            }
+            if (!reference_anchor_fk_path_raw.empty())
+            {
+                reference_anchor_fk_path = resolvePath(reference_anchor_fk_path_raw);
+            }
+            else if (!reference_anchor_fk_file.empty())
+            {
+                reference_anchor_fk_path = resolvePath(reference_anchor_fk_file);
             }
 
             if (reference_joint_order.empty())
@@ -2440,6 +2573,45 @@ public:
             {
                 throw std::runtime_error(
                     "motion_reference_alignment must be 'current_robot_anchor' or 'startup_anchor_pos_yaw'");
+            }
+            if (reference_anchor_current_source != "base_quat" &&
+                reference_anchor_current_source != "fk_onnx")
+            {
+                throw std::runtime_error(
+                    "reference_anchor_current_source must be 'base_quat' or 'fk_onnx'");
+            }
+            if (reference_anchor_current_source == "fk_onnx")
+            {
+                if (reference_anchor_fk_path.empty())
+                {
+                    throw std::runtime_error(
+                        "reference_anchor_fk_path/reference_anchor_fk_file must be set when reference_anchor_current_source='fk_onnx'");
+                }
+                if (reference_anchor_fk_joint_indices.empty())
+                {
+                    throw std::runtime_error(
+                        "reference_anchor_fk_joint_indices must be non-empty when reference_anchor_current_source='fk_onnx'");
+                }
+                if (reference_anchor_fk_base_pos.size() != 3)
+                {
+                    throw std::runtime_error("reference_anchor_fk_base_pos must contain exactly 3 values");
+                }
+                if (reference_anchor_fk_joint_angles_input_name.empty() ||
+                    reference_anchor_fk_base_pos_input_name.empty() ||
+                    reference_anchor_fk_base_quat_input_name.empty() ||
+                    reference_anchor_fk_output_quat_name.empty())
+                {
+                    throw std::runtime_error("reference anchor FK ONNX input/output names must be non-empty");
+                }
+                if (reference_anchor_fk_output_quat_order != "wxyz" &&
+                    reference_anchor_fk_output_quat_order != "xyzw")
+                {
+                    throw std::runtime_error("reference_anchor_fk_output_quat_order must be 'wxyz' or 'xyzw'");
+                }
+            }
+            if (reference_motion_step_offset < 0)
+            {
+                throw std::runtime_error("reference_motion_step_offset must be >= 0");
             }
 
             if (cfg["external_observations"])

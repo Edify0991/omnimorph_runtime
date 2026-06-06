@@ -90,6 +90,44 @@ float applyDcMotorTorqueSpeedClip(
     return std::clamp(effort, min_effort, max_effort);
 }
 
+float clampTargetQToVelocityEnvelope(
+    float target_position,
+    float current_position,
+    float current_velocity,
+    float kp,
+    float kd,
+    float x1,
+    float x2,
+    float y1,
+    float y2,
+    float zero_velocity_epsilon)
+{
+    if (kp <= 0.0f || x2 <= x1 || y1 <= 0.0f || y2 <= 0.0f)
+    {
+        return target_position;
+    }
+
+    const float abs_velocity = std::abs(current_velocity);
+    const float over_velocity = std::max(0.0f, abs_velocity - x1);
+    const float span = std::max(1.0e-6f, x2 - x1);
+
+    const float positive_base =
+        (abs_velocity <= zero_velocity_epsilon) ? y2 : (current_velocity >= 0.0f ? y1 : y2);
+    const float positive_slope = positive_base / span;
+    const float tau_high = std::max(0.0f, positive_base - positive_slope * over_velocity);
+
+    const float negative_base =
+        (abs_velocity <= zero_velocity_epsilon) ? -y2 : (current_velocity >= 0.0f ? -y2 : -y1);
+    const float negative_slope = (-negative_base) / span;
+    const float tau_low = std::min(0.0f, negative_base + negative_slope * over_velocity);
+
+    const float p_low = tau_low + kd * current_velocity;
+    const float p_high = tau_high + kd * current_velocity;
+    const float target_low = p_low / kp + current_position;
+    const float target_high = p_high / kp + current_position;
+    return std::clamp(target_position, target_low, target_high);
+}
+
 std::array<float, 3> rotateVectorByQuat(
     const std::array<float, 3> &vec,
     const std::array<float, 4> &quat_xyzw)
@@ -1372,6 +1410,26 @@ void RL_controller::initModeProfiles()
                     profile.pinocchio_motion_features->lastError());
             }
         }
+        if (profile.cfg.reference_anchor_current_source == "fk_onnx")
+        {
+            if (profile.cfg.reference_anchor_fk_path.empty() ||
+                !std::filesystem::exists(profile.cfg.reference_anchor_fk_path))
+            {
+                throw std::runtime_error(
+                    "[RL_controller][" + profile.tag +
+                    "] reference_anchor_current_source='fk_onnx' but FK ONNX does not exist: " +
+                    profile.cfg.reference_anchor_fk_path);
+            }
+            Ort::SessionOptions fk_session_options;
+            fk_session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+            fk_session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+            fk_session_options.SetIntraOpNumThreads(std::max(1, profile.cfg.onnx_intra_threads));
+            fk_session_options.SetInterOpNumThreads(std::max(1, profile.cfg.onnx_inter_threads));
+            profile.reference_anchor_fk_session = std::make_unique<Ort::Session>(
+                onnx_env_,
+                profile.cfg.reference_anchor_fk_path.c_str(),
+                fk_session_options);
+        }
 
         mode_to_profile_index_[profile.mode_id] = mode_profiles_.size();
         mode_profiles_.push_back(std::move(profile));
@@ -2081,7 +2139,9 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
         const auto &provider = activeReferenceMotionProvider();
         const ReferenceMotionFrame sampled_frame =
             (cfg.reference_motion_sampling == "step")
-                ? provider.sampleFrameByStep(policy_step_counter_, reference_motion_dim)
+                ? provider.sampleFrameByStep(
+                      policy_step_counter_ + static_cast<size_t>(std::max(0, cfg.reference_motion_step_offset)),
+                      reference_motion_dim)
                 : provider.sampleFrameByPhase(phase_t, cfg.cycle_time, reference_motion_dim);
 
         if (!sampled_frame.reference_motion.empty())
@@ -2375,6 +2435,101 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                        ? fitDim(it->second, dof_count)
                        : gatherByIndicesOrZeros(robot->joint_dq, obs_indices);
         };
+        auto currentAnchorQuatXyzw = [&]() {
+            if (cfg.reference_anchor_current_source == "fk_onnx" &&
+                profile.reference_anchor_fk_session)
+            {
+                try
+                {
+                    std::vector<float> joint_angles;
+                    joint_angles.reserve(cfg.reference_anchor_fk_joint_indices.size());
+                    for (const int joint_index : cfg.reference_anchor_fk_joint_indices)
+                    {
+                        joint_angles.push_back(
+                            (joint_index >= 0 && static_cast<size_t>(joint_index) < robot->joint_q.size())
+                                ? robot->joint_q[static_cast<size_t>(joint_index)]
+                                : 0.0f);
+                    }
+                    std::vector<float> base_pos = fitDim(cfg.reference_anchor_fk_base_pos, 3);
+                    std::vector<float> base_quat_wxyz(4, 0.0f);
+                    if (robot->base_quat.size() >= 4)
+                    {
+                        base_quat_wxyz[0] = robot->base_quat[3];
+                        base_quat_wxyz[1] = robot->base_quat[0];
+                        base_quat_wxyz[2] = robot->base_quat[1];
+                        base_quat_wxyz[3] = robot->base_quat[2];
+                    }
+                    else
+                    {
+                        base_quat_wxyz[0] = 1.0f;
+                    }
+
+                    Ort::MemoryInfo memory_info =
+                        Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+                    std::array<int64_t, 2> joint_shape{
+                        1,
+                        static_cast<int64_t>(joint_angles.size())};
+                    std::array<int64_t, 2> vec3_shape{1, 3};
+                    std::array<int64_t, 2> quat_shape{1, 4};
+                    std::array<Ort::Value, 3> input_tensors{
+                        Ort::Value::CreateTensor<float>(
+                            memory_info,
+                            joint_angles.data(),
+                            joint_angles.size(),
+                            joint_shape.data(),
+                            joint_shape.size()),
+                        Ort::Value::CreateTensor<float>(
+                            memory_info,
+                            base_pos.data(),
+                            base_pos.size(),
+                            vec3_shape.data(),
+                            vec3_shape.size()),
+                        Ort::Value::CreateTensor<float>(
+                            memory_info,
+                            base_quat_wxyz.data(),
+                            base_quat_wxyz.size(),
+                            quat_shape.data(),
+                            quat_shape.size())};
+                    std::array<const char *, 3> input_names{
+                        cfg.reference_anchor_fk_joint_angles_input_name.c_str(),
+                        cfg.reference_anchor_fk_base_pos_input_name.c_str(),
+                        cfg.reference_anchor_fk_base_quat_input_name.c_str()};
+                    std::array<const char *, 1> output_names{
+                        cfg.reference_anchor_fk_output_quat_name.c_str()};
+                    Ort::RunOptions run_options;
+                    std::vector<Ort::Value> outputs =
+                        profile.reference_anchor_fk_session->Run(
+                            run_options,
+                            input_names.data(),
+                            input_tensors.data(),
+                            input_tensors.size(),
+                            output_names.data(),
+                            output_names.size());
+                    if (!outputs.empty())
+                    {
+                        Ort::TensorTypeAndShapeInfo shape_info =
+                            outputs.front().GetTensorTypeAndShapeInfo();
+                        const size_t value_count = shape_info.GetElementCount();
+                        const float *data = outputs.front().GetTensorData<float>();
+                        if (data && value_count >= 4)
+                        {
+                            if (cfg.reference_anchor_fk_output_quat_order == "xyzw")
+                            {
+                                return std::vector<float>{data[0], data[1], data[2], data[3]};
+                            }
+                            return std::vector<float>{data[1], data[2], data[3], data[0]};
+                        }
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    std::cerr << "[RL_controller][" << profile.tag
+                              << "] reference anchor FK failed, falling back to base quat: "
+                              << e.what() << std::endl;
+                }
+            }
+            return fitDim(robot->base_quat, 4);
+        };
         auto referenceAnchorOri6d = [&](size_t body_quat_index) {
             const auto anchor_ori_it = feature_context.named_features.find("motion_anchor_ori_b");
             if (anchor_ori_it != feature_context.named_features.end())
@@ -2387,7 +2542,7 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                 return fitDim(
                     referenceAnchorOri6dFromBodyQuat(
                         body_quat_it->second,
-                        robot->base_quat,
+                        currentAnchorQuatXyzw(),
                         body_quat_index),
                     6);
             }
@@ -3019,6 +3174,8 @@ std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &p
 {
     const Sim2realCfg &active_cfg = activePolicyCfg();
     const std::vector<int> &action_robot_indices = currentActionIndexMap();
+    const std::vector<float> &q = robot->joint_q;
+    const std::vector<float> &dq = robot->joint_dq;
     std::vector<float> target_q = robot->default_angle;
     if (target_q.size() != joint_order_.size())
     {
@@ -3053,6 +3210,36 @@ std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &p
                 target_position,
                 -active_cfg.target_q_clip,
                 active_cfg.target_q_clip);
+        }
+        if (active_cfg.target_q_velocity_envelope.enabled &&
+            policy_idx < active_cfg.action_joint_order.size() &&
+            policy_idx < active_cfg.kps.size() &&
+            policy_idx < active_cfg.kds.size() &&
+            static_cast<size_t>(robot_idx) < q.size() &&
+            static_cast<size_t>(robot_idx) < dq.size())
+        {
+            const std::string &joint_name = active_cfg.action_joint_order[policy_idx];
+            const auto x1_it = active_cfg.target_q_velocity_envelope.x1.find(joint_name);
+            const auto x2_it = active_cfg.target_q_velocity_envelope.x2.find(joint_name);
+            const auto y1_it = active_cfg.target_q_velocity_envelope.y1.find(joint_name);
+            const auto y2_it = active_cfg.target_q_velocity_envelope.y2.find(joint_name);
+            if (x1_it != active_cfg.target_q_velocity_envelope.x1.end() &&
+                x2_it != active_cfg.target_q_velocity_envelope.x2.end() &&
+                y1_it != active_cfg.target_q_velocity_envelope.y1.end() &&
+                y2_it != active_cfg.target_q_velocity_envelope.y2.end())
+            {
+                target_position = clampTargetQToVelocityEnvelope(
+                    target_position,
+                    q[static_cast<size_t>(robot_idx)],
+                    dq[static_cast<size_t>(robot_idx)],
+                    active_cfg.kps[policy_idx],
+                    active_cfg.kds[policy_idx],
+                    x1_it->second,
+                    x2_it->second,
+                    y1_it->second,
+                    y2_it->second,
+                    active_cfg.target_q_velocity_envelope.zero_velocity_epsilon);
+            }
         }
         if (active_cfg.clamp_target_q_to_joint_limits && policy_idx < active_cfg.action_joint_order.size())
         {

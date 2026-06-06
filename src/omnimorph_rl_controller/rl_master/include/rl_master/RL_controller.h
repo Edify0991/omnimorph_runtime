@@ -115,6 +115,7 @@ private:
         int resolved_reference_end_total_steps = -1;
         ReferenceFeatureRequirements required_reference_features;
         std::unique_ptr<rl_master::PinocchioMotionFeatures> pinocchio_motion_features;
+        std::unique_ptr<Ort::Session> reference_anchor_fk_session;
     };
 
     const std::vector<int> &currentActionIndexMap() const;

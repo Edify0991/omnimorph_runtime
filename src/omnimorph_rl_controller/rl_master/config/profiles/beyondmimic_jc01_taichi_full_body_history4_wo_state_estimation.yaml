@@ -345,7 +345,7 @@ beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation:
     action_output_name: actions
     enable_time_step_input: true
     time_step_input_name: time_step
-    time_step_start: 0
+    time_step_start: 450
     advance_time_step_on_reference_prefetch: false
     strict_model_io: true
     enable_metadata_check: true
