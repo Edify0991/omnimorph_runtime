@@ -1,6 +1,6 @@
 jingchu01_pacedcmotor_formal:
-  policy_name: jingchu01_hybrid_pacehipankle_dcmotorknee_phys3_qdq_viscousfix_dr_small_seed71_model6000
-  policy_file: policies/jingchu01_hybrid_pacehipankle_dcmotorknee_phys3_qdq_viscousfix_dr_small_seed71_model6000.onnx
+  policy_name: jingchu01_pacedcmotor_formal
+  policy_file: policies/jingchu01_pacedcmotor_dr_medium_seed61_model3000.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 15
@@ -146,7 +146,7 @@ jingchu01_pacedcmotor_formal:
   action_dim: 12
   motor_N: 12
   RL_control_f: 50
-  solver_control_hz: 200
+  solver_control_hz: 500
   installed_joint_run_modes:
     right_hip_roll: cst
     right_hip_yaw: cst
