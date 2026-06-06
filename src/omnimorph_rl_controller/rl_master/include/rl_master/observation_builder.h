@@ -47,9 +47,11 @@ class ObservationManifest
 public:
     static ObservationManifest loadFromYAML(const std::string &yaml_file);
     const std::vector<ObservationTermConfig> &terms() const;
+    const std::vector<ComputedFeatureCfg> &computedFeatures() const;
 
 private:
     std::vector<ObservationTermConfig> terms_;
+    std::vector<ComputedFeatureCfg> computed_features_;
 };
 
 class ObservationBuilder

@@ -25,6 +25,34 @@ const std::unordered_map<std::string, std::vector<float>> &requireFeatures(
     }
     return *ptr;
 }
+
+std::vector<float> applyIndexMapOrIdentity(
+    const std::vector<float> &values,
+    const std::vector<int> &indices,
+    const std::string &label)
+{
+    if (indices.empty())
+    {
+        return values;
+    }
+    if (indices.size() != values.size())
+    {
+        throw std::runtime_error(
+            label + " index map length " + std::to_string(indices.size()) +
+            " does not match vector dim " + std::to_string(values.size()));
+    }
+    std::vector<float> out(values.size(), 0.0f);
+    for (size_t i = 0; i < indices.size(); ++i)
+    {
+        const int source_i = indices[i];
+        if (source_i < 0 || static_cast<size_t>(source_i) >= values.size())
+        {
+            throw std::runtime_error(label + " index map contains out-of-range index " + std::to_string(source_i));
+        }
+        out[i] = values[static_cast<size_t>(source_i)];
+    }
+    return out;
+}
 } // namespace
 
 OnnxPolicyAdapter::OnnxPolicyAdapter(
@@ -138,6 +166,78 @@ PolicyGroupExecutionResult SyncWeightedInferenceStrategy::execute(
         }
     }
     return output;
+}
+
+void ResidualAdditiveInferenceStrategy::configure(const PolicyInferenceConfig &config)
+{
+    config_ = config;
+}
+
+void ResidualAdditiveInferenceStrategy::reset()
+{
+}
+
+PolicyGroupExecutionResult ResidualAdditiveInferenceStrategy::execute(
+    const std::vector<PolicyAdapterNodeView> &nodes,
+    const PolicyExecutionRequest &request)
+{
+    if (nodes.empty() || !nodes.front().adapter)
+    {
+        throw std::runtime_error("ResidualAdditiveInferenceStrategy::execute got empty primary node");
+    }
+
+    PolicyInferenceResult primary_result = nodes.front().adapter->infer(request);
+    PolicyGroupExecutionResult output;
+    output.action.assign(config_.expected_action_dim, 0.0f);
+    const size_t primary_dim = std::min(output.action.size(), primary_result.action.size());
+    for (size_t i = 0; i < primary_dim; ++i)
+    {
+        output.action[i] = primary_result.action[i];
+    }
+    output.extra_outputs[nodes.front().name + "/action"] = primary_result.action;
+    for (auto &kv : primary_result.extra_outputs)
+    {
+        output.extra_outputs[nodes.front().name + "/" + kv.first] = std::move(kv.second);
+    }
+
+    for (size_t node_i = 1; node_i < nodes.size(); ++node_i)
+    {
+        const auto &node = nodes[node_i];
+        if (!node.adapter)
+        {
+            continue;
+        }
+
+        const std::vector<float> primary_action_for_node =
+            applyIndexMapOrIdentity(primary_result.action, node.primary_action_indices, node.name + ".primary_action_indices");
+        PolicyExecutionRequest sub_request = request;
+        sub_request.last_action = &primary_action_for_node;
+
+        PolicyInferenceResult residual_result = node.adapter->infer(sub_request);
+        const float weight = node.weight;
+        const size_t dim = std::min(output.action.size(), residual_result.action.size());
+        for (size_t i = 0; i < dim; ++i)
+        {
+            output.action[i] += weight * residual_result.action[i];
+        }
+        for (auto &kv : residual_result.extra_outputs)
+        {
+            output.extra_outputs[node.name + "/" + kv.first] = std::move(kv.second);
+        }
+    }
+    return output;
+}
+
+std::unordered_map<std::string, std::vector<float>> ResidualAdditiveInferenceStrategy::prefetchPrimaryExtraOutputs(
+    const std::vector<PolicyAdapterNodeView> &nodes,
+    const std::vector<std::string> &extra_output_names,
+    const PolicyExecutionRequest &request)
+{
+    if (nodes.empty() || !nodes.front().adapter)
+    {
+        return {};
+    }
+    return nodes.front().adapter->prefetchExtraOutputs(extra_output_names, request);
 }
 
 std::unordered_map<std::string, std::vector<float>> SyncWeightedInferenceStrategy::prefetchPrimaryExtraOutputs(

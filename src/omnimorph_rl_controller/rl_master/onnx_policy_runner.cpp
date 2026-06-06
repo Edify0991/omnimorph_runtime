@@ -241,6 +241,7 @@ void OnnxPolicyRunner::init()
             binding.name = spec.name;
             binding.source = spec.source;
             binding.feature_name = spec.feature_name;
+            binding.feature_names = spec.feature_names;
             binding.shape = spec.shape;
             binding.constant = spec.constant;
             appendBinding(std::move(binding));
@@ -519,6 +520,30 @@ PolicyInferenceResult OnnxPolicyRunner::runSelectedOutputs(
             {
                 result.action = raw_action;
             }
+            if (!cfg_.action_output_indices.empty())
+            {
+                if (cfg_.action_output_indices.size() != result.action.size())
+                {
+                    throw std::runtime_error(
+                        "[" + policy_tag_ + "] action_output_indices length " +
+                        std::to_string(cfg_.action_output_indices.size()) +
+                        " does not match action output dim " +
+                        std::to_string(result.action.size()));
+                }
+                std::vector<float> reordered(result.action.size(), 0.0f);
+                for (size_t out_i = 0; out_i < cfg_.action_output_indices.size(); ++out_i)
+                {
+                    const int in_i = cfg_.action_output_indices[out_i];
+                    if (in_i < 0 || static_cast<size_t>(in_i) >= result.action.size())
+                    {
+                        throw std::runtime_error(
+                            "[" + policy_tag_ + "] action_output_indices contains out-of-range index " +
+                            std::to_string(in_i));
+                    }
+                    reordered[out_i] = result.action[static_cast<size_t>(in_i)];
+                }
+                result.action = std::move(reordered);
+            }
             continue;
         }
         result.extra_outputs[resolved_output_names[output_idx]] = flattenFloatTensor(output_tensors[output_idx]);
@@ -570,6 +595,25 @@ std::vector<float> OnnxPolicyRunner::resolveInputData(
         if (it != features.end())
         {
             source_data = it->second;
+        }
+    }
+    else if (source == "feature_concat")
+    {
+        for (const auto &feature_name : binding.feature_names)
+        {
+            if (feature_name == "__last_action__")
+            {
+                source_data.insert(source_data.end(), last_action.begin(), last_action.end());
+                continue;
+            }
+            const auto it = features.find(feature_name);
+            if (it == features.end())
+            {
+                throw std::runtime_error(
+                    "[" + policy_tag_ + "] input '" + binding.name +
+                    "' requires feature '" + feature_name + "' but it is missing");
+            }
+            source_data.insert(source_data.end(), it->second.begin(), it->second.end());
         }
     }
     else if (source == "constant")

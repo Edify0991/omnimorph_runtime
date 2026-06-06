@@ -87,6 +87,12 @@ private:
         const ReferenceFeatureRequirements &requirements,
         const ReferenceMotionFieldMap &field_map,
         const std::string &body_quat_format_override);
+    bool loadNpzFile(
+        const std::string &file_path,
+        int expected_dim,
+        const ReferenceFeatureRequirements &requirements,
+        const ReferenceMotionFieldMap &field_map,
+        const std::string &body_quat_format_override);
     bool loadLegacyTextFile(const std::string &file_path, int expected_dim);
     static std::vector<float> parseLine(const std::string &line);
     static std::vector<float> fitDim(const std::vector<float> &values, size_t dim);

@@ -113,10 +113,14 @@ deploy_mode_profiles:
   - mode_id: 1
     config_section: beyondmimic_g1_walk_full_body_wo_state_estimation
     tag: g1_beyondmimic_wo_state_estimation
+  - mode_id: 2
+    config_section: omnixtreme_g1_full_body
+    tag: g1_omnixtreme
 
 config_files:
   beyondmimic_g1_walk_full_body_w_state_estimation: profiles/beyondmimic_g1_walk_full_body_w_state_estimation.yaml
   beyondmimic_g1_walk_full_body_wo_state_estimation: profiles/beyondmimic_g1_walk_full_body_wo_state_estimation.yaml
+  omnixtreme_g1_full_body: profiles/omnixtreme_g1_full_body.yaml
 path_variables:
   g1_pinocchio_urdf: ${G1_PINOCCHIO_URDF}
   g1_scene_xml: ${G1_SCENE_XML}

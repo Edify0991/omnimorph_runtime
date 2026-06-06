@@ -2,10 +2,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <map>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -22,6 +26,15 @@ constexpr float kBodyPosAbsLimit = 20.0f;
 constexpr float kQuatNormMin = 1.0e-5f;
 constexpr float kQuatNormDeviationWarn = 0.2f;
 constexpr float kQuatNormDeviationMax = 0.5f;
+
+struct NpyArray
+{
+    std::string descr;
+    bool fortran_order = false;
+    std::vector<size_t> shape;
+    std::vector<float> float_values;
+    std::vector<int64_t> int64_values;
+};
 
 std::string toLower(std::string text)
 {
@@ -214,6 +227,432 @@ ReferenceMotionFrame emptyFrame(int expected_dim)
     }
     return frame;
 }
+
+uint16_t readLe16(const std::vector<unsigned char> &bytes, size_t offset)
+{
+    return static_cast<uint16_t>(bytes[offset]) |
+           static_cast<uint16_t>(static_cast<uint16_t>(bytes[offset + 1]) << 8);
+}
+
+uint32_t readLe32(const std::vector<unsigned char> &bytes, size_t offset)
+{
+    return static_cast<uint32_t>(bytes[offset]) |
+           (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
+           (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
+           (static_cast<uint32_t>(bytes[offset + 3]) << 24);
+}
+
+uint64_t readLe64(const unsigned char *ptr)
+{
+    uint64_t value = 0;
+    for (size_t i = 0; i < 8; ++i)
+    {
+        value |= static_cast<uint64_t>(ptr[i]) << (8 * i);
+    }
+    return value;
+}
+
+std::string trim(std::string text)
+{
+    const auto first = text.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+    {
+        return "";
+    }
+    const auto last = text.find_last_not_of(" \t\r\n");
+    return text.substr(first, last - first + 1);
+}
+
+bool parseNpyHeaderString(const std::string &header, NpyArray *array, std::string *error)
+{
+    if (!array)
+    {
+        return false;
+    }
+
+    const auto descr_key = header.find("'descr'");
+    const auto fortran_key = header.find("'fortran_order'");
+    const auto shape_key = header.find("'shape'");
+    if (descr_key == std::string::npos || fortran_key == std::string::npos || shape_key == std::string::npos)
+    {
+        if (error)
+        {
+            *error = "npy header is missing descr/fortran_order/shape";
+        }
+        return false;
+    }
+
+    const auto descr_colon = header.find(':', descr_key);
+    const auto descr_quote_1 = header.find_first_of("'\"", descr_colon + 1);
+    const auto descr_quote_2 = header.find_first_of("'\"", descr_quote_1 + 1);
+    if (descr_colon == std::string::npos || descr_quote_1 == std::string::npos || descr_quote_2 == std::string::npos)
+    {
+        if (error)
+        {
+            *error = "npy descr field is malformed";
+        }
+        return false;
+    }
+    array->descr = header.substr(descr_quote_1 + 1, descr_quote_2 - descr_quote_1 - 1);
+
+    const auto fortran_colon = header.find(':', fortran_key);
+    const auto fortran_comma = header.find(',', fortran_colon + 1);
+    const std::string fortran_value = trim(header.substr(fortran_colon + 1, fortran_comma - fortran_colon - 1));
+    array->fortran_order = (fortran_value == "True");
+    if (array->fortran_order)
+    {
+        if (error)
+        {
+            *error = "fortran_order=True npy arrays are not supported";
+        }
+        return false;
+    }
+
+    const auto shape_paren_1 = header.find('(', shape_key);
+    const auto shape_paren_2 = header.find(')', shape_paren_1 + 1);
+    if (shape_paren_1 == std::string::npos || shape_paren_2 == std::string::npos)
+    {
+        if (error)
+        {
+            *error = "npy shape field is malformed";
+        }
+        return false;
+    }
+
+    array->shape.clear();
+    std::stringstream shape_stream(header.substr(shape_paren_1 + 1, shape_paren_2 - shape_paren_1 - 1));
+    std::string item;
+    while (std::getline(shape_stream, item, ','))
+    {
+        item = trim(item);
+        if (item.empty())
+        {
+            continue;
+        }
+        try
+        {
+            const unsigned long long dim = std::stoull(item);
+            array->shape.push_back(static_cast<size_t>(dim));
+        }
+        catch (const std::exception &)
+        {
+            if (error)
+            {
+                *error = "npy shape contains non-integer dimension '" + item + "'";
+            }
+            return false;
+        }
+    }
+    if (array->shape.empty())
+    {
+        if (error)
+        {
+            *error = "npy shape is empty";
+        }
+        return false;
+    }
+    return true;
+}
+
+bool parseNpyArray(const std::vector<unsigned char> &bytes, NpyArray *array, std::string *error)
+{
+    if (!array || bytes.size() < 10)
+    {
+        if (error)
+        {
+            *error = "npy payload is too small";
+        }
+        return false;
+    }
+    const unsigned char kMagic[] = {0x93, 'N', 'U', 'M', 'P', 'Y'};
+    if (!std::equal(std::begin(kMagic), std::end(kMagic), bytes.begin()))
+    {
+        if (error)
+        {
+            *error = "npy magic mismatch";
+        }
+        return false;
+    }
+
+    const unsigned char major = bytes[6];
+    size_t header_len = 0;
+    size_t header_offset = 0;
+    if (major == 1)
+    {
+        header_len = readLe16(bytes, 8);
+        header_offset = 10;
+    }
+    else if (major == 2 || major == 3)
+    {
+        if (bytes.size() < 12)
+        {
+            if (error)
+            {
+                *error = "npy v2/v3 payload is too small";
+            }
+            return false;
+        }
+        header_len = readLe32(bytes, 8);
+        header_offset = 12;
+    }
+    else
+    {
+        if (error)
+        {
+            *error = "unsupported npy version";
+        }
+        return false;
+    }
+    if (header_offset + header_len > bytes.size())
+    {
+        if (error)
+        {
+            *error = "npy header extends beyond payload";
+        }
+        return false;
+    }
+
+    const std::string header(
+        reinterpret_cast<const char *>(bytes.data() + header_offset),
+        header_len);
+    if (!parseNpyHeaderString(header, array, error))
+    {
+        return false;
+    }
+
+    size_t element_count = 1;
+    for (const size_t dim : array->shape)
+    {
+        if (dim == 0 || element_count > std::numeric_limits<size_t>::max() / dim)
+        {
+            if (error)
+            {
+                *error = "npy shape element count overflow";
+            }
+            return false;
+        }
+        element_count *= dim;
+    }
+
+    const size_t data_offset = header_offset + header_len;
+    if (array->descr == "<f4" || array->descr == "|f4")
+    {
+        const size_t byte_count = element_count * sizeof(float);
+        if (data_offset + byte_count > bytes.size())
+        {
+            if (error)
+            {
+                *error = "npy float32 data extends beyond payload";
+            }
+            return false;
+        }
+        array->float_values.resize(element_count);
+        std::memcpy(array->float_values.data(), bytes.data() + data_offset, byte_count);
+        return true;
+    }
+    if (array->descr == "<i8" || array->descr == "|i8")
+    {
+        const size_t byte_count = element_count * sizeof(int64_t);
+        if (data_offset + byte_count > bytes.size())
+        {
+            if (error)
+            {
+                *error = "npy int64 data extends beyond payload";
+            }
+            return false;
+        }
+        array->int64_values.resize(element_count);
+        for (size_t i = 0; i < element_count; ++i)
+        {
+            const uint64_t raw = readLe64(bytes.data() + data_offset + i * sizeof(int64_t));
+            array->int64_values[i] = static_cast<int64_t>(raw);
+        }
+        return true;
+    }
+
+    if (error)
+    {
+        *error = "unsupported npy dtype '" + array->descr + "'";
+    }
+    return false;
+}
+
+bool loadUncompressedNpz(
+    const std::string &file_path,
+    std::map<std::string, NpyArray> *arrays,
+    std::string *error)
+{
+    if (!arrays)
+    {
+        return false;
+    }
+    std::ifstream fin(file_path, std::ios::binary);
+    if (!fin.is_open())
+    {
+        return false;
+    }
+    fin.seekg(0, std::ios::end);
+    const std::streamoff file_size = fin.tellg();
+    if (file_size <= 0)
+    {
+        return false;
+    }
+    fin.seekg(0, std::ios::beg);
+    std::vector<unsigned char> bytes(static_cast<size_t>(file_size));
+    fin.read(reinterpret_cast<char *>(bytes.data()), file_size);
+    if (!fin)
+    {
+        if (error)
+        {
+            *error = "failed to read npz file";
+        }
+        return false;
+    }
+
+    arrays->clear();
+    size_t offset = 0;
+    while (offset + 30 <= bytes.size())
+    {
+        const uint32_t signature = readLe32(bytes, offset);
+        if (signature != 0x04034b50U)
+        {
+            break;
+        }
+        const uint16_t flags = readLe16(bytes, offset + 6);
+        const uint16_t compression = readLe16(bytes, offset + 8);
+        const uint32_t compressed_size = readLe32(bytes, offset + 18);
+        const uint32_t uncompressed_size = readLe32(bytes, offset + 22);
+        const uint16_t name_len = readLe16(bytes, offset + 26);
+        const uint16_t extra_len = readLe16(bytes, offset + 28);
+        const size_t name_offset = offset + 30;
+        const size_t data_offset = name_offset + name_len + extra_len;
+        if (data_offset > bytes.size() || data_offset + compressed_size > bytes.size())
+        {
+            if (error)
+            {
+                *error = "npz local file header is out of range";
+            }
+            return false;
+        }
+        if ((flags & 0x0008U) != 0)
+        {
+            if (error)
+            {
+                *error = "npz files with data descriptors are not supported";
+            }
+            return false;
+        }
+        if (compression != 0 || compressed_size != uncompressed_size)
+        {
+            if (error)
+            {
+                *error = "only uncompressed npz entries are supported";
+            }
+            return false;
+        }
+
+        std::string name(
+            reinterpret_cast<const char *>(bytes.data() + name_offset),
+            name_len);
+        if (name.size() > 4 && name.substr(name.size() - 4) == ".npy")
+        {
+            std::vector<unsigned char> npy(
+                bytes.begin() + static_cast<std::ptrdiff_t>(data_offset),
+                bytes.begin() + static_cast<std::ptrdiff_t>(data_offset + compressed_size));
+            NpyArray array;
+            if (!parseNpyArray(npy, &array, error))
+            {
+                if (error)
+                {
+                    *error = "failed to parse '" + name + "': " + *error;
+                }
+                return false;
+            }
+            arrays->emplace(name.substr(0, name.size() - 4), std::move(array));
+        }
+        offset = data_offset + compressed_size;
+    }
+    return !arrays->empty();
+}
+
+bool requireNpzArray(
+    const std::map<std::string, NpyArray> &arrays,
+    const std::string &key,
+    bool required,
+    const NpyArray **out,
+    std::string *error)
+{
+    if (out)
+    {
+        *out = nullptr;
+    }
+    if (key.empty())
+    {
+        if (required && error)
+        {
+            *error = "required npz key is empty";
+        }
+        return !required;
+    }
+    const auto it = arrays.find(key);
+    if (it == arrays.end())
+    {
+        if (required && error)
+        {
+            *error = "npz is missing required key '" + key + "'";
+        }
+        return !required;
+    }
+    if (out)
+    {
+        *out = &it->second;
+    }
+    return true;
+}
+
+std::vector<float> sliceFrame(
+    const NpyArray *array,
+    size_t frame_index)
+{
+    if (!array || array->shape.empty() || array->float_values.empty() || frame_index >= array->shape[0])
+    {
+        return {};
+    }
+    size_t stride = 1;
+    for (size_t i = 1; i < array->shape.size(); ++i)
+    {
+        stride *= array->shape[i];
+    }
+    const size_t offset = frame_index * stride;
+    if (offset + stride > array->float_values.size())
+    {
+        return {};
+    }
+    return std::vector<float>(
+        array->float_values.begin() + static_cast<std::ptrdiff_t>(offset),
+        array->float_values.begin() + static_cast<std::ptrdiff_t>(offset + stride));
+}
+
+bool validateNpzFloatArray(
+    const NpyArray *array,
+    const std::string &key,
+    size_t min_rank,
+    std::string *error)
+{
+    if (!array)
+    {
+        return true;
+    }
+    if (array->float_values.empty() || array->shape.size() < min_rank)
+    {
+        if (error)
+        {
+            *error = "npz key '" + key + "' has invalid shape or dtype";
+        }
+        return false;
+    }
+    return true;
+}
 } // namespace
 
 bool ReferenceMotionProvider::load(
@@ -232,6 +671,7 @@ bool ReferenceMotionProvider::load(
 
     const std::string extension = toLower(std::filesystem::path(file_path).extension().string());
     const bool prefer_structured = extension == ".yaml" || extension == ".yml" || extension == ".json";
+    const bool prefer_npz = extension == ".npz";
 
     if (loadStructuredFile(file_path, expected_dim, requirements, field_map, body_quat_format_override))
     {
@@ -239,6 +679,16 @@ bool ReferenceMotionProvider::load(
     }
 
     if (prefer_structured)
+    {
+        return false;
+    }
+
+    if (loadNpzFile(file_path, expected_dim, requirements, field_map, body_quat_format_override))
+    {
+        return true;
+    }
+
+    if (prefer_npz)
     {
         return false;
     }
@@ -564,6 +1014,176 @@ bool ReferenceMotionProvider::loadStructuredFile(
         std::cerr << "[ReferenceMotionProvider] structured file parse failed: " << e.what() << std::endl;
         return false;
     }
+}
+
+bool ReferenceMotionProvider::loadNpzFile(
+    const std::string &file_path,
+    int expected_dim,
+    const ReferenceFeatureRequirements &requirements,
+    const ReferenceMotionFieldMap &field_map,
+    const std::string &body_quat_format_override)
+{
+    std::map<std::string, NpyArray> arrays;
+    std::string error;
+    if (!loadUncompressedNpz(file_path, &arrays, &error))
+    {
+        if (!error.empty())
+        {
+            std::cerr << "[ReferenceMotionProvider] npz load failed: " << error << std::endl;
+        }
+        return false;
+    }
+
+    const NpyArray *reference_motion_array = nullptr;
+    const NpyArray *joint_pos_array = nullptr;
+    const NpyArray *joint_vel_array = nullptr;
+    const NpyArray *body_pos_w_array = nullptr;
+    const NpyArray *body_quat_w_array = nullptr;
+    const bool has_reference_motion_key =
+        !field_map.reference_motion_key.empty() &&
+        arrays.find(field_map.reference_motion_key) != arrays.end();
+    if (!requireNpzArray(arrays, field_map.reference_motion_key, requirements.reference_motion, &reference_motion_array, &error) ||
+        !requireNpzArray(arrays, field_map.joint_pos_key, requirements.reference_joint_pos, &joint_pos_array, &error) ||
+        !requireNpzArray(arrays, field_map.joint_vel_key, requirements.reference_joint_vel, &joint_vel_array, &error) ||
+        !requireNpzArray(arrays, field_map.body_pos_w_key, requirements.reference_body_pos_w, &body_pos_w_array, &error) ||
+        !requireNpzArray(arrays, field_map.body_quat_w_key, requirements.reference_body_quat_w, &body_quat_w_array, &error))
+    {
+        std::cerr << "[ReferenceMotionProvider] " << error << std::endl;
+        return false;
+    }
+    if (!has_reference_motion_key)
+    {
+        reference_motion_array = nullptr;
+    }
+
+    if (!validateNpzFloatArray(reference_motion_array, field_map.reference_motion_key, 2, &error) ||
+        !validateNpzFloatArray(joint_pos_array, field_map.joint_pos_key, 2, &error) ||
+        !validateNpzFloatArray(joint_vel_array, field_map.joint_vel_key, 2, &error) ||
+        !validateNpzFloatArray(body_pos_w_array, field_map.body_pos_w_key, 3, &error) ||
+        !validateNpzFloatArray(body_quat_w_array, field_map.body_quat_w_key, 3, &error))
+    {
+        std::cerr << "[ReferenceMotionProvider] " << error << std::endl;
+        return false;
+    }
+
+    size_t frame_count = 0;
+    auto absorb_frame_count = [&](const NpyArray *array, const std::string &key) -> bool {
+        if (!array)
+        {
+            return true;
+        }
+        if (array->shape.empty() || array->shape[0] == 0)
+        {
+            error = "npz key '" + key + "' has no frames";
+            return false;
+        }
+        if (frame_count == 0)
+        {
+            frame_count = array->shape[0];
+            return true;
+        }
+        if (frame_count != array->shape[0])
+        {
+            error = "npz key '" + key + "' frame count mismatch";
+            return false;
+        }
+        return true;
+    };
+    if (!absorb_frame_count(reference_motion_array, field_map.reference_motion_key) ||
+        !absorb_frame_count(joint_pos_array, field_map.joint_pos_key) ||
+        !absorb_frame_count(joint_vel_array, field_map.joint_vel_key) ||
+        !absorb_frame_count(body_pos_w_array, field_map.body_pos_w_key) ||
+        !absorb_frame_count(body_quat_w_array, field_map.body_quat_w_key))
+    {
+        std::cerr << "[ReferenceMotionProvider] " << error << std::endl;
+        return false;
+    }
+    if (frame_count == 0)
+    {
+        return false;
+    }
+
+    ReferenceMotionMetadata metadata;
+    metadata.structured_file = true;
+    metadata.source_format = "npz";
+    metadata.body_quat_format = !body_quat_format_override.empty() ? body_quat_format_override : "wxyz";
+    const auto fps_it = arrays.find("fps");
+    if (fps_it != arrays.end())
+    {
+        double fps = 0.0;
+        if (!fps_it->second.int64_values.empty())
+        {
+            fps = static_cast<double>(fps_it->second.int64_values.front());
+        }
+        else if (!fps_it->second.float_values.empty())
+        {
+            fps = static_cast<double>(fps_it->second.float_values.front());
+        }
+        if (fps > 1.0e-6)
+        {
+            metadata.frame_dt = 1.0 / fps;
+            metadata.cycle_time = metadata.frame_dt * static_cast<double>(frame_count);
+        }
+    }
+
+    std::vector<ReferenceMotionFrame> parsed_frames;
+    parsed_frames.reserve(std::min(frame_count, kMaxReferenceFrames));
+    int resolved_dim = std::max(expected_dim, 0);
+    for (size_t frame_index = 0; frame_index < frame_count && frame_index < kMaxReferenceFrames; ++frame_index)
+    {
+        ReferenceMotionFrame frame;
+        frame.reference_motion = sliceFrame(reference_motion_array, frame_index);
+        frame.joint_pos = sliceFrame(joint_pos_array, frame_index);
+        frame.joint_vel = sliceFrame(joint_vel_array, frame_index);
+        frame.body_pos_w = sliceFrame(body_pos_w_array, frame_index);
+
+        std::vector<float> raw_quat_w = sliceFrame(body_quat_w_array, frame_index);
+        if (!convertQuatVectorToXyzw(raw_quat_w, metadata.body_quat_format, &frame.body_quat_w, &error))
+        {
+            std::cerr << "[ReferenceMotionProvider] npz frame[" << frame_index << "] " << error << std::endl;
+            return false;
+        }
+
+        if (!finiteAndBounded(frame.reference_motion, kGenericAbsLimit, "reference_motion", &error) ||
+            !finiteAndBounded(frame.joint_pos, kJointPosAbsLimit, "joint_pos", &error) ||
+            !finiteAndBounded(frame.joint_vel, kJointVelAbsLimit, "joint_vel", &error) ||
+            !finiteAndBounded(frame.body_pos_w, kBodyPosAbsLimit, "body_pos_w", &error) ||
+            !finiteAndBounded(frame.body_quat_w, kGenericAbsLimit, "body_quat_w", &error))
+        {
+            std::cerr << "[ReferenceMotionProvider] npz frame[" << frame_index << "] " << error << std::endl;
+            return false;
+        }
+
+        if (resolved_dim <= 0 && !frame.reference_motion.empty())
+        {
+            resolved_dim = static_cast<int>(frame.reference_motion.size());
+        }
+        parsed_frames.push_back(std::move(frame));
+    }
+
+    if (parsed_frames.empty())
+    {
+        return false;
+    }
+
+    frames_.clear();
+    structured_frames_.clear();
+    frames_.reserve(parsed_frames.size());
+    structured_frames_.reserve(parsed_frames.size());
+    for (auto &frame : parsed_frames)
+    {
+        if (!frame.reference_motion.empty() && resolved_dim > 0)
+        {
+            frame.reference_motion = fitDim(frame.reference_motion, static_cast<size_t>(resolved_dim));
+        }
+        frames_.push_back(frame.reference_motion);
+        structured_frames_.push_back(std::move(frame));
+    }
+
+    dim_ = resolved_dim;
+    metadata_ = std::move(metadata);
+    loaded_ = !frames_.empty();
+    return loaded_;
 }
 
 bool ReferenceMotionProvider::loadLegacyTextFile(const std::string &file_path, int expected_dim)

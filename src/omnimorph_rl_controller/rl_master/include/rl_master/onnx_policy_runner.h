@@ -62,6 +62,7 @@ private:
         std::string name;
         std::string source = "stacked_observation";
         std::string feature_name;
+        std::vector<std::string> feature_names;
         std::vector<int64_t> shape;
         std::vector<float> constant;
     };

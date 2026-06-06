@@ -133,6 +133,10 @@ deploy_mode_profiles:
 - mode_id: 7
   config_section: beyondmimic_jc01_dance_full_body_wo_state_estimation
   tag: beyondmimic_jc01_dance_full_body_wo_state_estimation
+- mode_id: 8
+  config_section: beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation
+  tag: beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation
+
 config_files:
   amp_mjlab_jc01_walkrun_full_body: profiles/amp_mjlab_jc01_walkrun_full_body.yaml
   beyondmimic_jc01_walk_lower_body_w_state_estimation: profiles/beyondmimic_jc01_walk_lower_body_w_state_estimation.yaml
@@ -142,6 +146,8 @@ config_files:
   jingchu01_dcmotor_formal: profiles/jingchu01_dcmotor_formal.yaml
   jingchu01_pacedcmotor_formal: profiles/jingchu01_pacedcmotor_formal.yaml
   amp_tienkunglab_jc01_walk_full_body: profiles/amp_tienkunglab_jc01_walk_full_body.yaml
+  beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation: profiles/beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation.yaml
+
 path_variables:
   robot_assets_dir: ${ROBOT_ASSETS_DIR}
   jc01_pinocchio_urdf: ${robot_assets_dir}/JC01-URDF.urdf

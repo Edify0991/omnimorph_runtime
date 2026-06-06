@@ -5,6 +5,7 @@
 #include <cmath>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 #include <yaml-cpp/yaml.h>
 
@@ -68,6 +69,115 @@ std::string getStringOrEmpty(const YAML::Node &node, const char *key)
         return "";
     }
     return node[key].as<std::string>();
+}
+
+std::vector<ComputedFeatureCfg> parseComputedFeatures(const YAML::Node &node)
+{
+    std::vector<ComputedFeatureCfg> features;
+    if (!node || !node.IsSequence())
+    {
+        return features;
+    }
+    features.reserve(node.size());
+    for (size_t i = 0; i < node.size(); ++i)
+    {
+        const YAML::Node item = node[i];
+        if (!item || !item.IsMap())
+        {
+            continue;
+        }
+        ComputedFeatureCfg feature;
+        feature.name = yamlReadOr<std::string>(item, "name", "");
+        feature.op = yamlReadOr<std::string>(item, "op", "concat");
+        const YAML::Node parts_node = item["parts"];
+        if (parts_node && parts_node.IsSequence())
+        {
+            feature.parts.reserve(parts_node.size());
+            for (size_t part_i = 0; part_i < parts_node.size(); ++part_i)
+            {
+                const YAML::Node part_node = parts_node[part_i];
+                if (!part_node || !part_node.IsMap())
+                {
+                    continue;
+                }
+                ComputedFeaturePartCfg part;
+                part.source = yamlReadOr<std::string>(part_node, "source", "");
+                part.feature_name = yamlReadOr<std::string>(part_node, "feature_name", "");
+                part.policy_node = yamlReadOr<std::string>(part_node, "policy_node", "main");
+                part.output_name = yamlReadOr<std::string>(part_node, "output_name", "action");
+                part.dim = yamlReadOr<int>(part_node, "dim", 0);
+                part.body_quat_index = yamlReadOr<int>(part_node, "body_quat_index", 0);
+                part.indices = yamlReadOr<std::vector<int>>(part_node, "indices", {});
+                feature.parts.push_back(std::move(part));
+            }
+        }
+        features.push_back(std::move(feature));
+    }
+    return features;
+}
+
+void validateComputedFeatures(
+    const std::vector<ComputedFeatureCfg> &features,
+    const std::string &owner_name)
+{
+    std::unordered_set<std::string> seen_names;
+    seen_names.reserve(features.size());
+    const std::unordered_set<std::string> supported_sources{
+        "feature",
+        "joint_pos_rel",
+        "joint_vel",
+        "base_ang_vel",
+        "last_action",
+        "policy_output",
+        "reference_joint_pos",
+        "reference_joint_vel",
+        "reference_anchor_ori6d"};
+    for (size_t i = 0; i < features.size(); ++i)
+    {
+        const auto &feature = features[i];
+        const std::string item_name = owner_name + ".computed_features[" + std::to_string(i) + "]";
+        if (feature.name.empty())
+        {
+            throw std::runtime_error(item_name + " missing name");
+        }
+        if (!seen_names.insert(feature.name).second)
+        {
+            throw std::runtime_error(item_name + " duplicate name: " + feature.name);
+        }
+        if (feature.op != "concat")
+        {
+            throw std::runtime_error(item_name + " unsupported op: " + feature.op);
+        }
+        if (feature.parts.empty())
+        {
+            throw std::runtime_error(item_name + " requires at least one part");
+        }
+        for (size_t part_i = 0; part_i < feature.parts.size(); ++part_i)
+        {
+            const auto &part = feature.parts[part_i];
+            const std::string part_name = item_name + ".parts[" + std::to_string(part_i) + "]";
+            if (supported_sources.find(part.source) == supported_sources.end())
+            {
+                throw std::runtime_error(part_name + " unsupported source: " + part.source);
+            }
+            if (part.source == "feature" && part.feature_name.empty())
+            {
+                throw std::runtime_error(part_name + " requires feature_name when source=feature");
+            }
+            if (part.source == "policy_output" && part.output_name.empty())
+            {
+                throw std::runtime_error(part_name + " requires output_name when source=policy_output");
+            }
+            if (part.dim < 0)
+            {
+                throw std::runtime_error(part_name + " dim must be >= 0");
+            }
+            if (part.body_quat_index < 0)
+            {
+                throw std::runtime_error(part_name + " body_quat_index must be >= 0");
+            }
+        }
+    }
 }
 
 bool getEnabled(const YAML::Node &node)
@@ -415,6 +525,9 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
         throw std::runtime_error("observation_manifest.terms is missing in " + yaml_file);
     }
 
+    manifest.computed_features_ = parseComputedFeatures(observation_manifest["computed_features"]);
+    validateComputedFeatures(manifest.computed_features_, "observation_manifest");
+
     for (const auto &term_node : observation_manifest["terms"])
     {
         ObservationTermConfig term;
@@ -505,6 +618,11 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
 const std::vector<ObservationTermConfig> &ObservationManifest::terms() const
 {
     return terms_;
+}
+
+const std::vector<ComputedFeatureCfg> &ObservationManifest::computedFeatures() const
+{
+    return computed_features_;
 }
 
 const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &ObservationBuilder::registry()

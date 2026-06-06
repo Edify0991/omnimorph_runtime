@@ -130,6 +130,96 @@ float vectorNorm3(const std::array<float, 3> &vec)
     return std::sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
 }
 
+std::array<float, 4> normalizedQuatXyzw(std::array<float, 4> quat)
+{
+    const float norm = std::sqrt(
+        quat[0] * quat[0] +
+        quat[1] * quat[1] +
+        quat[2] * quat[2] +
+        quat[3] * quat[3]);
+    if (!std::isfinite(norm) || norm < 1.0e-8f)
+    {
+        return {0.0f, 0.0f, 0.0f, 1.0f};
+    }
+    for (float &value : quat)
+    {
+        value /= norm;
+    }
+    return quat;
+}
+
+std::array<float, 4> multiplyQuatXyzw(
+    const std::array<float, 4> &a,
+    const std::array<float, 4> &b)
+{
+    return normalizedQuatXyzw({
+        a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+        a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+        a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+        a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+    });
+}
+
+std::array<float, 4> conjugateQuatXyzw(const std::array<float, 4> &quat)
+{
+    return {-quat[0], -quat[1], -quat[2], quat[3]};
+}
+
+std::vector<float> quatXyzwToRot6(const std::array<float, 4> &quat_raw)
+{
+    const std::array<float, 4> quat = normalizedQuatXyzw(quat_raw);
+    const float x = quat[0];
+    const float y = quat[1];
+    const float z = quat[2];
+    const float w = quat[3];
+    const float xx = x * x;
+    const float yy = y * y;
+    const float zz = z * z;
+    const float xy = x * y;
+    const float xz = x * z;
+    const float yz = y * z;
+    const float wx = w * x;
+    const float wy = w * y;
+    const float wz = w * z;
+    return {
+        1.0f - 2.0f * (yy + zz),
+        2.0f * (xy - wz),
+        2.0f * (xy + wz),
+        1.0f - 2.0f * (xx + zz),
+        2.0f * (xz - wy),
+        2.0f * (yz + wx),
+    };
+}
+
+std::vector<float> referenceAnchorOri6dFromBodyQuat(
+    const std::vector<float> &reference_body_quat_w_xyzw,
+    const std::vector<float> &robot_base_quat_xyzw,
+    size_t body_quat_index)
+{
+    constexpr size_t kQuatDim = 4;
+    const size_t ref_offset = body_quat_index * kQuatDim;
+    if (reference_body_quat_w_xyzw.size() < ref_offset + kQuatDim ||
+        robot_base_quat_xyzw.size() < kQuatDim)
+    {
+        return {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    }
+    const std::array<float, 4> current_anchor_quat = normalizedQuatXyzw({
+        robot_base_quat_xyzw[0],
+        robot_base_quat_xyzw[1],
+        robot_base_quat_xyzw[2],
+        robot_base_quat_xyzw[3],
+    });
+    const std::array<float, 4> reference_anchor_quat = normalizedQuatXyzw({
+        reference_body_quat_w_xyzw[ref_offset + 0],
+        reference_body_quat_w_xyzw[ref_offset + 1],
+        reference_body_quat_w_xyzw[ref_offset + 2],
+        reference_body_quat_w_xyzw[ref_offset + 3],
+    });
+    const std::array<float, 4> relative_quat =
+        multiplyQuatXyzw(conjugateQuatXyzw(current_anchor_quat), reference_anchor_quat);
+    return quatXyzwToRot6(relative_quat);
+}
+
 void markRequiredReferenceSource(
     const std::string &canonical_source_raw,
     ReferenceFeatureRequirements *requirements)
@@ -233,6 +323,47 @@ ReferenceFeatureRequirements collectRequiredReferenceFeatures(const ObservationM
         }
     }
     return requirements;
+}
+
+void collectRequiredReferenceFeatures(
+    const std::vector<ComputedFeatureCfg> &features,
+    ReferenceFeatureRequirements *requirements)
+{
+    if (!requirements)
+    {
+        return;
+    }
+    for (const auto &feature : features)
+    {
+        for (const auto &part : feature.parts)
+        {
+            if (part.source == "reference_joint_pos")
+            {
+                requirements->reference_joint_pos = true;
+            }
+            else if (part.source == "reference_joint_vel")
+            {
+                requirements->reference_joint_vel = true;
+            }
+            else if (part.source == "reference_anchor_ori6d")
+            {
+                requirements->reference_body_quat_w = true;
+            }
+            else if (part.source == "feature" && !part.feature_name.empty())
+            {
+                markRequiredReferenceSource(part.feature_name, requirements);
+            }
+        }
+    }
+}
+
+std::vector<ComputedFeatureCfg> mergedComputedFeatures(
+    const ObservationManifest &manifest,
+    const Sim2realCfg &cfg)
+{
+    std::vector<ComputedFeatureCfg> features = manifest.computedFeatures();
+    features.insert(features.end(), cfg.computed_features.begin(), cfg.computed_features.end());
+    return features;
 }
 
 void requireNonEmptyReferenceKey(
@@ -571,6 +702,26 @@ std::vector<float> convertQuatVectorToCanonical(
             ". Current implementation only supports xyzw.");
     }
     return convertQuatVectorToXyzw(values, source_order);
+}
+
+std::vector<float> gatherByIndicesOrZeros(
+    const std::vector<float> &values,
+    const std::vector<int> &indices)
+{
+    std::vector<float> out;
+    out.reserve(indices.size());
+    for (const int index : indices)
+    {
+        if (index >= 0 && static_cast<size_t>(index) < values.size())
+        {
+            out.push_back(values[static_cast<size_t>(index)]);
+        }
+        else
+        {
+            out.push_back(0.0f);
+        }
+    }
+    return out;
 }
 
 } // namespace
@@ -1170,6 +1321,9 @@ void RL_controller::initModeProfiles()
         profile.reference_index_map = layout.reference_global_indices;
         profile.observation_manifest = ObservationManifest::loadFromYAML(profile.cfg.observation_manifest_path);
         profile.required_reference_features = collectRequiredReferenceFeatures(profile.observation_manifest);
+        collectRequiredReferenceFeatures(
+            mergedComputedFeatures(profile.observation_manifest, profile.cfg),
+            &profile.required_reference_features);
         validateRequiredReferenceSourceContract(profile.cfg, profile.required_reference_features, profile.tag);
         profile.observation_builder = std::make_unique<ObservationBuilder>(profile.observation_manifest);
         if (profile.observation_builder->expectedDim() != static_cast<size_t>(profile.cfg.obs_dim))
@@ -1406,6 +1560,10 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
     {
         group->strategy = std::make_unique<ChunkedRecedingInferenceStrategy>();
     }
+    else if (cfg.inference_strategy == "residual_additive")
+    {
+        group->strategy = std::make_unique<ResidualAdditiveInferenceStrategy>();
+    }
     else
     {
         group->strategy = std::make_unique<SyncWeightedInferenceStrategy>();
@@ -1450,6 +1608,7 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
         sub_cfg.strict_model_io = sub.strict_model_io;
         sub_cfg.extra_output_names = sub.extra_output_names;
         sub_cfg.onnx_inputs = sub.onnx_inputs;
+        sub_cfg.action_output_indices = sub.action_output_indices;
         sub_cfg.enable_metadata_check = sub.enable_metadata_check;
         sub_cfg.metadata_check_strict = sub.metadata_check_strict;
         sub_cfg.required_metadata_keys = sub.required_metadata_keys;
@@ -1458,6 +1617,7 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
         PolicyRunnerNode node;
         node.name = tag + "/" + sub.name;
         node.weight = std::max(0.0f, sub.weight);
+        node.primary_action_indices = sub.primary_action_indices;
         node.runner = std::make_unique<OnnxPolicyAdapter>(
             onnx_env_,
             sub_cfg.policy_path,
@@ -1492,7 +1652,7 @@ RL_controller::PolicyRunOutput RL_controller::runPolicyGroup(
         {
             continue;
         }
-        nodes.push_back(PolicyAdapterNodeView{node.name, node.weight, node.runner.get()});
+        nodes.push_back(PolicyAdapterNodeView{node.name, node.weight, node.primary_action_indices, node.runner.get()});
     }
     if (nodes.empty())
     {
@@ -1610,7 +1770,7 @@ void RL_controller::prefetchCurrentPolicyReferenceOutputs(bool advance_time_step
         {
             continue;
         }
-        nodes.push_back(PolicyAdapterNodeView{node.name, node.weight, node.runner.get()});
+        nodes.push_back(PolicyAdapterNodeView{node.name, node.weight, node.primary_action_indices, node.runner.get()});
     }
     if (nodes.empty())
     {
@@ -2147,6 +2307,181 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
                     robot_body_ori_b,
                     ObservationFeatureContract{{}, cfg.observation_canonical_contract.body_orientation_representation, "body_local"});
             }
+        }
+    }
+
+    const std::vector<ComputedFeatureCfg> computed_features =
+        mergedComputedFeatures(profile.observation_manifest, cfg);
+    if (!computed_features.empty())
+    {
+        const std::vector<int> &obs_indices = currentObsIndexMap();
+        const size_t dof_count = obs_indices.size();
+        auto applyPartShape = [](std::vector<float> values, const ComputedFeaturePartCfg &part) {
+            if (!part.indices.empty())
+            {
+                values = gatherByIndicesOrZeros(values, part.indices);
+            }
+            if (part.dim > 0)
+            {
+                values = fitDim(values, static_cast<size_t>(part.dim));
+            }
+            return values;
+        };
+        auto currentJointPosRel = [&]() {
+            std::vector<float> values;
+            values.reserve(dof_count);
+            for (const int robot_idx : obs_indices)
+            {
+                const bool valid = robot_idx >= 0 &&
+                                   static_cast<size_t>(robot_idx) < robot->joint_q.size() &&
+                                   static_cast<size_t>(robot_idx) < robot->default_angle.size();
+                values.push_back(
+                    valid ? (robot->joint_q[static_cast<size_t>(robot_idx)] -
+                             robot->default_angle[static_cast<size_t>(robot_idx)]) *
+                                cfg.scales.dof_pos
+                          : 0.0f);
+            }
+            return values;
+        };
+        auto currentJointVel = [&]() {
+            std::vector<float> values;
+            values.reserve(dof_count);
+            for (const int robot_idx : obs_indices)
+            {
+                values.push_back(
+                    (robot_idx >= 0 && static_cast<size_t>(robot_idx) < robot->joint_dq.size())
+                        ? robot->joint_dq[static_cast<size_t>(robot_idx)] * cfg.scales.dof_vel
+                        : 0.0f);
+            }
+            return values;
+        };
+        auto baseAngVel = [&]() {
+            std::vector<float> values(3, 0.0f);
+            for (size_t i = 0; i < std::min<size_t>(3, robot->base_ang_vel.size()); ++i)
+            {
+                values[i] = robot->base_ang_vel[i] * cfg.scales.ang_vel;
+            }
+            return values;
+        };
+        auto referenceJointPos = [&]() {
+            const auto it = feature_context.named_features.find("reference_joint_pos");
+            return it != feature_context.named_features.end()
+                       ? fitDim(it->second, dof_count)
+                       : gatherByIndicesOrZeros(robot->joint_q, obs_indices);
+        };
+        auto referenceJointVel = [&]() {
+            const auto it = feature_context.named_features.find("reference_joint_vel");
+            return it != feature_context.named_features.end()
+                       ? fitDim(it->second, dof_count)
+                       : gatherByIndicesOrZeros(robot->joint_dq, obs_indices);
+        };
+        auto referenceAnchorOri6d = [&](size_t body_quat_index) {
+            const auto anchor_ori_it = feature_context.named_features.find("motion_anchor_ori_b");
+            if (anchor_ori_it != feature_context.named_features.end())
+            {
+                return fitDim(anchor_ori_it->second, 6);
+            }
+            const auto body_quat_it = feature_context.named_features.find("reference_body_quat_w");
+            if (body_quat_it != feature_context.named_features.end())
+            {
+                return fitDim(
+                    referenceAnchorOri6dFromBodyQuat(
+                        body_quat_it->second,
+                        robot->base_quat,
+                        body_quat_index),
+                    6);
+            }
+            return std::vector<float>{1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+        };
+        auto policyOutput = [&](const ComputedFeaturePartCfg &part) {
+            const std::string node = part.policy_node.empty() ? "main" : part.policy_node;
+            const std::string output_name = part.output_name.empty() ? "action" : part.output_name;
+            const std::string preferred_prefix = profile.tag + "/" + node + "/";
+            if (const auto *output = findExtraOutputByName(
+                    latest_policy_extra_outputs_,
+                    preferred_prefix,
+                    output_name))
+            {
+                return *output;
+            }
+            const size_t fallback_dim =
+                part.dim > 0 ? static_cast<size_t>(part.dim) : static_cast<size_t>(std::max(0, cfg.action_dim));
+            return std::vector<float>(fallback_dim, 0.0f);
+        };
+        auto namedFeature = [&](const ComputedFeaturePartCfg &part) {
+            const auto it = feature_context.named_features.find(part.feature_name);
+            if (it != feature_context.named_features.end())
+            {
+                return it->second;
+            }
+            const size_t fallback_dim = part.dim > 0 ? static_cast<size_t>(part.dim) : 0;
+            return std::vector<float>(fallback_dim, 0.0f);
+        };
+        auto resolvePart = [&](const ComputedFeaturePartCfg &part) {
+            std::vector<float> values;
+            if (part.source == "joint_pos_rel")
+            {
+                values = currentJointPosRel();
+            }
+            else if (part.source == "joint_vel")
+            {
+                values = currentJointVel();
+            }
+            else if (part.source == "base_ang_vel")
+            {
+                values = baseAngVel();
+            }
+            else if (part.source == "last_action")
+            {
+                values = fitDim(action, dof_count);
+            }
+            else if (part.source == "policy_output")
+            {
+                values = policyOutput(part);
+            }
+            else if (part.source == "reference_joint_pos")
+            {
+                values = referenceJointPos();
+            }
+            else if (part.source == "reference_joint_vel")
+            {
+                values = referenceJointVel();
+            }
+            else if (part.source == "reference_anchor_ori6d")
+            {
+                values = referenceAnchorOri6d(static_cast<size_t>(part.body_quat_index));
+            }
+            else if (part.source == "feature")
+            {
+                values = namedFeature(part);
+            }
+            return applyPartShape(std::move(values), part);
+        };
+
+        for (const auto &computed_feature : computed_features)
+        {
+            if (computed_feature.op != "concat")
+            {
+                continue;
+            }
+            std::vector<std::vector<float>> parts;
+            parts.reserve(computed_feature.parts.size());
+            for (const auto &part : computed_feature.parts)
+            {
+                parts.push_back(resolvePart(part));
+            }
+            size_t total_dim = 0;
+            for (const auto &part_values : parts)
+            {
+                total_dim += part_values.size();
+            }
+            std::vector<float> values;
+            values.reserve(total_dim);
+            for (const auto &part_values : parts)
+            {
+                values.insert(values.end(), part_values.begin(), part_values.end());
+            }
+            setFeatureIfNonEmpty(&feature_context, computed_feature.name, values);
         }
     }
 

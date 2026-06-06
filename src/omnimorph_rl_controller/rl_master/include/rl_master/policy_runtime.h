@@ -78,6 +78,7 @@ struct PolicyAdapterNodeView
 {
     std::string name;
     float weight = 1.0f;
+    std::vector<int> primary_action_indices;
     PolicyAdapter *adapter = nullptr;
 };
 
@@ -142,6 +143,25 @@ private:
     std::deque<std::vector<float>> pending_actions_;
     std::unordered_map<std::string, std::vector<float>> cached_extra_outputs_;
     int ticks_since_last_inference_ = 0;
+};
+
+class ResidualAdditiveInferenceStrategy final : public PolicyInferenceStrategy
+{
+public:
+    void configure(const PolicyInferenceConfig &config) override;
+    void reset() override;
+
+    PolicyGroupExecutionResult execute(
+        const std::vector<PolicyAdapterNodeView> &nodes,
+        const PolicyExecutionRequest &request) override;
+
+    std::unordered_map<std::string, std::vector<float>> prefetchPrimaryExtraOutputs(
+        const std::vector<PolicyAdapterNodeView> &nodes,
+        const std::vector<std::string> &extra_output_names,
+        const PolicyExecutionRequest &request) override;
+
+private:
+    PolicyInferenceConfig config_;
 };
 
 #endif // RL_MASTER_POLICY_RUNTIME_H

@@ -707,10 +707,29 @@ struct ExternalObservationSpec
 struct OnnxInputSpec
 {
     std::string name;
-    std::string source = "stacked_observation"; // stacked_observation / observation / last_action / time_step / feature / constant
+    std::string source = "stacked_observation"; // stacked_observation / observation / last_action / time_step / feature / feature_concat / constant
     std::string feature_name;
+    std::vector<std::string> feature_names;
     std::vector<int64_t> shape;
     std::vector<float> constant;
+};
+
+struct ComputedFeaturePartCfg
+{
+    std::string source;
+    std::string feature_name;
+    std::string policy_node = "main";
+    std::string output_name = "action";
+    int dim = 0;
+    int body_quat_index = 0;
+    std::vector<int> indices;
+};
+
+struct ComputedFeatureCfg
+{
+    std::string name;
+    std::string op = "concat";
+    std::vector<ComputedFeaturePartCfg> parts;
 };
 
 struct SourceContractImuInput
@@ -848,6 +867,8 @@ struct PolicySubModelCfg
     bool strict_model_io = false;
     std::vector<std::string> extra_output_names;
     std::vector<OnnxInputSpec> onnx_inputs;
+    std::vector<int> action_output_indices;
+    std::vector<int> primary_action_indices;
     bool enable_metadata_check = false;
     bool metadata_check_strict = true;
     std::vector<std::string> required_metadata_keys;
@@ -1030,6 +1051,8 @@ public:
     bool advance_time_step_on_reference_prefetch = false;
     std::vector<std::string> extra_output_names;
     std::vector<OnnxInputSpec> onnx_inputs;
+    std::vector<int> action_output_indices;
+    std::vector<ComputedFeatureCfg> computed_features;
     bool enable_metadata_check = false;
     bool metadata_check_strict = true;
     std::vector<std::string> required_metadata_keys;
@@ -1251,6 +1274,7 @@ public:
                     spec.name = yamlReadOr<std::string>(item, "name", "");
                     spec.source = yamlReadOr<std::string>(item, "source", "stacked_observation");
                     spec.feature_name = yamlReadOr<std::string>(item, "feature_name", "");
+                    spec.feature_names = yamlReadOr<std::vector<std::string>>(item, "feature_names", {});
                     if (item["shape"])
                     {
                         spec.shape = item["shape"].as<std::vector<int64_t>>();
@@ -1262,6 +1286,50 @@ public:
                     specs.push_back(std::move(spec));
                 }
                 return specs;
+            };
+
+            auto parseComputedFeatures = [](const YAML::Node &node) -> std::vector<ComputedFeatureCfg> {
+                std::vector<ComputedFeatureCfg> features;
+                if (!node || !node.IsSequence())
+                {
+                    return features;
+                }
+                features.reserve(node.size());
+                for (size_t i = 0; i < node.size(); ++i)
+                {
+                    const YAML::Node item = node[i];
+                    if (!item || !item.IsMap())
+                    {
+                        continue;
+                    }
+                    ComputedFeatureCfg feature;
+                    feature.name = yamlReadOr<std::string>(item, "name", "");
+                    feature.op = yamlReadOr<std::string>(item, "op", "concat");
+                    const YAML::Node parts_node = item["parts"];
+                    if (parts_node && parts_node.IsSequence())
+                    {
+                        feature.parts.reserve(parts_node.size());
+                        for (size_t part_i = 0; part_i < parts_node.size(); ++part_i)
+                        {
+                            const YAML::Node part_node = parts_node[part_i];
+                            if (!part_node || !part_node.IsMap())
+                            {
+                                continue;
+                            }
+                            ComputedFeaturePartCfg part;
+                            part.source = yamlReadOr<std::string>(part_node, "source", "");
+                            part.feature_name = yamlReadOr<std::string>(part_node, "feature_name", "");
+                            part.policy_node = yamlReadOr<std::string>(part_node, "policy_node", "main");
+                            part.output_name = yamlReadOr<std::string>(part_node, "output_name", "action");
+                            part.dim = yamlReadOr<int>(part_node, "dim", 0);
+                            part.body_quat_index = yamlReadOr<int>(part_node, "body_quat_index", 0);
+                            part.indices = yamlReadOr<std::vector<int>>(part_node, "indices", {});
+                            feature.parts.push_back(std::move(part));
+                        }
+                    }
+                    features.push_back(std::move(feature));
+                }
+                return features;
             };
 
             auto validatePermutation = [](
@@ -1310,6 +1378,7 @@ public:
                         spec.source != "last_action" &&
                         spec.source != "time_step" &&
                         spec.source != "feature" &&
+                        spec.source != "feature_concat" &&
                         spec.source != "constant")
                     {
                         throw std::runtime_error(item_name + " unsupported source: " + spec.source);
@@ -1317,6 +1386,10 @@ public:
                     if (spec.source == "feature" && spec.feature_name.empty())
                     {
                         throw std::runtime_error(item_name + " requires feature_name when source=feature");
+                    }
+                    if (spec.source == "feature_concat" && spec.feature_names.empty())
+                    {
+                        throw std::runtime_error(item_name + " requires feature_names when source=feature_concat");
                     }
                     if (spec.source == "constant" && spec.constant.empty())
                     {
@@ -1328,6 +1401,67 @@ public:
                         {
                             throw std::runtime_error(
                                 item_name + " shape[" + std::to_string(dim_idx) + "] must be > 0");
+                        }
+                    }
+                }
+            };
+
+            auto validateComputedFeatures = [](const std::vector<ComputedFeatureCfg> &features, const std::string &owner_name) {
+                std::unordered_set<std::string> seen_names;
+                seen_names.reserve(features.size());
+                const std::unordered_set<std::string> supported_sources{
+                    "feature",
+                    "joint_pos_rel",
+                    "joint_vel",
+                    "base_ang_vel",
+                    "last_action",
+                    "policy_output",
+                    "reference_joint_pos",
+                    "reference_joint_vel",
+                    "reference_anchor_ori6d"};
+                for (size_t i = 0; i < features.size(); ++i)
+                {
+                    const auto &feature = features[i];
+                    const std::string item_name = owner_name + ".computed_features[" + std::to_string(i) + "]";
+                    if (feature.name.empty())
+                    {
+                        throw std::runtime_error(item_name + " missing name");
+                    }
+                    if (!seen_names.insert(feature.name).second)
+                    {
+                        throw std::runtime_error(item_name + " duplicate name: " + feature.name);
+                    }
+                    if (feature.op != "concat")
+                    {
+                        throw std::runtime_error(item_name + " unsupported op: " + feature.op);
+                    }
+                    if (feature.parts.empty())
+                    {
+                        throw std::runtime_error(item_name + " requires at least one part");
+                    }
+                    for (size_t part_i = 0; part_i < feature.parts.size(); ++part_i)
+                    {
+                        const auto &part = feature.parts[part_i];
+                        const std::string part_name = item_name + ".parts[" + std::to_string(part_i) + "]";
+                        if (supported_sources.find(part.source) == supported_sources.end())
+                        {
+                            throw std::runtime_error(part_name + " unsupported source: " + part.source);
+                        }
+                        if (part.source == "feature" && part.feature_name.empty())
+                        {
+                            throw std::runtime_error(part_name + " requires feature_name when source=feature");
+                        }
+                        if (part.source == "policy_output" && part.output_name.empty())
+                        {
+                            throw std::runtime_error(part_name + " requires output_name when source=policy_output");
+                        }
+                        if (part.dim < 0)
+                        {
+                            throw std::runtime_error(part_name + " dim must be >= 0");
+                        }
+                        if (part.body_quat_index < 0)
+                        {
+                            throw std::runtime_error(part_name + " body_quat_index must be >= 0");
                         }
                     }
                 }
@@ -1454,10 +1588,11 @@ public:
                 throw std::runtime_error("policy_adapter currently only supports 'onnx'");
             }
             if (inference_strategy != "sync_step" &&
-                inference_strategy != "chunked_receding")
+                inference_strategy != "chunked_receding" &&
+                inference_strategy != "residual_additive")
             {
                 throw std::runtime_error(
-                    "inference_strategy must be one of: sync_step, chunked_receding");
+                    "inference_strategy must be one of: sync_step, chunked_receding, residual_additive");
             }
             if (action_output_layout != "step_flat" &&
                 action_output_layout != "chunk_flat")
@@ -1497,6 +1632,12 @@ public:
             {
                 throw std::runtime_error(
                     "chunked_receding inference_strategy requires action_output_layout=chunk_flat");
+            }
+            if (inference_strategy == "residual_additive" &&
+                action_output_layout != "step_flat")
+            {
+                throw std::runtime_error(
+                    "residual_additive inference_strategy requires action_output_layout=step_flat");
             }
             if (obs_joint_order.empty())
             {
@@ -1767,6 +1908,10 @@ public:
             extra_output_names = yamlReadOr<std::vector<std::string>>(policy_io_cfg, "extra_output_names", {});
             onnx_inputs = parseOnnxInputs(policy_io_cfg["onnx_inputs"]);
             validateOnnxInputs(onnx_inputs, config_type + ".policy_io");
+            action_output_indices =
+                yamlReadOr<std::vector<int>>(policy_io_cfg, "action_output_indices", {});
+            computed_features = parseComputedFeatures(cfg["computed_features"]);
+            validateComputedFeatures(computed_features, config_type);
             enable_metadata_check = yamlReadOr<bool>(policy_io_cfg, "enable_metadata_check", false);
             metadata_check_strict = yamlReadOr<bool>(policy_io_cfg, "metadata_check_strict", true);
             required_metadata_keys =
@@ -1824,6 +1969,10 @@ public:
                     sub.extra_output_names = yamlReadOr<std::vector<std::string>>(sub_io_cfg, "extra_output_names", {});
                     sub.onnx_inputs = parseOnnxInputs(sub_io_cfg["onnx_inputs"]);
                     validateOnnxInputs(sub.onnx_inputs, config_type + ".sub_models[" + std::to_string(sub_index) + "].policy_io");
+                    sub.action_output_indices =
+                        yamlReadOr<std::vector<int>>(sub_io_cfg, "action_output_indices", action_output_indices);
+                    sub.primary_action_indices =
+                        yamlReadOr<std::vector<int>>(sub_io_cfg, "primary_action_indices", {});
                     sub.enable_metadata_check = yamlReadOr<bool>(sub_io_cfg, "enable_metadata_check", enable_metadata_check);
                     sub.metadata_check_strict = yamlReadOr<bool>(sub_io_cfg, "metadata_check_strict", metadata_check_strict);
                     sub.required_metadata_keys = yamlReadOr<std::vector<std::string>>(

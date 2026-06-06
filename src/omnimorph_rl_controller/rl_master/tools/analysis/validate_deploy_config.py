@@ -7,6 +7,7 @@ import argparse
 import math
 import os
 import sys
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -138,7 +139,20 @@ SUPPORTED_ONNX_INPUT_SOURCES = {
     "observation",
     "time_step",
     "feature",
+    "feature_concat",
     "constant",
+}
+
+SUPPORTED_COMPUTED_FEATURE_SOURCES = {
+    "feature",
+    "joint_pos_rel",
+    "joint_vel",
+    "base_ang_vel",
+    "last_action",
+    "policy_output",
+    "reference_joint_pos",
+    "reference_joint_vel",
+    "reference_anchor_ori6d",
 }
 
 SUPPORTED_OBSERVATION_STACK_LAYOUTS = {"frame_major", "term_major"}
@@ -220,7 +234,13 @@ ISAACLAB_FORMAL_PACE_JOINTS = {
 }
 
 SUPPORTED_IMU_PAYLOADS = {"euler_compat", "quaternion"}
-SUPPORTED_IMU_SOURCE_TYPES = {"sensor_msgs_imu", "unitree_hg_lowstate", "unitree_hg_imu_state"}
+SUPPORTED_IMU_SOURCE_TYPES = {
+    "sensor_msgs_imu",
+    "unitree_hg_lowstate",
+    "unitree_hg_imu_state",
+    "unitree_sdk2_lowstate",
+    "unitree_sdk2_imu_state",
+}
 SUPPORTED_EULER_UNITS = {"rad", "deg"}
 SUPPORTED_QUAT_ORDERS = {"xyzw", "wxyz"}
 SUPPORTED_BASE_VELOCITY_FRAMES = {"body", "world"}
@@ -1161,6 +1181,25 @@ def load_manifest_terms(
     return [to_dict(term) for term in terms]
 
 
+def load_manifest_computed_features(
+    manifest_path: Path,
+    issues: IssueCollector,
+    context: str,
+) -> List[Dict[str, Any]]:
+    if not manifest_path.exists():
+        issues.error(context, f"manifest file not found: {manifest_path}")
+        return []
+    try:
+        with manifest_path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except Exception as exc:
+        issues.error(context, f"failed to parse manifest YAML: {exc}")
+        return []
+
+    root = to_dict(data.get("observation_manifest"))
+    return [to_dict(feature) for feature in to_list(root.get("computed_features"))]
+
+
 def empty_reference_requirements() -> Dict[str, bool]:
     return {
         "reference_motion": False,
@@ -1225,6 +1264,62 @@ def collect_required_reference_features(
         elif name in {"feature", "external_sensor"} and source:
             mark_required_reference_feature(requirements, source)
     return requirements
+
+
+def mark_computed_feature_reference_requirements(
+    requirements: Dict[str, bool],
+    computed_features: Sequence[Dict[str, Any]],
+) -> None:
+    for feature in [to_dict(x) for x in computed_features]:
+        for part in [to_dict(x) for x in to_list(feature.get("parts"))]:
+            source = normalize_token(part.get("source", ""))
+            if source == "reference_joint_pos":
+                requirements["reference_joint_pos"] = True
+            elif source == "reference_joint_vel":
+                requirements["reference_joint_vel"] = True
+            elif source == "reference_anchor_ori6d":
+                requirements["reference_body_quat_w"] = True
+            elif source == "feature":
+                mark_required_reference_feature(requirements, str(part.get("feature_name", "")).strip())
+
+
+def check_computed_features(
+    computed_features: Sequence[Dict[str, Any]],
+    issues: IssueCollector,
+    context: str,
+) -> None:
+    seen_names: Set[str] = set()
+    for idx, raw_feature in enumerate(computed_features):
+        feature = to_dict(raw_feature)
+        feature_context = f"{context} computed_features[{idx}]"
+        name = str(feature.get("name", "")).strip()
+        if not name:
+            issues.error(feature_context, "missing name")
+        elif name in seen_names:
+            issues.error(feature_context, f"duplicate name: {name}")
+        else:
+            seen_names.add(name)
+
+        op = str(feature.get("op", "concat")).strip()
+        if op != "concat":
+            issues.error(feature_context, f"unsupported op: {op}")
+
+        parts = [to_dict(x) for x in to_list(feature.get("parts"))]
+        if not parts:
+            issues.error(feature_context, "requires at least one part")
+        for part_idx, part in enumerate(parts):
+            part_context = f"{feature_context}.parts[{part_idx}]"
+            source = normalize_token(part.get("source", ""))
+            if source not in SUPPORTED_COMPUTED_FEATURE_SOURCES:
+                issues.error(part_context, f"unsupported source: {source}")
+            if source == "feature" and not str(part.get("feature_name", "")).strip():
+                issues.error(part_context, "requires feature_name when source='feature'")
+            if source == "policy_output" and not str(part.get("output_name", "action")).strip():
+                issues.error(part_context, "requires output_name when source='policy_output'")
+            if as_int(part.get("dim"), 0) < 0:
+                issues.error(part_context, "dim must be >= 0")
+            if as_int(part.get("body_quat_index"), 0) < 0:
+                issues.error(part_context, "body_quat_index must be >= 0")
 
 
 def required_reference_source_any(required_reference_features: Dict[str, bool]) -> bool:
@@ -1375,7 +1470,11 @@ def normalize_named_action_joint_value_map(
     return named_values
 
 
-def build_feature_dim_map(section_cfg: Dict[str, Any], reference_order: List[str]) -> Dict[str, int]:
+def build_feature_dim_map(
+    section_cfg: Dict[str, Any],
+    reference_order: List[str],
+    computed_features: Sequence[Dict[str, Any]],
+) -> Dict[str, int]:
     feature_dims: Dict[str, int] = {}
     motor_n = as_int(section_cfg.get("motor_N"), 0)
     reference_dim = len(reference_order) if reference_order else motor_n
@@ -1406,6 +1505,27 @@ def build_feature_dim_map(section_cfg: Dict[str, Any], reference_order: List[str
         dim = as_int(node.get("dim"), 0)
         if name and dim > 0:
             feature_dims[name] = dim
+
+    for source in (section_cfg, to_dict(section_cfg.get("policy_io"))):
+        for name, dim_value in to_dict(source.get("feature_dims")).items():
+            dim = as_int(dim_value, 0)
+            if str(name).strip() and dim > 0:
+                feature_dims[str(name).strip()] = dim
+
+    for feature in [to_dict(x) for x in computed_features]:
+        name = str(feature.get("name", "")).strip()
+        if not name:
+            continue
+        total_dim = 0
+        complete = True
+        for part in [to_dict(x) for x in to_list(feature.get("parts"))]:
+            dim = as_int(part.get("dim"), 0)
+            if dim <= 0:
+                complete = False
+                break
+            total_dim += dim
+        if complete and total_dim > 0:
+            feature_dims[name] = total_dim
 
     return feature_dims
 
@@ -1630,6 +1750,30 @@ def check_reference_contract(
         reference_path = get_reference_motion_path(section_cfg, root_dir, path_variables)
         if not reference_path.exists():
             issues.error(context, f"reference motion file not found: {reference_path}")
+            return
+
+        if reference_path.suffix.lower() == ".npz":
+            reference_file_contract = to_dict(to_dict(section_cfg.get("source_contract")).get("reference_file"))
+            required_fields = []
+            if required_reference_features.get("reference_motion", False):
+                required_fields.append(str(reference_file_contract.get("reference_motion_key", "reference_motion")).strip())
+            if required_reference_features.get("reference_joint_pos", False):
+                required_fields.append(str(reference_file_contract.get("reference_joint_pos_key", "joint_pos")).strip())
+            if required_reference_features.get("reference_joint_vel", False):
+                required_fields.append(str(reference_file_contract.get("reference_joint_vel_key", "joint_vel")).strip())
+            if required_reference_features.get("reference_body_pos_w", False):
+                required_fields.append(str(reference_file_contract.get("reference_body_pos_w_key", "body_pos_w")).strip())
+            if required_reference_features.get("reference_body_quat_w", False):
+                required_fields.append(str(reference_file_contract.get("reference_body_quat_w_key", "body_quat_w")).strip())
+            try:
+                with zipfile.ZipFile(reference_path) as zf:
+                    entry_names = {Path(info.filename).stem for info in zf.infolist()}
+            except Exception as exc:
+                issues.error(context, f"failed to parse npz reference motion file: {exc}")
+                return
+            for key in required_fields:
+                if key and key not in entry_names:
+                    issues.error(context, f"npz reference motion file is missing required key '{key}'")
             return
 
         if reference_path.suffix.lower() not in {".yaml", ".yml", ".json"}:
@@ -1972,6 +2116,7 @@ def check_onnx_contract(
             name = str(spec.get("name", "")).strip()
             source = normalize_token(spec.get("source", "stacked_observation"))
             feature_name = str(spec.get("feature_name", "")).strip()
+            feature_names = [str(x).strip() for x in to_list(spec.get("feature_names")) if str(x).strip()]
             constant_values: List[float] = []
             for const_idx, value in enumerate(to_list(spec.get("constant"))):
                 try:
@@ -1997,8 +2142,12 @@ def check_onnx_contract(
 
             if source == "feature" and not feature_name:
                 issues.error(spec_context, "feature source requires non-empty feature_name")
+            if source == "feature_concat" and not feature_names:
+                issues.error(spec_context, "feature_concat source requires non-empty feature_names")
             if source != "feature" and feature_name:
                 issues.warn(spec_context, "feature_name is ignored unless source='feature'")
+            if source != "feature_concat" and feature_names:
+                issues.warn(spec_context, "feature_names is ignored unless source='feature_concat'")
 
             explicit_shape: List[int] = []
             if "shape" in spec:
@@ -2051,6 +2200,26 @@ def check_onnx_contract(
                         spec_context,
                         f"feature_name '{feature_name}' is not in known feature dim map; size cannot be checked statically",
                     )
+            elif source == "feature_concat":
+                resolved_feature_count = 0
+                missing_feature_dims: List[str] = []
+                for item_name in feature_names:
+                    if item_name == "__last_action__":
+                        if action_dim > 0:
+                            resolved_feature_count += action_dim
+                        else:
+                            missing_feature_dims.append(item_name)
+                    elif item_name in feature_dims:
+                        resolved_feature_count += as_int(feature_dims[item_name], 0)
+                    else:
+                        missing_feature_dims.append(item_name)
+                if missing_feature_dims:
+                    issues.warn(
+                        spec_context,
+                        "feature_names size cannot be checked statically for: " + ", ".join(missing_feature_dims),
+                    )
+                else:
+                    expected_source_count = resolved_feature_count
 
             if source == "constant":
                 if not constant_values:
@@ -2190,6 +2359,8 @@ def merge_policy_io(base_cfg: Dict[str, Any], node: Dict[str, Any]) -> Dict[str,
     )
     if "onnx_inputs" in sub_io:
         merged["onnx_inputs"] = to_list(sub_io.get("onnx_inputs"))
+    if "feature_dims" in sub_io:
+        merged["feature_dims"] = to_dict(sub_io.get("feature_dims"))
     merged["enable_metadata_check"] = as_bool(
         sub_io.get("enable_metadata_check", merged.get("enable_metadata_check", False)),
         False,
@@ -2363,7 +2534,13 @@ def validate_profile(
     validate_zero_pose_contract(section_cfg, global_joint_order, issues, context)
     manifest_path = get_manifest_path(section_cfg, root_dir, path_variables)
     manifest_terms = load_manifest_terms(manifest_path, issues, context)
+    computed_features = (
+        load_manifest_computed_features(manifest_path, issues, context)
+        + [to_dict(x) for x in to_list(section_cfg.get("computed_features"))]
+    )
+    check_computed_features(computed_features, issues, context)
     required_reference_features = collect_required_reference_features(manifest_path, issues, context)
+    mark_computed_feature_reference_requirements(required_reference_features, computed_features)
     check_source_contract(section_cfg, required_reference_features, issues, context)
     check_reference_contract(
         section_cfg,
@@ -2382,7 +2559,7 @@ def validate_profile(
         issues,
         context,
     )
-    feature_dims = build_feature_dim_map(section_cfg, reference_order)
+    feature_dims = build_feature_dim_map(section_cfg, reference_order, computed_features)
 
     manifest_dim = parse_manifest_dim(manifest_path, issues, context)
     if obs_dim > 0 and manifest_dim > 0 and manifest_dim != obs_dim:

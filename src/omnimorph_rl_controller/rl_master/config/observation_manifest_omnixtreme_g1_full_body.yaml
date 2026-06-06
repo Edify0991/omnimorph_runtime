@@ -1,0 +1,78 @@
+observation_manifest:
+  schema_version: 3
+  profile: "omnixtreme_g1_full_body"
+  # 90D current real_obs:
+  #   joint_pos_rel(29) + joint_vel(29) + base_ang_vel(3) + prev_base_action(29)
+  # The base policy history input is produced by stacking this manifest for 15 frames.
+  computed_features:
+    - name: omnixtreme_real_obs
+      op: concat
+      parts:
+        - source: joint_pos_rel
+          dim: 29
+        - source: joint_vel
+          dim: 29
+        - source: base_ang_vel
+          dim: 3
+        - source: policy_output
+          policy_node: main
+          output_name: action
+          dim: 29
+    - name: omnixtreme_command_obs
+      op: concat
+      parts:
+        - source: reference_joint_pos
+          dim: 29
+        - source: reference_joint_vel
+          dim: 29
+        - source: reference_anchor_ori6d
+          body_quat_index: 9
+          dim: 6
+    - name: omnixtreme_residual_prefix
+      op: concat
+      parts:
+        - source: reference_joint_pos
+          indices: [
+            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
+            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
+            24, 18, 25, 19, 26, 20, 27, 21, 28
+          ]
+          dim: 29
+        - source: reference_joint_vel
+          indices: [
+            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
+            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
+            24, 18, 25, 19, 26, 20, 27, 21, 28
+          ]
+          dim: 29
+        - source: reference_anchor_ori6d
+          body_quat_index: 9
+          dim: 6
+        - source: base_ang_vel
+          dim: 3
+        - source: joint_pos_rel
+          indices: [
+            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
+            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
+            24, 18, 25, 19, 26, 20, 27, 21, 28
+          ]
+          dim: 29
+        - source: joint_vel
+          indices: [
+            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
+            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
+            24, 18, 25, 19, 26, 20, 27, 21, 28
+          ]
+          dim: 29
+        - source: last_action
+          indices: [
+            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
+            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
+            24, 18, 25, 19, 26, 20, 27, 21, 28
+          ]
+          dim: 29
+  terms:
+    - name: feature
+      source: omnixtreme_real_obs
+      enabled: true
+      count: 90

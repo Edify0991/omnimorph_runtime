@@ -73,6 +73,7 @@ private:
     {
         std::string name;
         float weight = 1.0f;
+        std::vector<int> primary_action_indices;
         std::unique_ptr<PolicyAdapter> runner;
     };
 
