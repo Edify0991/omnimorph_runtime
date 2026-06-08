@@ -738,6 +738,7 @@ struct SourceContractImuInput
 {
     std::string source_type = "sensor_msgs_imu"; // sensor_msgs_imu / unitree_hg_lowstate / unitree_hg_imu_state / unitree_sdk2_lowstate / unitree_sdk2_imu_state
     std::string topic = "/imu/yesense";
+    bool follow_unitree_transport = false;
     std::string payload = "euler_compat"; // euler_compat / quaternion
     std::vector<std::string> euler_order{"roll", "pitch", "yaw"};
     std::string euler_unit = "rad";       // rad / deg
@@ -832,6 +833,21 @@ struct SourceContractUnitreeSdk2
     float default_upper_kd = 1.0f;
 };
 
+struct SourceContractUnitreeRos2
+{
+    std::string lowcmd_topic = "/lowcmd";
+    std::string lowstate_topic = "lowstate";
+    std::string imu_topic = "secondary_imu";
+    int mode_pr = 0;
+    float lowstate_timeout_sec = 0.1f;
+    float default_lower_kp = 100.0f;
+    float default_lower_kd = 1.0f;
+    float default_upper_kp = 50.0f;
+    float default_upper_kd = 1.0f;
+    int debug_motor_cmd_cycles = 0;
+    int debug_motor_cmd_joint_count = 6;
+};
+
 struct ObservationCanonicalContract
 {
     std::string joint_order = "robot_global_joint_order";
@@ -849,6 +865,7 @@ struct SourceContract
     SourceContractReferenceFile reference_file;
     SourceContractPolicyExtraOutputs policy_extra_outputs;
     SourceContractUnitreeSdk2 unitree_sdk2;
+    SourceContractUnitreeRos2 unitree_ros2;
 };
 
 struct PolicySubModelCfg
@@ -1010,6 +1027,7 @@ public:
     std::string robot_morphology;
     std::string robot_vendor;
     std::string robot_kinematics_adapter = "jc01";
+    std::string unitree_transport;
     std::string motor_io_backend = "shm";
     std::string external_hardware_bridge;
     std::string policy_name;
@@ -1211,10 +1229,45 @@ public:
                 robot_identity,
                 "external_hardware_bridge",
                 "");
+            unitree_transport = yamlReadOr<std::string>(
+                robot_identity,
+                "unitree_transport",
+                "");
+            std::string unitree_transport_normalized = unitree_transport;
+            std::transform(
+                unitree_transport_normalized.begin(),
+                unitree_transport_normalized.end(),
+                unitree_transport_normalized.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             motor_io_backend = yamlReadOr<std::string>(
                 robot_identity,
                 "motor_io_backend",
                 yamlReadOr<std::string>(config, "motor_io_backend", ""));
+            if (!unitree_transport_normalized.empty())
+            {
+                if (unitree_transport_normalized == "sdk2" ||
+                    unitree_transport_normalized == "unitree_sdk2" ||
+                    unitree_transport_normalized == "unitree_g1_sdk2")
+                {
+                    unitree_transport = "sdk2";
+                    motor_io_backend = "unitree_g1_sdk2";
+                    external_hardware_bridge = "unitree_sdk_bridge";
+                }
+                else if (unitree_transport_normalized == "ros2" ||
+                         unitree_transport_normalized == "dds" ||
+                         unitree_transport_normalized == "unitree_ros2" ||
+                         unitree_transport_normalized == "unitree_g1_dds")
+                {
+                    unitree_transport = "ros2";
+                    motor_io_backend = "unitree_g1_dds";
+                    external_hardware_bridge = "unitree_ros2_bridge";
+                }
+                else
+                {
+                    throw std::runtime_error(
+                        "robot_identity.unitree_transport must be 'sdk2' or 'ros2'");
+                }
+            }
             if (motor_io_backend.empty())
             {
                 if (external_hardware_bridge == "unitree_sdk_bridge")
@@ -2204,6 +2257,8 @@ public:
                 imu_contract_cfg, "source_type", source_contract.imu_input.source_type);
             source_contract.imu_input.topic = yamlReadOr<std::string>(
                 imu_contract_cfg, "topic", source_contract.imu_input.topic);
+            source_contract.imu_input.follow_unitree_transport = yamlReadOr<bool>(
+                imu_contract_cfg, "follow_unitree_transport", source_contract.imu_input.follow_unitree_transport);
             source_contract.imu_input.payload = yamlReadOr<std::string>(
                 imu_contract_cfg, "payload", source_contract.imu_input.payload);
             source_contract.imu_input.euler_order = yamlReadOr<std::vector<std::string>>(
@@ -2244,6 +2299,53 @@ public:
                 unitree_sdk2_cfg, "default_upper_kp", source_contract.unitree_sdk2.default_upper_kp);
             source_contract.unitree_sdk2.default_upper_kd = yamlReadOr<float>(
                 unitree_sdk2_cfg, "default_upper_kd", source_contract.unitree_sdk2.default_upper_kd);
+
+            const YAML::Node unitree_ros2_cfg = source_contract_cfg["unitree_ros2"];
+            source_contract.unitree_ros2.lowcmd_topic = yamlReadOr<std::string>(
+                unitree_ros2_cfg, "lowcmd_topic", source_contract.unitree_ros2.lowcmd_topic);
+            source_contract.unitree_ros2.lowstate_topic = yamlReadOr<std::string>(
+                unitree_ros2_cfg, "lowstate_topic", source_contract.unitree_ros2.lowstate_topic);
+            source_contract.unitree_ros2.imu_topic = yamlReadOr<std::string>(
+                unitree_ros2_cfg, "imu_topic", source_contract.unitree_ros2.imu_topic);
+            source_contract.unitree_ros2.mode_pr = yamlReadOr<int>(
+                unitree_ros2_cfg, "mode_pr", source_contract.unitree_ros2.mode_pr);
+            source_contract.unitree_ros2.lowstate_timeout_sec = yamlReadOr<float>(
+                unitree_ros2_cfg, "lowstate_timeout_sec", source_contract.unitree_ros2.lowstate_timeout_sec);
+            source_contract.unitree_ros2.default_lower_kp = yamlReadOr<float>(
+                unitree_ros2_cfg, "default_lower_kp", source_contract.unitree_ros2.default_lower_kp);
+            source_contract.unitree_ros2.default_lower_kd = yamlReadOr<float>(
+                unitree_ros2_cfg, "default_lower_kd", source_contract.unitree_ros2.default_lower_kd);
+            source_contract.unitree_ros2.default_upper_kp = yamlReadOr<float>(
+                unitree_ros2_cfg, "default_upper_kp", source_contract.unitree_ros2.default_upper_kp);
+            source_contract.unitree_ros2.default_upper_kd = yamlReadOr<float>(
+                unitree_ros2_cfg, "default_upper_kd", source_contract.unitree_ros2.default_upper_kd);
+            source_contract.unitree_ros2.debug_motor_cmd_cycles = yamlReadOr<int>(
+                unitree_ros2_cfg, "debug_motor_cmd_cycles", source_contract.unitree_ros2.debug_motor_cmd_cycles);
+            source_contract.unitree_ros2.debug_motor_cmd_joint_count = yamlReadOr<int>(
+                unitree_ros2_cfg, "debug_motor_cmd_joint_count", source_contract.unitree_ros2.debug_motor_cmd_joint_count);
+
+            if (source_contract.imu_input.follow_unitree_transport)
+            {
+                std::string backend_normalized = motor_io_backend;
+                std::transform(
+                    backend_normalized.begin(),
+                    backend_normalized.end(),
+                    backend_normalized.begin(),
+                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (backend_normalized == "unitree_g1_sdk2" ||
+                    backend_normalized == "unitree_sdk2" ||
+                    backend_normalized == "unitree_sdk_bridge")
+                {
+                    source_contract.imu_input.source_type = "unitree_sdk2_lowstate";
+                    source_contract.imu_input.topic = source_contract.unitree_sdk2.lowstate_topic;
+                }
+                else if (backend_normalized == "unitree_g1_dds" ||
+                         backend_normalized == "unitree_dds")
+                {
+                    source_contract.imu_input.source_type = "unitree_hg_lowstate";
+                    source_contract.imu_input.topic = source_contract.unitree_ros2.lowstate_topic;
+                }
+            }
 
             const YAML::Node sim_base_contract_cfg = source_contract_cfg["sim_base"];
             source_contract.sim_base.quat_source_order = yamlReadOr<std::string>(
@@ -2503,6 +2605,34 @@ public:
                 source_contract.unitree_sdk2.default_upper_kd < 0.0f)
             {
                 throw std::runtime_error("source_contract.unitree_sdk2 default gains must be >= 0");
+            }
+            if (source_contract.unitree_ros2.lowcmd_topic.empty())
+            {
+                throw std::runtime_error("source_contract.unitree_ros2.lowcmd_topic must not be empty");
+            }
+            if (source_contract.unitree_ros2.lowstate_topic.empty())
+            {
+                throw std::runtime_error("source_contract.unitree_ros2.lowstate_topic must not be empty");
+            }
+            if (source_contract.unitree_ros2.imu_topic.empty())
+            {
+                throw std::runtime_error("source_contract.unitree_ros2.imu_topic must not be empty");
+            }
+            if (source_contract.unitree_ros2.lowstate_timeout_sec <= 0.0f)
+            {
+                throw std::runtime_error("source_contract.unitree_ros2.lowstate_timeout_sec must be > 0");
+            }
+            if (source_contract.unitree_ros2.default_lower_kp < 0.0f ||
+                source_contract.unitree_ros2.default_lower_kd < 0.0f ||
+                source_contract.unitree_ros2.default_upper_kp < 0.0f ||
+                source_contract.unitree_ros2.default_upper_kd < 0.0f)
+            {
+                throw std::runtime_error("source_contract.unitree_ros2 default gains must be >= 0");
+            }
+            if (source_contract.unitree_ros2.debug_motor_cmd_cycles < 0 ||
+                source_contract.unitree_ros2.debug_motor_cmd_joint_count < 0)
+            {
+                throw std::runtime_error("source_contract.unitree_ros2 debug counts must be >= 0");
             }
             if (source_contract.base_velocity_estimator.imu_accel_frame != "body" &&
                 source_contract.base_velocity_estimator.imu_accel_frame != "world")

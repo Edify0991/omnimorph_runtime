@@ -112,7 +112,7 @@ ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000
 ```
 
 
-> Note: real-robot driver startup is robot-specific. JC01 uses the local shared-memory driver script. Unitree G1 uses the official Unitree runtime as the low-level driver; `RL_solver` connects to `lowstate` and `/lowcmd` in-process through `motor_io_backend: unitree_g1_dds`.
+> Note: real-robot driver startup is robot-specific. JC01 uses the local shared-memory driver script. Unitree G1 selects the low-level transport in `config/rl_cfg_unitree_g1.yaml` with `robot_identity.unitree_transport: sdk2` or `ros2`. The same selector switches both motor IO and Unitree lowstate IMU input.
 ### MuJoCo sim2sim (Python viewer frontend)
 
 Terminal 1:

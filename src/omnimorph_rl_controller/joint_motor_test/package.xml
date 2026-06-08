@@ -5,7 +5,7 @@
   <version>0.1.0</version>
   <description>Joint and motor offline trajectory test package for sim2real/sim2sim pipelines.</description>
   <maintainer email="zxy@todo.todo">zxy</maintainer>
-  <license>TODO: License declaration</license>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

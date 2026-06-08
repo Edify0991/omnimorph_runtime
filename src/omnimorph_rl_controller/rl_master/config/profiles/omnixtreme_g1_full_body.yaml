@@ -305,6 +305,7 @@ omnixtreme_g1_full_body:
     imu_input:
       source_type: unitree_sdk2_lowstate
       topic: rt/lowstate
+      follow_unitree_transport: true
       payload: euler_compat
       euler_order: [roll, pitch, yaw]
       euler_unit: rad
@@ -363,6 +364,18 @@ omnixtreme_g1_full_body:
       default_lower_kd: 1.0
       default_upper_kp: 50.0
       default_upper_kd: 1.0
+    unitree_ros2:
+      lowcmd_topic: /lowcmd
+      lowstate_topic: lowstate
+      imu_topic: secondary_imu
+      mode_pr: 0
+      lowstate_timeout_sec: 0.1
+      default_lower_kp: 100.0
+      default_lower_kd: 1.0
+      default_upper_kp: 50.0
+      default_upper_kd: 1.0
+      debug_motor_cmd_cycles: 0
+      debug_motor_cmd_joint_count: 6
     reference_file:
       reference_joint_pos_key: joint_pos
       reference_joint_vel_key: joint_vel

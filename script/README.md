@@ -92,7 +92,7 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
 
 - `start_rl_solver.sh`: wrapper around the installed `RL_solver` executable
 - `start_driver_jc01.sh`: JC01 local driver wrapper
-- `start_unitree_g1_bridge.sh`: legacy standalone Unitree G1 bridge wrapper; normal G1 deployment now uses `RL_solver` in-process Unitree DDS motor IO
+- `start_unitree_g1_bridge.sh`: legacy standalone Unitree G1 bridge wrapper; normal G1 deployment now uses `RL_solver` in-process Unitree motor IO selected by `robot_identity.unitree_transport`
 - `start_imu_yesense.sh`: IMU node launcher
 - `start_joylaunch.sh`: joystick/operator helper entry
 - `joyLaunch.py`: joystick/operator implementation
@@ -108,6 +108,14 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
   manual solver process
 
 Example manual G1 startup:
+
+Select `sdk2` or `ros2` in
+`src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml`:
+
+```yaml
+robot_identity:
+  unitree_transport: sdk2  # sdk2 / ros2
+```
 
 ```bash
 source ./script/dev_env.sh

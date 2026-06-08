@@ -16,6 +16,7 @@
 #include <unitree_hg/msg/low_state.hpp>
 
 #include "rl_master/kinematics/joint_data.h"
+#include "rl_master/rl_cfg.h"
 #include "rl_master/rl_protocol.h"
 #include "rl_master/runtime/realtime_utils.h"
 
@@ -94,6 +95,21 @@ public:
     std::string backendId() const override
     {
         return "unitree_g1_dds";
+    }
+
+    void updateSourceContract(const SourceContract &source_contract) override
+    {
+        const SourceContractUnitreeRos2 cfg = source_contract.unitree_ros2;
+        lowstate_topic_ = cfg.lowstate_topic;
+        lowcmd_topic_ = cfg.lowcmd_topic;
+        mode_pr_ = cfg.mode_pr;
+        lowstate_timeout_sec_ = static_cast<double>(cfg.lowstate_timeout_sec);
+        default_lower_kp_ = static_cast<double>(cfg.default_lower_kp);
+        default_lower_kd_ = static_cast<double>(cfg.default_lower_kd);
+        default_upper_kp_ = static_cast<double>(cfg.default_upper_kp);
+        default_upper_kd_ = static_cast<double>(cfg.default_upper_kd);
+        debug_motor_cmd_cycles_ = cfg.debug_motor_cmd_cycles;
+        debug_motor_cmd_joint_count_ = cfg.debug_motor_cmd_joint_count;
     }
 
     void writePdGains(size_t motor_index, MotorHandle *target, const JointData &joint_cmd) override

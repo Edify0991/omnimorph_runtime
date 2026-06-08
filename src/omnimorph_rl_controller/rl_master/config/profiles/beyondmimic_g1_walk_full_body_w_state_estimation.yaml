@@ -294,6 +294,7 @@ beyondmimic_g1_walk_full_body_w_state_estimation:
     imu_input:
       source_type: unitree_sdk2_lowstate
       topic: rt/lowstate
+      follow_unitree_transport: true
       payload: euler_compat
       euler_order: [roll, pitch, yaw]
       euler_unit: rad
@@ -352,6 +353,18 @@ beyondmimic_g1_walk_full_body_w_state_estimation:
       default_lower_kd: 1.0
       default_upper_kp: 50.0
       default_upper_kd: 1.0
+    unitree_ros2:
+      lowcmd_topic: /lowcmd
+      lowstate_topic: lowstate
+      imu_topic: secondary_imu
+      mode_pr: 0
+      lowstate_timeout_sec: 0.1
+      default_lower_kp: 100.0
+      default_lower_kd: 1.0
+      default_upper_kp: 50.0
+      default_upper_kd: 1.0
+      debug_motor_cmd_cycles: 0
+      debug_motor_cmd_joint_count: 6
   observation_contract:
     canonical:
       joint_order: robot_global_joint_order

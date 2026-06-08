@@ -22,6 +22,9 @@ Makefile
 *.mcap
 log/
 MUJOCO_LOG.TXT
+src/omnimorph_rl_controller/rl_master/data/runtime_logs/
+analysis/
+artifacts/runtime_plots/
 
 # 临时文件
 *.tmp
@@ -42,6 +45,7 @@ Thumbs.db
 
 # 数据文件
 src/humanoid_rl_controller/rl_master/data/
+src/omnimorph_rl_controller/rl_master/data/data_plot/
 src/motor_test/test_data/
 
 thirdparty/
