@@ -245,7 +245,7 @@ omnixtreme_g1_full_body:
   reference_motion_sampling: step
   reference_motion_step_offset: 1
   reference_motion_source: file
-  reference_motion_path: /home/edify/Code/OmniXtreme/policy/motion_arms_open_aligned_68s.npz
+  reference_motion_path: /home/edify/Code/OmniXtreme/policy/motion.npz
   reference_anchor_current_source: fk_onnx
   reference_anchor_fk_path: /home/edify/Code/OmniXtreme/policy/fk_trt.onnx
   reference_anchor_fk_joint_indices: [12, 13, 14]
@@ -257,21 +257,6 @@ omnixtreme_g1_full_body:
   reference_anchor_fk_output_quat_order: wxyz
   reference_anchor_body: torso_link
   motion_reference_alignment: startup_anchor_pos_yaw
-  reference_body_names:
-    - pelvis
-    - left_hip_roll_link
-    - left_knee_link
-    - left_ankle_roll_link
-    - right_hip_roll_link
-    - right_knee_link
-    - right_ankle_roll_link
-    - torso_link
-    - left_shoulder_roll_link
-    - left_elbow_link
-    - left_wrist_yaw_link
-    - right_shoulder_roll_link
-    - right_elbow_link
-    - right_wrist_yaw_link
   pinocchio_urdf_path: ${g1_pinocchio_urdf}
   reference_joint_order:
     - left_hip_pitch_joint

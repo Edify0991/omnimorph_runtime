@@ -96,6 +96,12 @@ private:
         std::string tag;
     };
 
+    struct ReferenceAnchorStartupYawAlignment
+    {
+        bool initialized = false;
+        std::array<float, 4> reference_yaw_transform_xyzw{0.0f, 0.0f, 0.0f, 1.0f};
+    };
+
     struct ModeProfile
     {
         int mode_id = rl_master::kModeCodeMin;
@@ -116,6 +122,7 @@ private:
         ReferenceFeatureRequirements required_reference_features;
         std::unique_ptr<rl_master::PinocchioMotionFeatures> pinocchio_motion_features;
         std::unique_ptr<Ort::Session> reference_anchor_fk_session;
+        std::unordered_map<size_t, ReferenceAnchorStartupYawAlignment> reference_anchor_startup_yaw_alignment;
     };
 
     const std::vector<int> &currentActionIndexMap() const;

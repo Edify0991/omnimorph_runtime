@@ -103,6 +103,91 @@ def write_npz_stored_no_zip64(path: Path, arrays: dict[str, np.ndarray]) -> None
             zf.writestr(f"{key}.npy", bio.getvalue(), compress_type=zipfile.ZIP_STORED)
 
 
+def prepare_motion_clip(
+    input_path: Path,
+    output_path: Path,
+    start_frame: int,
+    end_frame: int | None,
+    anchor_body_index: int = 0,
+    align_xy_yaw: bool = True,
+    recompute_velocities: bool = True,
+    force: bool = False,
+) -> dict[str, float | int | bool]:
+    if output_path.exists() and not force:
+        raise FileExistsError(f"output exists: {output_path}")
+
+    with np.load(input_path, allow_pickle=False) as data:
+        arrays = {key: data[key] for key in data.files}
+
+    fps = float(np.asarray(arrays["fps"]).reshape(-1)[0])
+    frame_count = int(arrays["joint_pos"].shape[0])
+    if start_frame < 0 or start_frame >= frame_count:
+        raise ValueError(f"start frame {start_frame} is outside [0, {frame_count})")
+    if end_frame is None:
+        end_frame = frame_count - 1
+    if end_frame < start_frame or end_frame >= frame_count:
+        raise ValueError(f"end frame {end_frame} is outside [{start_frame}, {frame_count})")
+    if anchor_body_index < 0 or anchor_body_index >= arrays["body_pos_w"].shape[1]:
+        raise ValueError("anchor body index is outside body_pos_w body dimension")
+
+    out: dict[str, np.ndarray] = {}
+    end_exclusive = end_frame + 1
+    for key, value in arrays.items():
+        if value.shape[:1] == (frame_count,):
+            out[key] = np.array(value[start_frame:end_exclusive], copy=True)
+        else:
+            out[key] = np.array(value, copy=True)
+
+    yaw0 = yaw_from_quat_wxyz(out["body_quat_w"][0, anchor_body_index])
+    if align_xy_yaw:
+        yaw_inv = -yaw0
+        rot = rotation_z(yaw_inv)
+        yaw_inv_quat = yaw_quat_wxyz(yaw_inv)
+
+        body_pos = out["body_pos_w"].astype(np.float64)
+        origin = body_pos[0, anchor_body_index].copy()
+        origin[2] = 0.0
+        body_pos = (body_pos - origin) @ rot.T
+        out["body_pos_w"] = body_pos.astype(arrays["body_pos_w"].dtype, copy=False)
+
+        body_quat = normalize_quat_wxyz(out["body_quat_w"])
+        body_quat = quat_mul_wxyz(yaw_inv_quat, body_quat)
+        body_quat = enforce_quat_continuity(body_quat)
+        out["body_quat_w"] = body_quat.astype(arrays["body_quat_w"].dtype, copy=False)
+
+    if recompute_velocities:
+        if "joint_pos" in out and "joint_vel" in out:
+            out["joint_vel"] = gradient_velocity(out["joint_pos"], fps).astype(arrays["joint_vel"].dtype, copy=False)
+        if "body_pos_w" in out and "body_lin_vel_w" in out:
+            out["body_lin_vel_w"] = gradient_velocity(out["body_pos_w"], fps).astype(
+                arrays["body_lin_vel_w"].dtype, copy=False
+            )
+        if "body_quat_w" in out and "body_ang_vel_w" in out:
+            out["body_ang_vel_w"] = angular_velocity_from_quat_wxyz(out["body_quat_w"], fps).astype(
+                arrays["body_ang_vel_w"].dtype, copy=False
+            )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    write_npz_stored_no_zip64(output_path, out)
+
+    return {
+        "fps": fps,
+        "input_frames": frame_count,
+        "output_frames": int(out["joint_pos"].shape[0]),
+        "start_frame": start_frame,
+        "end_frame": end_frame,
+        "start_time_sec": start_frame / fps,
+        "end_time_sec": end_frame / fps,
+        "anchor_body_index": anchor_body_index,
+        "align_xy_yaw": align_xy_yaw,
+        "recompute_velocities": recompute_velocities,
+        "removed_initial_yaw_deg": math.degrees(yaw0) if align_xy_yaw else 0.0,
+        "anchor_x_after_alignment": float(out["body_pos_w"][0, anchor_body_index, 0]),
+        "anchor_y_after_alignment": float(out["body_pos_w"][0, anchor_body_index, 1]),
+        "anchor_yaw_after_alignment_deg": math.degrees(yaw_from_quat_wxyz(out["body_quat_w"][0, anchor_body_index])),
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Trim a motion npz, align the new first frame xy/yaw to zero, and recompute velocities."
@@ -112,76 +197,50 @@ def parse_args() -> argparse.Namespace:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--start-frame", type=int)
     group.add_argument("--start-time", type=float, help="Start time in seconds.")
+    end_group = parser.add_mutually_exclusive_group()
+    end_group.add_argument("--end-frame", type=int, help="Inclusive end frame. Defaults to the last frame.")
+    end_group.add_argument("--end-time", type=float, help="Inclusive end time in seconds.")
     parser.add_argument("--anchor-body-index", type=int, default=0)
+    parser.add_argument("--no-align", action="store_true", help="Only trim; do not reset xy/yaw.")
+    parser.add_argument("--keep-velocities", action="store_true", help="Do not recompute velocity arrays.")
     parser.add_argument("--force", action="store_true")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    if args.output.exists() and not args.force:
-        raise FileExistsError(f"output exists: {args.output}")
-
     with np.load(args.input, allow_pickle=False) as data:
-        arrays = {key: data[key] for key in data.files}
-
-    fps = float(np.asarray(arrays["fps"]).reshape(-1)[0])
-    frame_count = int(arrays["joint_pos"].shape[0])
+        fps = float(np.asarray(data["fps"]).reshape(-1)[0])
+        frame_count = int(data["joint_pos"].shape[0])
     start_frame = args.start_frame
     if start_frame is None:
         start_frame = int(round(args.start_time * fps))
-    if start_frame < 0 or start_frame >= frame_count:
-        raise ValueError(f"start frame {start_frame} is outside [0, {frame_count})")
-    if args.anchor_body_index < 0 or args.anchor_body_index >= arrays["body_pos_w"].shape[1]:
-        raise ValueError("anchor body index is outside body_pos_w body dimension")
-
-    out: dict[str, np.ndarray] = {}
-    for key, value in arrays.items():
-        if value.shape[:1] == (frame_count,):
-            out[key] = np.array(value[start_frame:], copy=True)
-        else:
-            out[key] = np.array(value, copy=True)
-
-    anchor = args.anchor_body_index
-    yaw0 = yaw_from_quat_wxyz(out["body_quat_w"][0, anchor])
-    yaw_inv = -yaw0
-    rot = rotation_z(yaw_inv)
-    yaw_inv_quat = yaw_quat_wxyz(yaw_inv)
-
-    body_pos = out["body_pos_w"].astype(np.float64)
-    origin = body_pos[0, anchor].copy()
-    origin[2] = 0.0
-    body_pos = (body_pos - origin) @ rot.T
-    out["body_pos_w"] = body_pos.astype(arrays["body_pos_w"].dtype, copy=False)
-
-    body_quat = normalize_quat_wxyz(out["body_quat_w"])
-    body_quat = quat_mul_wxyz(yaw_inv_quat, body_quat)
-    body_quat = enforce_quat_continuity(body_quat)
-    out["body_quat_w"] = body_quat.astype(arrays["body_quat_w"].dtype, copy=False)
-
-    if "joint_pos" in out and "joint_vel" in out:
-        out["joint_vel"] = gradient_velocity(out["joint_pos"], fps).astype(arrays["joint_vel"].dtype, copy=False)
-    if "body_pos_w" in out and "body_lin_vel_w" in out:
-        out["body_lin_vel_w"] = gradient_velocity(out["body_pos_w"], fps).astype(
-            arrays["body_lin_vel_w"].dtype, copy=False
-        )
-    if "body_quat_w" in out and "body_ang_vel_w" in out:
-        out["body_ang_vel_w"] = angular_velocity_from_quat_wxyz(out["body_quat_w"], fps).astype(
-            arrays["body_ang_vel_w"].dtype, copy=False
-        )
-
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    write_npz_stored_no_zip64(args.output, out)
-
+    end_frame = args.end_frame
+    if end_frame is None and args.end_time is not None:
+        end_frame = int(round(args.end_time * fps))
+    info = prepare_motion_clip(
+        args.input,
+        args.output,
+        start_frame,
+        end_frame,
+        anchor_body_index=args.anchor_body_index,
+        align_xy_yaw=not args.no_align,
+        recompute_velocities=not args.keep_velocities,
+        force=args.force,
+    )
     print(f"input: {args.input}")
     print(f"output: {args.output}")
-    print(f"start_frame: {start_frame}")
-    print(f"start_time_sec: {start_frame / fps:.6f}")
-    print(f"frames: {frame_count} -> {out['joint_pos'].shape[0]}")
-    print(f"anchor_body_index: {anchor}")
-    print(f"removed_initial_yaw_deg: {math.degrees(yaw0):.6f}")
-    print(f"anchor_xy_after_alignment: {out['body_pos_w'][0, anchor, :2].tolist()}")
-    print(f"anchor_yaw_after_alignment_deg: {math.degrees(yaw_from_quat_wxyz(out['body_quat_w'][0, anchor])):.6f}")
+    print(f"start_frame: {info['start_frame']}")
+    print(f"end_frame: {info['end_frame']}")
+    print(f"start_time_sec: {info['start_time_sec']:.6f}")
+    print(f"end_time_sec: {info['end_time_sec']:.6f}")
+    print(f"frames: {info['input_frames']} -> {info['output_frames']}")
+    print(f"anchor_body_index: {info['anchor_body_index']}")
+    print(f"align_xy_yaw: {info['align_xy_yaw']}")
+    print(f"recompute_velocities: {info['recompute_velocities']}")
+    print(f"removed_initial_yaw_deg: {info['removed_initial_yaw_deg']:.6f}")
+    print(f"anchor_xy_after_alignment: [{info['anchor_x_after_alignment']}, {info['anchor_y_after_alignment']}]")
+    print(f"anchor_yaw_after_alignment_deg: {info['anchor_yaw_after_alignment_deg']:.6f}")
 
 
 if __name__ == "__main__":

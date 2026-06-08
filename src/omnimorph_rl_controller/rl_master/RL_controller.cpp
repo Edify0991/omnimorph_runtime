@@ -288,6 +288,24 @@ std::array<float, 4> conjugateQuatXyzw(const std::array<float, 4> &quat)
     return {-quat[0], -quat[1], -quat[2], quat[3]};
 }
 
+float yawFromQuatXyzw(const std::array<float, 4> &quat_raw)
+{
+    const std::array<float, 4> quat = normalizedQuatXyzw(quat_raw);
+    const float x = quat[0];
+    const float y = quat[1];
+    const float z = quat[2];
+    const float w = quat[3];
+    return std::atan2(
+        2.0f * (w * z + x * y),
+        1.0f - 2.0f * (y * y + z * z));
+}
+
+std::array<float, 4> yawQuatXyzw(float yaw)
+{
+    const float half_yaw = 0.5f * yaw;
+    return {0.0f, 0.0f, std::sin(half_yaw), std::cos(half_yaw)};
+}
+
 std::vector<float> quatXyzwToRot6(const std::array<float, 4> &quat_raw)
 {
     const std::array<float, 4> quat = normalizedQuatXyzw(quat_raw);
@@ -340,6 +358,38 @@ std::vector<float> referenceAnchorOri6dFromBodyQuat(
     });
     const std::array<float, 4> relative_quat =
         multiplyQuatXyzw(conjugateQuatXyzw(current_anchor_quat), reference_anchor_quat);
+    return quatXyzwToRot6(relative_quat);
+}
+
+std::vector<float> referenceAnchorOri6dFromBodyQuatWithReferenceYawTransform(
+    const std::vector<float> &reference_body_quat_w_xyzw,
+    const std::vector<float> &robot_base_quat_xyzw,
+    size_t body_quat_index,
+    const std::array<float, 4> &reference_yaw_transform_xyzw)
+{
+    constexpr size_t kQuatDim = 4;
+    const size_t ref_offset = body_quat_index * kQuatDim;
+    if (reference_body_quat_w_xyzw.size() < ref_offset + kQuatDim ||
+        robot_base_quat_xyzw.size() < kQuatDim)
+    {
+        return {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    }
+    const std::array<float, 4> current_anchor_quat = normalizedQuatXyzw({
+        robot_base_quat_xyzw[0],
+        robot_base_quat_xyzw[1],
+        robot_base_quat_xyzw[2],
+        robot_base_quat_xyzw[3],
+    });
+    const std::array<float, 4> reference_anchor_quat = normalizedQuatXyzw({
+        reference_body_quat_w_xyzw[ref_offset + 0],
+        reference_body_quat_w_xyzw[ref_offset + 1],
+        reference_body_quat_w_xyzw[ref_offset + 2],
+        reference_body_quat_w_xyzw[ref_offset + 3],
+    });
+    const std::array<float, 4> aligned_reference_quat =
+        multiplyQuatXyzw(reference_yaw_transform_xyzw, reference_anchor_quat);
+    const std::array<float, 4> relative_quat =
+        multiplyQuatXyzw(conjugateQuatXyzw(current_anchor_quat), aligned_reference_quat);
     return quatXyzwToRot6(relative_quat);
 }
 
@@ -2669,10 +2719,51 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
             const auto body_quat_it = feature_context.named_features.find("reference_body_quat_w");
             if (body_quat_it != feature_context.named_features.end())
             {
+                const std::vector<float> current_anchor_quat = currentAnchorQuatXyzw();
+                if (cfg.motion_reference_alignment == "startup_anchor_pos_yaw")
+                {
+                    auto &alignment = profile.reference_anchor_startup_yaw_alignment[body_quat_index];
+                    if (!alignment.initialized)
+                    {
+                        constexpr size_t kQuatDim = 4;
+                        const size_t ref_offset = body_quat_index * kQuatDim;
+                        if (body_quat_it->second.size() >= ref_offset + kQuatDim &&
+                            current_anchor_quat.size() >= kQuatDim)
+                        {
+                            const std::array<float, 4> current_anchor_quat_xyzw = normalizedQuatXyzw({
+                                current_anchor_quat[0],
+                                current_anchor_quat[1],
+                                current_anchor_quat[2],
+                                current_anchor_quat[3],
+                            });
+                            const std::array<float, 4> initial_reference_quat_xyzw = normalizedQuatXyzw({
+                                body_quat_it->second[ref_offset + 0],
+                                body_quat_it->second[ref_offset + 1],
+                                body_quat_it->second[ref_offset + 2],
+                                body_quat_it->second[ref_offset + 3],
+                            });
+                            const float yaw_delta =
+                                yawFromQuatXyzw(current_anchor_quat_xyzw) -
+                                yawFromQuatXyzw(initial_reference_quat_xyzw);
+                            alignment.reference_yaw_transform_xyzw = yawQuatXyzw(yaw_delta);
+                            alignment.initialized = true;
+                        }
+                    }
+                    if (alignment.initialized)
+                    {
+                        return fitDim(
+                            referenceAnchorOri6dFromBodyQuatWithReferenceYawTransform(
+                                body_quat_it->second,
+                                current_anchor_quat,
+                                body_quat_index,
+                                alignment.reference_yaw_transform_xyzw),
+                            6);
+                    }
+                }
                 return fitDim(
                     referenceAnchorOri6dFromBodyQuat(
                         body_quat_it->second,
-                        currentAnchorQuatXyzw(),
+                        current_anchor_quat,
                         body_quat_index),
                     6);
             }
