@@ -48,6 +48,18 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<int>("viewer_width", 1280);
     this->declare_parameter<int>("viewer_height", 720);
     this->declare_parameter<std::string>("viewer_title", "MuJoCo Sim2Sim Viewer");
+    this->declare_parameter<bool>("enable_video_recording", false);
+    this->declare_parameter<std::string>("video_output_dir", "/tmp/omnimorph_sim2sim_videos");
+    this->declare_parameter<std::string>("video_output_name", "");
+    this->declare_parameter<std::string>("video_ffmpeg_path", "ffmpeg");
+    this->declare_parameter<double>("video_fps", 60.0);
+    this->declare_parameter<int>("video_width", 1280);
+    this->declare_parameter<int>("video_height", 720);
+    this->declare_parameter<bool>("video_follow_robot", true);
+    this->declare_parameter<double>("video_follow_distance", 3.0);
+    this->declare_parameter<double>("video_follow_azimuth", 90.0);
+    this->declare_parameter<double>("video_follow_elevation", -20.0);
+    this->declare_parameter<std::vector<double>>("video_follow_lookat_offset", std::vector<double>{0.0, 0.0, 0.8});
     this->declare_parameter<bool>("enable_state_telemetry", true);
     this->declare_parameter<double>("state_telemetry_hz", 50.0);
 
@@ -95,6 +107,35 @@ void MujocoSimBridge::loadParameters()
     viewer_width_ = static_cast<int>(std::clamp<int64_t>(viewer_width_param, 320, 8192));
     viewer_height_ = static_cast<int>(std::clamp<int64_t>(viewer_height_param, 240, 8192));
     viewer_title_ = this->get_parameter("viewer_title").as_string();
+    enable_video_recording_ = this->get_parameter("enable_video_recording").as_bool();
+    video_output_dir_ = trimCopy(this->get_parameter("video_output_dir").as_string());
+    if (video_output_dir_.empty())
+    {
+        video_output_dir_ = "/tmp/omnimorph_sim2sim_videos";
+    }
+    video_output_name_ = trimCopy(this->get_parameter("video_output_name").as_string());
+    video_ffmpeg_path_ = trimCopy(this->get_parameter("video_ffmpeg_path").as_string());
+    if (video_ffmpeg_path_.empty())
+    {
+        video_ffmpeg_path_ = "ffmpeg";
+    }
+    video_fps_ = std::max(1.0, this->get_parameter("video_fps").as_double());
+    const int64_t video_width_param = this->get_parameter("video_width").as_int();
+    const int64_t video_height_param = this->get_parameter("video_height").as_int();
+    video_width_ = static_cast<int>(std::clamp<int64_t>(video_width_param, 64, 8192));
+    video_height_ = static_cast<int>(std::clamp<int64_t>(video_height_param, 64, 8192));
+    video_width_ = std::max(64, video_width_ - (video_width_ % 2));
+    video_height_ = std::max(64, video_height_ - (video_height_ % 2));
+    video_follow_robot_ = this->get_parameter("video_follow_robot").as_bool();
+    video_follow_distance_ = std::max(0.1, this->get_parameter("video_follow_distance").as_double());
+    video_follow_azimuth_ = this->get_parameter("video_follow_azimuth").as_double();
+    video_follow_elevation_ = this->get_parameter("video_follow_elevation").as_double();
+    const std::vector<double> video_lookat_offset =
+        this->get_parameter("video_follow_lookat_offset").as_double_array();
+    if (video_lookat_offset.size() >= 3)
+    {
+        video_follow_lookat_offset_ = {video_lookat_offset[0], video_lookat_offset[1], video_lookat_offset[2]};
+    }
     enable_state_telemetry_ = this->get_parameter("enable_state_telemetry").as_bool();
     state_telemetry_hz_ = std::max(0.0, this->get_parameter("state_telemetry_hz").as_double());
 

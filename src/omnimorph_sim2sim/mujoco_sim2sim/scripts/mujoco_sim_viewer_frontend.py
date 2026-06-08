@@ -72,6 +72,7 @@ class MujocoViewerFrontend(Node):
         self.declare_parameter("follow_elevation", -20.0)
         self.declare_parameter("follow_lookat_offset", [0.0, 0.0, 0.8])
         self.declare_parameter("enable_video_recording", False)
+        self.declare_parameter("video_output_dir", "/tmp/omnimorph_sim2sim_videos")
         self.declare_parameter("video_output_path", "")
         self.declare_parameter("video_fps", 60.0)
         self.declare_parameter("video_width", 1280)
@@ -94,6 +95,7 @@ class MujocoViewerFrontend(Node):
         self.follow_elevation = self.get_parameter("follow_elevation").get_parameter_value().double_value
         self.follow_lookat_offset = self._read_vec3_parameter("follow_lookat_offset", [0.0, 0.0, 0.8])
         self.enable_video_recording = self.get_parameter("enable_video_recording").get_parameter_value().bool_value
+        self.video_output_dir = self.get_parameter("video_output_dir").get_parameter_value().string_value
         self.video_output_path = self.get_parameter("video_output_path").get_parameter_value().string_value
         self.video_fps = max(1.0, self.get_parameter("video_fps").get_parameter_value().double_value)
         self.video_width = max(64, int(self.get_parameter("video_width").value))
@@ -122,6 +124,7 @@ class MujocoViewerFrontend(Node):
         self.follow_body_id = self._resolve_body_id(self.follow_body_name) if self.follow_robot else -1
         self.video_writer = None
         self.video_renderer = None
+        self.video_next_sim_time: Optional[float] = None
         self.video_output_resolved = self._resolve_video_output_path()
 
         qos = QoSProfile(
@@ -184,10 +187,11 @@ class MujocoViewerFrontend(Node):
         raw = self.video_output_path.strip()
         if not raw:
             stamp = time.strftime("%Y%m%d_%H%M%S")
-            raw = f"/tmp/mujoco_sim2sim_{stamp}.mp4"
+            raw = f"mujoco_python_frontend_{stamp}.mp4"
         path = Path(os.path.expanduser(raw))
         if not path.is_absolute():
-            path = Path.cwd() / path
+            output_dir = Path(os.path.expanduser(self.video_output_dir.strip() or "/tmp/omnimorph_sim2sim_videos"))
+            path = output_dir / path
         path.parent.mkdir(parents=True, exist_ok=True)
         return str(path)
 
@@ -303,6 +307,17 @@ class MujocoViewerFrontend(Node):
         frame = self.video_renderer.render()
         self.video_writer.append_data(frame)
 
+    def _record_video_frame_if_due(self, viewer=None) -> None:
+        if not self.enable_video_recording:
+            return
+        sim_time = float(self.data.time)
+        if self.video_next_sim_time is None:
+            self.video_next_sim_time = sim_time
+        period = 1.0 / self.video_fps
+        while sim_time + 1.0e-9 >= self.video_next_sim_time:
+            self._record_video_frame(viewer)
+            self.video_next_sim_time += period
+
     def _close_video_recording(self) -> None:
         if self.video_writer is not None:
             self.video_writer.close()
@@ -360,7 +375,7 @@ class MujocoViewerFrontend(Node):
             while rclpy.ok():
                 updated = self._apply_pending_frame()
                 if updated and self.enable_video_recording:
-                    self._record_video_frame()
+                    self._record_video_frame_if_due()
                 self._warn_if_stale()
                 self._log_inspector_periodically()
                 time.sleep(render_period)
@@ -382,8 +397,8 @@ class MujocoViewerFrontend(Node):
                 else:
                     self._warn_if_stale()
                     viewer.sync()
-                if self.enable_video_recording:
-                    self._record_video_frame(viewer)
+                if updated and self.enable_video_recording:
+                    self._record_video_frame_if_due(viewer)
                 self._log_inspector_periodically()
                 time.sleep(render_period)
 

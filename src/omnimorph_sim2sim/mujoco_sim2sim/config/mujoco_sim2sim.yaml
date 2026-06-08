@@ -103,6 +103,22 @@ mujoco_sim_bridge:
     viewer_width: 1280
     viewer_height: 720
     viewer_title: "MuJoCo Sim2Sim Viewer"
+    # Native C++ MP4 recording. This records from the backend MuJoCo state with
+    # physical simulation time sampling, so it is not affected by Python GUI
+    # frame drops or sim_speed_scale_ wall-clock acceleration.
+    enable_video_recording: false
+    video_output_dir: "/tmp/omnimorph_sim2sim_videos"
+    # Empty means mujoco_sim2sim_YYYYMMDD_HHMMSS.mp4 inside video_output_dir.
+    video_output_name: ""
+    video_ffmpeg_path: "ffmpeg"
+    video_fps: 60.0
+    video_width: 1280
+    video_height: 720
+    video_follow_robot: true
+    video_follow_distance: 3.0
+    video_follow_azimuth: 90.0
+    video_follow_elevation: -20.0
+    video_follow_lookat_offset: [0.0, 0.0, 0.8]
     enable_state_telemetry: true
     state_telemetry_hz: 50.0
     # Python frontend viewer only.

@@ -216,6 +216,22 @@ C++ fused backend (physics + controller) -> ROS2 frame stream -> Python MuJoCo v
 
 It is the only supported Python GUI path now.
 
+## Native C++ Video Recording
+
+For MP4 output, record from the fused C++ backend instead of the Python GUI:
+
+```bash
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=${MUJOCO_MODEL_PATH} \
+  backend:=cpp \
+  enable_video_recording:=true \
+  video_output_name:=sim2sim_check.mp4
+```
+
+The default output directory is `/tmp/omnimorph_sim2sim_videos`. Frames are
+sampled from MuJoCo simulation time at `video_fps`, so recordings keep real
+physics timing even when the GUI is slow or the sim runs faster than wall time.
+
 ## JC01 Legs Example
 
 For the JC01 legs-only `engineai_walk` policy preset, use:

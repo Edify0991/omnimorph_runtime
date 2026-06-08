@@ -26,6 +26,7 @@ MujocoSimBridge::MujocoSimBridge()
     initRuntimeRecorder();
     mode_command_cache_.store(rl_master::kCtrlWordSetModeBase + startup_mode_id_);
     initializeViewer();
+    initializeVideoRecorder();
     setupRosInterfaces();
     startInputExecutor();
     startStateTelemetry();
@@ -33,7 +34,7 @@ MujocoSimBridge::MujocoSimBridge()
 
     RCLCPP_INFO(
         this->get_logger(),
-        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, sim_base_velocity_source=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, release_settle_ticks=%d, hold_settle_ticks=%d, prepose_snap=%s, running_start_ref_sync=%s, sim_only_force_policy_csp=%s",
+        "MuJoCo sim2sim fused runtime ready. model='%s', control_hz=%.1f, sim_dt=%.6f, substeps=%d, startup_mode_id=%d, viewer=%s, python_viewer_stream=%s, python_viewer_inspector=%s, video_recording=%s, inactive_behavior=%s, state_telemetry=%s@%.1fHz, sim_base_quat_source_order=%s, sim_base_velocity_source=%s, fixed_base_zeroing=%s, fixed_base_hold=%s, release_before_running=%s, release_settle_ticks=%d, hold_settle_ticks=%d, prepose_snap=%s, running_start_ref_sync=%s, sim_only_force_policy_csp=%s",
         model_path_.c_str(),
         control_hz_,
         sim_dt_,
@@ -42,6 +43,7 @@ MujocoSimBridge::MujocoSimBridge()
         enable_viewer_ ? "on" : "off",
         enable_python_viewer_stream_ ? viewer_frame_topic_.c_str() : "off",
         enable_python_viewer_inspector_ ? viewer_inspector_topic_.c_str() : "off",
+        enable_video_recording_ ? video_output_path_.c_str() : "off",
         no_command_behavior_.c_str(),
         enable_state_telemetry_ ? "on" : "off",
         state_telemetry_hz_,
@@ -73,6 +75,7 @@ MujocoSimBridge::~MujocoSimBridge()
     controller_runtime_.estop();
     runtime_recorder_.flush();
     runtime_recorder_.close();
+    shutdownVideoRecorder();
     shutdownViewer();
 
     if (data_)

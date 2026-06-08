@@ -7,6 +7,10 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <filesystem>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -84,6 +88,7 @@ public:
 
 private:
     struct ViewerState;
+    struct VideoRecorderState;
 
     // Core setup and MuJoCo model mapping.
     void loadParameters();
@@ -101,6 +106,10 @@ private:
     void handleViewerMouseMove(double xpos, double ypos);
     void handleViewerScroll(double yoffset);
     void handleViewerKey(int key, int action, int mods);
+    void initializeVideoRecorder();
+    void shutdownVideoRecorder();
+    void recordVideoFrameIfDue();
+    void writeVideoFrame();
 
     // Command input, lifecycle handling, and control-loop timing.
     void teleopCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
@@ -210,6 +219,19 @@ private:
     int viewer_width_ = 1280;
     int viewer_height_ = 720;
     std::string viewer_title_ = "MuJoCo Sim2Sim Viewer";
+    bool enable_video_recording_ = false;
+    std::string video_output_dir_ = "/tmp/omnimorph_sim2sim_videos";
+    std::string video_output_name_;
+    std::string video_output_path_;
+    std::string video_ffmpeg_path_ = "ffmpeg";
+    double video_fps_ = 60.0;
+    int video_width_ = 1280;
+    int video_height_ = 720;
+    bool video_follow_robot_ = true;
+    double video_follow_distance_ = 3.0;
+    double video_follow_azimuth_ = 90.0;
+    double video_follow_elevation_ = -20.0;
+    std::array<double, 3> video_follow_lookat_offset_{0.0, 0.0, 0.8};
 
     // Hold and policy-resolved gains/limits.
     std::vector<double> hold_kp_;
@@ -279,6 +301,9 @@ private:
 
     // Native viewer state.
     std::unique_ptr<ViewerState> viewer_state_;
+    std::unique_ptr<VideoRecorderState> video_recorder_state_;
+    double next_video_frame_time_ = std::numeric_limits<double>::quiet_NaN();
+    uint64_t video_frame_count_ = 0;
     bool viewer_mouse_left_down_ = false;
     bool viewer_mouse_middle_down_ = false;
     bool viewer_mouse_right_down_ = false;
