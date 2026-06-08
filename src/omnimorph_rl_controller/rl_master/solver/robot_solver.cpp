@@ -1580,9 +1580,9 @@ void RobotSolver::holdCurrentPose()
         joint_cmd_[i].tau = 0.0f;
         joint_cmd_[i].mode = RUN_MODE_CSP;
         joint_cmd_[i].kp =
-            i < installed_joint_running_kps_.size() ? installed_joint_running_kps_[i] : 0.0f;
+            i < installed_joint_zeroing_kps_.size() ? installed_joint_zeroing_kps_[i] : 0.0f;
         joint_cmd_[i].kd =
-            i < installed_joint_running_kds_.size() ? installed_joint_running_kds_[i] : 0.0f;
+            i < installed_joint_zeroing_kds_.size() ? installed_joint_zeroing_kds_[i] : 0.0f;
     }
     sendMotorCmd();
 }
@@ -1699,9 +1699,9 @@ void RobotSolver::run()
                     joint_cmd_[i].tau = 0.0;
                     joint_cmd_[i].mode = RUN_MODE_CSP;
                     joint_cmd_[i].kp =
-                        i < installed_joint_running_kps_.size() ? installed_joint_running_kps_[i] : 0.0f;
+                        i < installed_joint_zeroing_kps_.size() ? installed_joint_zeroing_kps_[i] : 0.0f;
                     joint_cmd_[i].kd =
-                        i < installed_joint_running_kds_.size() ? installed_joint_running_kds_[i] : 0.0f;
+                        i < installed_joint_zeroing_kds_.size() ? installed_joint_zeroing_kds_[i] : 0.0f;
                 }
                 sendMotorCmd();
                 dds_bridge_.mirrorRobotState(io_state);
