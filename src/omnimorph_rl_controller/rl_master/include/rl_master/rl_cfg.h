@@ -1044,9 +1044,13 @@ public:
 
     std::vector<float> kps;
     std::vector<float> kds;
+    std::vector<float> zeroing_kps;
+    std::vector<float> zeroing_kds;
     std::vector<float> tau_limit;
     std::map<std::string, float> named_kps;
     std::map<std::string, float> named_kds;
+    std::map<std::string, float> named_zeroing_kps;
+    std::map<std::string, float> named_zeroing_kds;
     std::map<std::string, float> named_tau_limit;
     std::vector<float> action_scales;
     std::map<std::string, float> named_action_scales;
@@ -1193,6 +1197,8 @@ public:
             reference_joint_order.clear();
             named_kps.clear();
             named_kds.clear();
+            named_zeroing_kps.clear();
+            named_zeroing_kds.clear();
             named_tau_limit.clear();
             source_contract = SourceContract{};
             observation_canonical_contract = ObservationCanonicalContract{};
@@ -1788,6 +1794,8 @@ public:
             }
             named_kps = yamlReadFloatMapOr(cfg, "kps");
             named_kds = yamlReadFloatMapOr(cfg, "kds");
+            named_zeroing_kps = yamlReadFloatMapOr(cfg, "zeroing_kps");
+            named_zeroing_kds = yamlReadFloatMapOr(cfg, "zeroing_kds");
             if (named_kps.empty())
             {
                 throw std::runtime_error("kps must be a non-empty joint-name map");
@@ -1823,6 +1831,22 @@ public:
             };
             validateNamedActionJointValueMap(named_kps, "kps");
             validateNamedActionJointValueMap(named_kds, "kds");
+            if (named_zeroing_kps.empty())
+            {
+                named_zeroing_kps = named_kps;
+            }
+            else
+            {
+                validateNamedActionJointValueMap(named_zeroing_kps, "zeroing_kps");
+            }
+            if (named_zeroing_kds.empty())
+            {
+                named_zeroing_kds = named_kds;
+            }
+            else
+            {
+                validateNamedActionJointValueMap(named_zeroing_kds, "zeroing_kds");
+            }
             named_tau_limit = yamlReadFloatMapOr(cfg, "tau_limit");
             if (named_tau_limit.empty())
             {
@@ -1837,10 +1861,14 @@ public:
             }
             kps.clear();
             kds.clear();
+            zeroing_kps.clear();
+            zeroing_kds.clear();
             tau_limit.clear();
             action_scales.clear();
             kps.reserve(action_joint_order.size());
             kds.reserve(action_joint_order.size());
+            zeroing_kps.reserve(action_joint_order.size());
+            zeroing_kds.reserve(action_joint_order.size());
             tau_limit.reserve(action_joint_order.size());
             action_scales.reserve(action_joint_order.size());
             if (!named_action_scales.empty())
@@ -1851,6 +1879,8 @@ public:
             {
                 kps.push_back(named_kps.at(joint_name));
                 kds.push_back(named_kds.at(joint_name));
+                zeroing_kps.push_back(named_zeroing_kps.at(joint_name));
+                zeroing_kds.push_back(named_zeroing_kds.at(joint_name));
                 tau_limit.push_back(named_tau_limit.at(joint_name));
                 action_scales.push_back(
                     named_action_scales.empty() ? action_scale : named_action_scales.at(joint_name));

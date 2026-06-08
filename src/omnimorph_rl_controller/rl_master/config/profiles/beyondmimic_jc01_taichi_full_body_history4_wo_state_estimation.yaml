@@ -17,7 +17,7 @@ beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation:
   #     shape: [1, 28]
   obs_stack_N: 4
   cycle_time: 1.0
-  kps:
+  kps: &running_kps
     right_hip_roll: 394.213
     right_hip_yaw: 99.511
     right_hip_pitch: 394.213
@@ -46,7 +46,7 @@ beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation:
     left_elbow_yaw: 34.426
     left_wrist_pitch: 34.426
     left_wrist_roll: 34.426
-  kds:
+  kds: &running_kds
     right_hip_roll: 23.005
     right_hip_yaw: 5.807
     right_hip_pitch: 23.005
@@ -75,6 +75,8 @@ beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation:
     left_elbow_yaw: 2.009
     left_wrist_pitch: 2.009
     left_wrist_roll: 2.009
+  zeroing_kps: *running_kps
+  zeroing_kds: *running_kds
   tau_limit:
     right_hip_roll: 330.0
     right_hip_yaw: 150.0

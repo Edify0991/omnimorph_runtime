@@ -4,7 +4,7 @@ amp_tienkunglab_jc01_walk_full_body:
   policy_file: policies/policy_0520_1.onnx
   obs_stack_N: 10
   cycle_time: 0.85
-  kps:
+  kps: &running_kps
     right_hip_roll: 394.213
     right_hip_yaw: 99.511
     right_hip_pitch: 394.213
@@ -33,7 +33,7 @@ amp_tienkunglab_jc01_walk_full_body:
     right_elbow_yaw: 34.426
     right_wrist_pitch: 34.426
     right_wrist_roll: 34.426
-  kds:
+  kds: &running_kds
     right_hip_roll: 23.005
     right_hip_yaw: 5.807
     right_hip_pitch: 23.005
@@ -62,6 +62,8 @@ amp_tienkunglab_jc01_walk_full_body:
     right_elbow_yaw: 2.009
     right_wrist_pitch: 2.009
     right_wrist_roll: 2.009
+  zeroing_kps: *running_kps
+  zeroing_kds: *running_kds
   tau_limit:
     right_hip_roll: 330.0
     right_hip_yaw: 150.0

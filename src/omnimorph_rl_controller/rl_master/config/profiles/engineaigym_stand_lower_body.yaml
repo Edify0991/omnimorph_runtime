@@ -3,7 +3,7 @@ engineaigym_stand_lower_body:
   policy_family: velloco
   obs_stack_N: 15
   cycle_time: 1.0
-  kps:
+  kps: &running_kps
     left_hip_roll: 394.213
     left_hip_yaw: 99.511
     left_hip_pitch: 394.213
@@ -16,7 +16,7 @@ engineaigym_stand_lower_body:
     right_knee_pitch: 300.0
     right_ankle_pitch: 138.023
     right_ankle_roll: 138.023
-  kds:
+  kds: &running_kds
     left_hip_roll: 23.005
     left_hip_yaw: 5.007
     left_hip_pitch: 23.005
@@ -29,6 +29,8 @@ engineaigym_stand_lower_body:
     right_knee_pitch: 17.507
     right_ankle_pitch: 8.055
     right_ankle_roll: 8.055
+  zeroing_kps: *running_kps
+  zeroing_kds: *running_kds
   tau_limit:
     left_hip_roll: 130.0
     left_hip_yaw: 130.0

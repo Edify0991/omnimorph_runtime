@@ -6,7 +6,7 @@ jingchu01_pacedcmotor_formal:
   obs_stack_N: 15
   observation_stack_layout: frame_major
   cycle_time: 0.8
-  kps:
+  kps: &running_kps
     left_hip_roll: 200.0
     left_hip_yaw: 60.0
     left_hip_pitch: 150.0
@@ -19,7 +19,7 @@ jingchu01_pacedcmotor_formal:
     right_knee_pitch: 200.0
     right_ankle_pitch: 60.0
     right_ankle_roll: 60.0
-  kds:
+  kds: &running_kds
     left_hip_roll: 5.0
     left_hip_yaw: 3.0
     left_hip_pitch: 5.0
@@ -59,6 +59,8 @@ jingchu01_pacedcmotor_formal:
   #   right_knee_pitch: 17.507
   #   right_ankle_pitch: 8.055
   #   right_ankle_roll: 8.055
+  zeroing_kps: *running_kps
+  zeroing_kds: *running_kds
   tau_limit:
     left_hip_roll: 300.0
     left_hip_yaw: 300.0

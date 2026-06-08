@@ -12,7 +12,7 @@ beyondmimic_g1_walk_full_body_w_state_estimation:
   inference_strategy: sync_step
   obs_stack_N: 1
   cycle_time: 1.0
-  kps:
+  kps: &running_kps
     left_hip_pitch_joint: 40.179237
     left_hip_roll_joint: 99.098427
     left_hip_yaw_joint: 40.179237
@@ -42,7 +42,7 @@ beyondmimic_g1_walk_full_body_w_state_estimation:
     right_wrist_roll_joint: 14.250623
     right_wrist_pitch_joint: 16.778328
     right_wrist_yaw_joint: 16.778328
-  kds:
+  kds: &running_kds
     left_hip_pitch_joint: 2.557890
     left_hip_roll_joint: 6.308802
     left_hip_yaw_joint: 2.557890
@@ -72,6 +72,8 @@ beyondmimic_g1_walk_full_body_w_state_estimation:
     right_wrist_roll_joint: 0.907223
     right_wrist_pitch_joint: 1.068141
     right_wrist_yaw_joint: 1.068141
+  zeroing_kps: *running_kps
+  zeroing_kds: *running_kds
   tau_limit:
     left_hip_pitch_joint: 88.0
     left_hip_roll_joint: 88.0

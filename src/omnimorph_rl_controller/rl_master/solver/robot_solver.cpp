@@ -643,6 +643,10 @@ void RobotSolver::applyControlGainsFromCfg()
     }
 
     const size_t installed_count = installedJointCount();
+    installed_joint_running_kps_.assign(installed_count, 0.0f);
+    installed_joint_running_kds_.assign(installed_count, 0.0f);
+    installed_joint_zeroing_kps_.assign(installed_count, 0.0f);
+    installed_joint_zeroing_kds_.assign(installed_count, 0.0f);
     for (size_t i = 0; i < installed_count; ++i)
     {
         joint_cmd_[i].kp = 0.0f;
@@ -668,6 +672,18 @@ void RobotSolver::applyControlGainsFromCfg()
         const size_t hardware_idx = static_cast<size_t>(global_index);
         const float kp = sim2real_cfg_.kps[policy_idx];
         const float kd = sim2real_cfg_.kds[policy_idx];
+        const float zeroing_kp =
+            policy_idx < sim2real_cfg_.zeroing_kps.size()
+                ? sim2real_cfg_.zeroing_kps[policy_idx]
+                : kp;
+        const float zeroing_kd =
+            policy_idx < sim2real_cfg_.zeroing_kds.size()
+                ? sim2real_cfg_.zeroing_kds[policy_idx]
+                : kd;
+        installed_joint_running_kps_[hardware_idx] = kp;
+        installed_joint_running_kds_[hardware_idx] = kd;
+        installed_joint_zeroing_kps_[hardware_idx] = zeroing_kp;
+        installed_joint_zeroing_kds_[hardware_idx] = zeroing_kd;
         joint_cmd_[hardware_idx].kp = kp;
         joint_cmd_[hardware_idx].kd = kd;
         joint_state_[hardware_idx].kp = kp;
@@ -1002,6 +1018,26 @@ void RobotSolver::applyRuntimeCommand(
                    sim2real_cfg_.action_joint_order.end(),
                    joint_name) != sim2real_cfg_.action_joint_order.end();
     };
+    auto applyRunningGainsAt = [&](size_t hardware_idx) {
+        joint_cmd_[hardware_idx].kp =
+            hardware_idx < installed_joint_running_kps_.size()
+                ? installed_joint_running_kps_[hardware_idx]
+                : 0.0f;
+        joint_cmd_[hardware_idx].kd =
+            hardware_idx < installed_joint_running_kds_.size()
+                ? installed_joint_running_kds_[hardware_idx]
+                : 0.0f;
+    };
+    auto applyZeroingGainsAt = [&](size_t hardware_idx) {
+        joint_cmd_[hardware_idx].kp =
+            hardware_idx < installed_joint_zeroing_kps_.size()
+                ? installed_joint_zeroing_kps_[hardware_idx]
+                : 0.0f;
+        joint_cmd_[hardware_idx].kd =
+            hardware_idx < installed_joint_zeroing_kds_.size()
+                ? installed_joint_zeroing_kds_[hardware_idx]
+                : 0.0f;
+    };
 
     const double now_s = rl_master::monotonicTimeSec();
     if (runtime_mode.unknown_open_rl_mode &&
@@ -1029,6 +1065,7 @@ void RobotSolver::applyRuntimeCommand(
                 joint_cmd_[i].dq = target_dq_i;
                 joint_cmd_[i].tau = target_tau_i;
                 joint_cmd_[i].mode = installed_joint_configured_run_modes_[i];
+                applyRunningGainsAt(i);
             }
             else
             {
@@ -1036,6 +1073,7 @@ void RobotSolver::applyRuntimeCommand(
                 joint_cmd_[i].dq = 0.0f;
                 joint_cmd_[i].tau = 0.0f;
                 joint_cmd_[i].mode = installed_joint_configured_run_modes_[i];
+                applyRunningGainsAt(i);
             }
         }
 
@@ -1074,6 +1112,7 @@ void RobotSolver::applyRuntimeCommand(
             joint_cmd_[i].dq = 0.0f;
             joint_cmd_[i].tau = 0.0f;
             joint_cmd_[i].mode = zeroing_run_mode_;
+            applyZeroingGainsAt(i);
         }
     }
     else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCsp)
@@ -1086,6 +1125,7 @@ void RobotSolver::applyRuntimeCommand(
             joint_cmd_[i].dq = 0.0f;
             joint_cmd_[i].tau = 0.0f;
             joint_cmd_[i].mode = RUN_MODE_CSP;
+            applyRunningGainsAt(i);
         }
     }
     else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCst)
@@ -1103,6 +1143,7 @@ void RobotSolver::applyRuntimeCommand(
                 joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
             }
             joint_cmd_[i].mode = RUN_MODE_CST;
+            applyRunningGainsAt(i);
         }
     }
     else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1)
@@ -1120,6 +1161,7 @@ void RobotSolver::applyRuntimeCommand(
                 joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
             }
             joint_cmd_[i].mode = RUN_MODE_R1;
+            applyRunningGainsAt(i);
         }
     }
 
@@ -1537,6 +1579,10 @@ void RobotSolver::holdCurrentPose()
         joint_cmd_[i].dq = 0.0f;
         joint_cmd_[i].tau = 0.0f;
         joint_cmd_[i].mode = RUN_MODE_CSP;
+        joint_cmd_[i].kp =
+            i < installed_joint_running_kps_.size() ? installed_joint_running_kps_[i] : 0.0f;
+        joint_cmd_[i].kd =
+            i < installed_joint_running_kds_.size() ? installed_joint_running_kds_[i] : 0.0f;
     }
     sendMotorCmd();
 }
@@ -1652,6 +1698,10 @@ void RobotSolver::run()
                     joint_cmd_[i].dq = 0.0;
                     joint_cmd_[i].tau = 0.0;
                     joint_cmd_[i].mode = RUN_MODE_CSP;
+                    joint_cmd_[i].kp =
+                        i < installed_joint_running_kps_.size() ? installed_joint_running_kps_[i] : 0.0f;
+                    joint_cmd_[i].kd =
+                        i < installed_joint_running_kds_.size() ? installed_joint_running_kds_[i] : 0.0f;
                 }
                 sendMotorCmd();
                 dds_bridge_.mirrorRobotState(io_state);
