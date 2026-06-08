@@ -157,6 +157,17 @@ SUPPORTED_COMPUTED_FEATURE_SOURCES = {
 }
 
 SUPPORTED_OBSERVATION_STACK_LAYOUTS = {"frame_major", "term_major"}
+SUPPORTED_JOINT_ORDER_ALIASES = {
+    "robot_global_joint_order",
+    "global_joint_order",
+    "action_joint_order",
+    "action_order",
+    "obs_joint_order",
+    "observation_joint_order",
+    "observation_order",
+    "reference_joint_order",
+    "reference_order",
+}
 ISAACLAB_LOCOMOTION_SECTIONS = {
     "jingchu01_dcmotor_formal",
     "jingchu01_pacedcmotor_formal",
@@ -1288,7 +1299,37 @@ def check_computed_features(
     computed_features: Sequence[Dict[str, Any]],
     issues: IssueCollector,
     context: str,
+    order_aliases: Optional[Dict[str, Sequence[str]]] = None,
 ) -> None:
+    order_aliases = order_aliases or {}
+
+    def validate_order_mapping(node: Dict[str, Any], item_context: str) -> None:
+        source_order = normalize_token(node.get("source_order", ""))
+        target_order = normalize_token(node.get("target_order", ""))
+        if not source_order and not target_order:
+            return
+        if not source_order or not target_order:
+            issues.error(item_context, "source_order and target_order must be set together")
+            return
+        if to_list(node.get("indices")):
+            issues.warn(item_context, "indices takes precedence over source_order/target_order")
+        if source_order not in SUPPORTED_JOINT_ORDER_ALIASES:
+            issues.error(item_context, f"unknown source_order alias: {source_order}")
+            return
+        if target_order not in SUPPORTED_JOINT_ORDER_ALIASES:
+            issues.error(item_context, f"unknown target_order alias: {target_order}")
+            return
+        source_names = list(order_aliases.get(source_order, []))
+        target_names = list(order_aliases.get(target_order, []))
+        if not source_names or not target_names:
+            return
+        missing = [name for name in target_names if name not in set(source_names)]
+        if missing:
+            issues.error(
+                item_context,
+                f"target_order joints missing from source_order: {', '.join(missing)}",
+            )
+
     seen_names: Set[str] = set()
     for idx, raw_feature in enumerate(computed_features):
         feature = to_dict(raw_feature)
@@ -1321,6 +1362,7 @@ def check_computed_features(
                 issues.error(part_context, "dim must be >= 0")
             if as_int(part.get("body_quat_index"), 0) < 0:
                 issues.error(part_context, "body_quat_index must be >= 0")
+            validate_order_mapping(part, part_context)
 
 
 def required_reference_source_any(required_reference_features: Dict[str, bool]) -> bool:
@@ -1517,6 +1559,62 @@ def check_target_q_velocity_envelope(
             issues.error(context, f"target_q_velocity_envelope.y1[{joint_name}] must be > 0")
         if y2 <= 0.0:
             issues.error(context, f"target_q_velocity_envelope.y2[{joint_name}] must be > 0")
+
+
+def build_joint_order_aliases(
+    global_joint_order: Sequence[str],
+    action_order: Sequence[str],
+    obs_order: Sequence[str],
+    reference_order: Sequence[str],
+) -> Dict[str, Sequence[str]]:
+    obs = list(obs_order) if obs_order else list(action_order)
+    aliases: Dict[str, Sequence[str]] = {
+        "robot_global_joint_order": list(global_joint_order),
+        "global_joint_order": list(global_joint_order),
+        "action_joint_order": list(action_order),
+        "action_order": list(action_order),
+        "obs_joint_order": obs,
+        "observation_joint_order": obs,
+        "observation_order": obs,
+        "reference_joint_order": list(reference_order),
+        "reference_order": list(reference_order),
+    }
+    return aliases
+
+
+def check_joint_order_mapping_fields(
+    node: Dict[str, Any],
+    prefix: str,
+    order_aliases: Dict[str, Sequence[str]],
+    issues: IssueCollector,
+    context: str,
+) -> None:
+    source_order = normalize_token(node.get(f"{prefix}_source_order", ""))
+    target_order = normalize_token(node.get(f"{prefix}_target_order", ""))
+    if not source_order and not target_order:
+        return
+    if not source_order or not target_order:
+        issues.error(context, f"{prefix}_source_order and {prefix}_target_order must be set together")
+        return
+    if to_list(node.get(f"{prefix}_indices")):
+        issues.warn(context, f"{prefix}_indices takes precedence over {prefix}_source_order/{prefix}_target_order")
+    if source_order not in SUPPORTED_JOINT_ORDER_ALIASES:
+        issues.error(context, f"unknown {prefix}_source_order alias: {source_order}")
+        return
+    if target_order not in SUPPORTED_JOINT_ORDER_ALIASES:
+        issues.error(context, f"unknown {prefix}_target_order alias: {target_order}")
+        return
+    source_names = list(order_aliases.get(source_order, []))
+    target_names = list(order_aliases.get(target_order, []))
+    if not source_names or not target_names:
+        return
+    source_set = set(source_names)
+    missing = [name for name in target_names if name not in source_set]
+    if missing:
+        issues.error(
+            context,
+            f"{prefix}_target_order joints missing from {prefix}_source_order: {', '.join(missing)}",
+        )
 
 
 def build_feature_dim_map(
@@ -2649,7 +2747,13 @@ def validate_profile(
         load_manifest_computed_features(manifest_path, issues, context)
         + [to_dict(x) for x in to_list(section_cfg.get("computed_features"))]
     )
-    check_computed_features(computed_features, issues, context)
+    joint_order_aliases = build_joint_order_aliases(
+        global_joint_order,
+        action_order,
+        obs_order if obs_order else action_order,
+        reference_order,
+    )
+    check_computed_features(computed_features, issues, context, joint_order_aliases)
     required_reference_features = collect_required_reference_features(manifest_path, issues, context)
     mark_computed_feature_reference_requirements(required_reference_features, computed_features)
     check_source_contract(section_cfg, required_reference_features, issues, context)
@@ -2713,6 +2817,13 @@ def validate_profile(
         "onnx_intra_threads": as_int(section_cfg.get("onnx_intra_threads", 1), 1),
         "onnx_inter_threads": as_int(section_cfg.get("onnx_inter_threads", 1), 1),
     }
+    check_joint_order_mapping_fields(
+        policy_io_cfg,
+        "action_output",
+        joint_order_aliases,
+        issues,
+        context + " main_model policy_io",
+    )
 
     policy_path = get_policy_file_path(section_cfg, root_dir, path_variables)
     check_onnx_contract(policy_path, main_model_cfg, issues, context + " main_model", skip_onnx)
@@ -2734,6 +2845,21 @@ def validate_profile(
             continue
         sub_name = str(node.get("name", f"sub_model_{idx}"))
         sub_context = context + f" sub_model[{sub_name}]"
+        sub_io = to_dict(node.get("policy_io", node))
+        check_joint_order_mapping_fields(
+            sub_io,
+            "action_output",
+            joint_order_aliases,
+            issues,
+            sub_context + " policy_io",
+        )
+        check_joint_order_mapping_fields(
+            sub_io,
+            "primary_action",
+            joint_order_aliases,
+            issues,
+            sub_context + " policy_io",
+        )
         sub_cfg = merge_policy_io(base_sub_cfg, node)
         sub_action_dim = as_int(node.get("action_dim", -1), -1)
         if sub_action_dim > 0:

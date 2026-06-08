@@ -723,6 +723,8 @@ struct ComputedFeaturePartCfg
     int dim = 0;
     int body_quat_index = 0;
     std::vector<int> indices;
+    std::string source_order;
+    std::string target_order;
 };
 
 struct ComputedFeatureCfg
@@ -869,6 +871,10 @@ struct PolicySubModelCfg
     std::vector<OnnxInputSpec> onnx_inputs;
     std::vector<int> action_output_indices;
     std::vector<int> primary_action_indices;
+    std::string action_output_source_order;
+    std::string action_output_target_order;
+    std::string primary_action_source_order;
+    std::string primary_action_target_order;
     bool enable_metadata_check = false;
     bool metadata_check_strict = true;
     std::vector<std::string> required_metadata_keys;
@@ -1063,6 +1069,8 @@ public:
     std::vector<std::string> extra_output_names;
     std::vector<OnnxInputSpec> onnx_inputs;
     std::vector<int> action_output_indices;
+    std::string action_output_source_order;
+    std::string action_output_target_order;
     std::vector<ComputedFeatureCfg> computed_features;
     bool enable_metadata_check = false;
     bool metadata_check_strict = true;
@@ -1347,6 +1355,8 @@ public:
                             part.dim = yamlReadOr<int>(part_node, "dim", 0);
                             part.body_quat_index = yamlReadOr<int>(part_node, "body_quat_index", 0);
                             part.indices = yamlReadOr<std::vector<int>>(part_node, "indices", {});
+                            part.source_order = yamlReadOr<std::string>(part_node, "source_order", "");
+                            part.target_order = yamlReadOr<std::string>(part_node, "target_order", "");
                             feature.parts.push_back(std::move(part));
                         }
                     }
@@ -1486,6 +1496,10 @@ public:
                         if (part.body_quat_index < 0)
                         {
                             throw std::runtime_error(part_name + " body_quat_index must be >= 0");
+                        }
+                        if (part.source_order.empty() != part.target_order.empty())
+                        {
+                            throw std::runtime_error(part_name + " source_order and target_order must be set together");
                         }
                     }
                 }
@@ -1994,6 +2008,10 @@ public:
             validateOnnxInputs(onnx_inputs, config_type + ".policy_io");
             action_output_indices =
                 yamlReadOr<std::vector<int>>(policy_io_cfg, "action_output_indices", {});
+            action_output_source_order =
+                yamlReadOr<std::string>(policy_io_cfg, "action_output_source_order", "");
+            action_output_target_order =
+                yamlReadOr<std::string>(policy_io_cfg, "action_output_target_order", "");
             computed_features = parseComputedFeatures(cfg["computed_features"]);
             validateComputedFeatures(computed_features, config_type);
             enable_metadata_check = yamlReadOr<bool>(policy_io_cfg, "enable_metadata_check", false);
@@ -2055,8 +2073,16 @@ public:
                     validateOnnxInputs(sub.onnx_inputs, config_type + ".sub_models[" + std::to_string(sub_index) + "].policy_io");
                     sub.action_output_indices =
                         yamlReadOr<std::vector<int>>(sub_io_cfg, "action_output_indices", action_output_indices);
+                    sub.action_output_source_order =
+                        yamlReadOr<std::string>(sub_io_cfg, "action_output_source_order", action_output_source_order);
+                    sub.action_output_target_order =
+                        yamlReadOr<std::string>(sub_io_cfg, "action_output_target_order", action_output_target_order);
                     sub.primary_action_indices =
                         yamlReadOr<std::vector<int>>(sub_io_cfg, "primary_action_indices", {});
+                    sub.primary_action_source_order =
+                        yamlReadOr<std::string>(sub_io_cfg, "primary_action_source_order", "");
+                    sub.primary_action_target_order =
+                        yamlReadOr<std::string>(sub_io_cfg, "primary_action_target_order", "");
                     sub.enable_metadata_check = yamlReadOr<bool>(sub_io_cfg, "enable_metadata_check", enable_metadata_check);
                     sub.metadata_check_strict = yamlReadOr<bool>(sub_io_cfg, "metadata_check_strict", metadata_check_strict);
                     sub.required_metadata_keys = yamlReadOr<std::vector<std::string>>(

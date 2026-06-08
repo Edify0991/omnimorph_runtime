@@ -35,6 +35,91 @@ std::vector<float> fitDim(const std::vector<float> &values, size_t dim)
     return out;
 }
 
+std::vector<std::string> jointOrderByAlias(
+    const Sim2realCfg &cfg,
+    const std::vector<std::string> &robot_global_joint_order,
+    const std::string &alias,
+    const std::string &label)
+{
+    const std::string normalized = toLowerCopy(alias);
+    if (normalized.empty())
+    {
+        return {};
+    }
+    if (normalized == "robot_global_joint_order" || normalized == "global_joint_order")
+    {
+        return robot_global_joint_order;
+    }
+    if (normalized == "action_joint_order" || normalized == "action_order")
+    {
+        return cfg.action_joint_order;
+    }
+    if (normalized == "obs_joint_order" || normalized == "observation_joint_order" || normalized == "observation_order")
+    {
+        return cfg.obs_joint_order;
+    }
+    if (normalized == "reference_joint_order" || normalized == "reference_order")
+    {
+        return cfg.reference_joint_order;
+    }
+    throw std::runtime_error(label + " unknown joint order alias: " + alias);
+}
+
+std::vector<int> buildIndexMapFromJointOrders(
+    const std::vector<std::string> &source_order,
+    const std::vector<std::string> &target_order,
+    const std::string &label)
+{
+    if (source_order.empty() || target_order.empty())
+    {
+        return {};
+    }
+
+    std::unordered_map<std::string, int> source_index;
+    source_index.reserve(source_order.size());
+    for (size_t i = 0; i < source_order.size(); ++i)
+    {
+        if (!source_index.emplace(source_order[i], static_cast<int>(i)).second)
+        {
+            throw std::runtime_error(label + " source_order contains duplicate joint: " + source_order[i]);
+        }
+    }
+
+    std::vector<int> indices;
+    indices.reserve(target_order.size());
+    for (const std::string &joint_name : target_order)
+    {
+        const auto it = source_index.find(joint_name);
+        if (it == source_index.end())
+        {
+            throw std::runtime_error(label + " target joint is missing from source_order: " + joint_name);
+        }
+        indices.push_back(it->second);
+    }
+    return indices;
+}
+
+std::vector<int> buildIndexMapFromJointOrderAliases(
+    const Sim2realCfg &cfg,
+    const std::vector<std::string> &robot_global_joint_order,
+    const std::string &source_order_alias,
+    const std::string &target_order_alias,
+    const std::string &label)
+{
+    if (source_order_alias.empty() && target_order_alias.empty())
+    {
+        return {};
+    }
+    if (source_order_alias.empty() || target_order_alias.empty())
+    {
+        throw std::runtime_error(label + " requires both source_order and target_order");
+    }
+    return buildIndexMapFromJointOrders(
+        jointOrderByAlias(cfg, robot_global_joint_order, source_order_alias, label + ".source_order"),
+        jointOrderByAlias(cfg, robot_global_joint_order, target_order_alias, label + ".target_order"),
+        label);
+}
+
 bool parsePositiveIntValue(const std::string &text, int *out)
 {
     if (!out)
@@ -1634,13 +1719,25 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
         cfg.action_chunk_replan_interval});
     group->strategy->reset();
 
+    Sim2realCfg primary_cfg = cfg;
+    if (primary_cfg.action_output_indices.empty() &&
+        (!primary_cfg.action_output_source_order.empty() || !primary_cfg.action_output_target_order.empty()))
+    {
+        primary_cfg.action_output_indices = buildIndexMapFromJointOrderAliases(
+            primary_cfg,
+            joint_order_,
+            primary_cfg.action_output_source_order,
+            primary_cfg.action_output_target_order,
+            tag + "/main.action_output_order_mapping");
+    }
+
     PolicyRunnerNode primary;
     primary.name = tag + "/main";
     primary.weight = 1.0f;
     primary.runner = std::make_unique<OnnxPolicyAdapter>(
         onnx_env_,
-        cfg.policy_path,
-        cfg,
+        primary_cfg.policy_path,
+        primary_cfg,
         primary.name);
     primary.runner->init();
     group->runners.push_back(std::move(primary));
@@ -1667,15 +1764,37 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
         sub_cfg.extra_output_names = sub.extra_output_names;
         sub_cfg.onnx_inputs = sub.onnx_inputs;
         sub_cfg.action_output_indices = sub.action_output_indices;
+        sub_cfg.action_output_source_order = sub.action_output_source_order;
+        sub_cfg.action_output_target_order = sub.action_output_target_order;
         sub_cfg.enable_metadata_check = sub.enable_metadata_check;
         sub_cfg.metadata_check_strict = sub.metadata_check_strict;
         sub_cfg.required_metadata_keys = sub.required_metadata_keys;
         sub_cfg.expected_metadata = sub.expected_metadata;
+        if (sub_cfg.action_output_indices.empty() &&
+            (!sub_cfg.action_output_source_order.empty() || !sub_cfg.action_output_target_order.empty()))
+        {
+            sub_cfg.action_output_indices = buildIndexMapFromJointOrderAliases(
+                sub_cfg,
+                joint_order_,
+                sub_cfg.action_output_source_order,
+                sub_cfg.action_output_target_order,
+                tag + "/" + sub.name + ".action_output_order_mapping");
+        }
 
         PolicyRunnerNode node;
         node.name = tag + "/" + sub.name;
         node.weight = std::max(0.0f, sub.weight);
         node.primary_action_indices = sub.primary_action_indices;
+        if (node.primary_action_indices.empty() &&
+            (!sub.primary_action_source_order.empty() || !sub.primary_action_target_order.empty()))
+        {
+            node.primary_action_indices = buildIndexMapFromJointOrderAliases(
+                cfg,
+                joint_order_,
+                sub.primary_action_source_order,
+                sub.primary_action_target_order,
+                tag + "/" + sub.name + ".primary_action_order_mapping");
+        }
         node.runner = std::make_unique<OnnxPolicyAdapter>(
             onnx_env_,
             sub_cfg.policy_path,
@@ -2376,10 +2495,21 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     {
         const std::vector<int> &obs_indices = currentObsIndexMap();
         const size_t dof_count = obs_indices.size();
-        auto applyPartShape = [](std::vector<float> values, const ComputedFeaturePartCfg &part) {
+        auto applyPartShape = [&](std::vector<float> values, const ComputedFeaturePartCfg &part) {
             if (!part.indices.empty())
             {
                 values = gatherByIndicesOrZeros(values, part.indices);
+            }
+            else if (!part.source_order.empty() || !part.target_order.empty())
+            {
+                values = gatherByIndicesOrZeros(
+                    values,
+                    buildIndexMapFromJointOrderAliases(
+                        cfg,
+                        joint_order_,
+                        part.source_order,
+                        part.target_order,
+                        "computed feature part '" + part.source + "'"));
             }
             if (part.dim > 0)
             {

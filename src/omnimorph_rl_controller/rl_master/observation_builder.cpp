@@ -108,6 +108,8 @@ std::vector<ComputedFeatureCfg> parseComputedFeatures(const YAML::Node &node)
                 part.dim = yamlReadOr<int>(part_node, "dim", 0);
                 part.body_quat_index = yamlReadOr<int>(part_node, "body_quat_index", 0);
                 part.indices = yamlReadOr<std::vector<int>>(part_node, "indices", {});
+                part.source_order = yamlReadOr<std::string>(part_node, "source_order", "");
+                part.target_order = yamlReadOr<std::string>(part_node, "target_order", "");
                 feature.parts.push_back(std::move(part));
             }
         }
@@ -175,6 +177,10 @@ void validateComputedFeatures(
             if (part.body_quat_index < 0)
             {
                 throw std::runtime_error(part_name + " body_quat_index must be >= 0");
+            }
+            if (part.source_order.empty() != part.target_order.empty())
+            {
+                throw std::runtime_error(part_name + " source_order and target_order must be set together");
             }
         }
     }

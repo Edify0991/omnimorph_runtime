@@ -32,18 +32,12 @@ observation_manifest:
       op: concat
       parts:
         - source: reference_joint_pos
-          indices: [
-            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
-            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
-            24, 18, 25, 19, 26, 20, 27, 21, 28
-          ]
+          source_order: robot_global_joint_order
+          target_order: reference_joint_order
           dim: 29
         - source: reference_joint_vel
-          indices: [
-            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
-            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
-            24, 18, 25, 19, 26, 20, 27, 21, 28
-          ]
+          source_order: robot_global_joint_order
+          target_order: reference_joint_order
           dim: 29
         - source: reference_anchor_ori6d
           body_quat_index: 9
@@ -51,25 +45,16 @@ observation_manifest:
         - source: base_ang_vel
           dim: 3
         - source: joint_pos_rel
-          indices: [
-            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
-            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
-            24, 18, 25, 19, 26, 20, 27, 21, 28
-          ]
+          source_order: obs_joint_order
+          target_order: reference_joint_order
           dim: 29
         - source: joint_vel
-          indices: [
-            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
-            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
-            24, 18, 25, 19, 26, 20, 27, 21, 28
-          ]
+          source_order: obs_joint_order
+          target_order: reference_joint_order
           dim: 29
         - source: last_action
-          indices: [
-            0, 6, 12, 1, 7, 13, 2, 8, 14, 3,
-            9, 15, 22, 4, 10, 16, 23, 5, 11, 17,
-            24, 18, 25, 19, 26, 20, 27, 21, 28
-          ]
+          source_order: action_joint_order
+          target_order: reference_joint_order
           dim: 29
   terms:
     - name: feature
