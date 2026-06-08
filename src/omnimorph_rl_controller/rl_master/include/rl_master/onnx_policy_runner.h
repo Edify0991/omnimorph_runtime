@@ -16,6 +16,7 @@ struct PolicyInferenceResult
 {
     std::vector<float> action;
     std::unordered_map<std::string, std::vector<float>> extra_outputs;
+    double inference_time_ms = 0.0;
 };
 
 class OnnxPolicyRunner
@@ -46,6 +47,7 @@ public:
 
     const std::vector<std::string> &input_names() const { return input_names_; }
     const std::vector<std::string> &output_names() const { return output_names_; }
+    const std::vector<std::string> &effectiveExecutionProviders() const { return effective_execution_providers_; }
     const std::unordered_map<std::string, std::string> &customMetadata() const { return custom_metadata_; }
     std::string summary() const;
 
@@ -86,6 +88,7 @@ private:
         const std::unordered_map<std::string, std::vector<float>> &features,
         bool advance_time_step);
     void validateModelMetadata();
+    void configureExecutionProviders();
 
     Ort::Env &env_;
     std::string model_path_;
@@ -97,6 +100,7 @@ private:
 
     std::vector<std::string> input_names_;
     std::vector<std::string> output_names_;
+    std::vector<std::string> effective_execution_providers_;
 
     int action_output_index_ = -1;
     int action_output_selected_index_ = -1;

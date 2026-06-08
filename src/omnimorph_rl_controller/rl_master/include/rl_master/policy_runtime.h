@@ -49,6 +49,7 @@ public:
     virtual std::unordered_map<std::string, std::vector<float>> prefetchExtraOutputs(
         const std::vector<std::string> &extra_output_names,
         const PolicyExecutionRequest &request) = 0;
+    virtual std::vector<std::string> effectiveExecutionProviders() const { return {}; }
     virtual std::string summary() const = 0;
 };
 
@@ -68,6 +69,7 @@ public:
         const std::vector<std::string> &extra_output_names,
         const PolicyExecutionRequest &request) override;
     const std::unordered_map<std::string, std::string> &customMetadata() const;
+    std::vector<std::string> effectiveExecutionProviders() const override;
     std::string summary() const override;
 
 private:

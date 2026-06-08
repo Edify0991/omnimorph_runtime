@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
+#include <cctype>
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
@@ -28,6 +30,16 @@ std::string trimCopy(const std::string &input)
         --end;
     }
     return input.substr(begin, end - begin);
+}
+
+std::string lowerCopy(std::string input)
+{
+    std::transform(
+        input.begin(),
+        input.end(),
+        input.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return input;
 }
 
 std::vector<std::string> parseCsvList(const std::string &input)
@@ -101,6 +113,7 @@ void OnnxPolicyRunner::init()
     session_options_.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
     session_options_.SetIntraOpNumThreads(std::max(1, cfg_.onnx_intra_threads));
     session_options_.SetInterOpNumThreads(std::max(1, cfg_.onnx_inter_threads));
+    configureExecutionProviders();
 
     session_ = std::make_unique<Ort::Session>(env_, model_path_.c_str(), session_options_);
 
@@ -416,6 +429,7 @@ PolicyInferenceResult OnnxPolicyRunner::runSelectedOutputs(
         return {};
     }
 
+    const auto inference_begin = std::chrono::steady_clock::now();
     auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     std::vector<const char *> input_name_ptrs;
     std::vector<Ort::Value> input_tensors;
@@ -468,6 +482,7 @@ PolicyInferenceResult OnnxPolicyRunner::runSelectedOutputs(
         output_name_ptrs.push_back(name.c_str());
     }
 
+    const auto ort_run_begin = std::chrono::steady_clock::now();
     auto output_tensors = session_->Run(
         Ort::RunOptions{nullptr},
         input_name_ptrs.data(),
@@ -475,6 +490,7 @@ PolicyInferenceResult OnnxPolicyRunner::runSelectedOutputs(
         input_tensors.size(),
         output_name_ptrs.data(),
         output_name_ptrs.size());
+    const auto ort_run_end = std::chrono::steady_clock::now();
 
     PolicyInferenceResult result;
     int action_output_selected_index = -1;
@@ -560,7 +576,143 @@ PolicyInferenceResult OnnxPolicyRunner::runSelectedOutputs(
     {
         ++time_step_;
     }
+    const auto inference_end = std::chrono::steady_clock::now();
+    if (cfg_.onnx_log_inference_timing)
+    {
+        const double inference_time_ms =
+            std::chrono::duration<double, std::milli>(inference_end - inference_begin).count();
+        const double ort_run_time_ms =
+            std::chrono::duration<double, std::milli>(ort_run_end - ort_run_begin).count();
+        result.inference_time_ms = inference_time_ms;
+        result.extra_outputs["__inference_time_ms"] = {static_cast<float>(inference_time_ms)};
+        result.extra_outputs["__ort_run_time_ms"] = {static_cast<float>(ort_run_time_ms)};
+    }
     return result;
+}
+
+void OnnxPolicyRunner::configureExecutionProviders()
+{
+    effective_execution_providers_.clear();
+    std::vector<std::string> requested = cfg_.onnx_execution_providers;
+    if (requested.empty())
+    {
+        requested.push_back("cpu");
+    }
+
+    std::vector<std::string> available;
+    try
+    {
+        available = Ort::GetAvailableProviders();
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "[" << policy_tag_ << "] failed to query ONNX Runtime providers: "
+                  << e.what() << std::endl;
+    }
+
+    auto hasAvailable = [&](const std::string &provider_name) {
+        return available.empty() ||
+               std::find(available.begin(), available.end(), provider_name) != available.end();
+    };
+    auto recordProvider = [&](const std::string &provider_name) {
+        if (std::find(effective_execution_providers_.begin(), effective_execution_providers_.end(), provider_name) ==
+            effective_execution_providers_.end())
+        {
+            effective_execution_providers_.push_back(provider_name);
+        }
+    };
+    auto handleProviderError = [&](const std::string &provider_name, const std::exception &e) {
+        const std::string message =
+            "[" + policy_tag_ + "] failed to append ONNX Runtime provider '" +
+            provider_name + "': " + e.what();
+        if (cfg_.onnx_fail_on_provider_error)
+        {
+            throw std::runtime_error(message);
+        }
+        std::cerr << message << "; falling back to next provider" << std::endl;
+    };
+
+    for (const auto &raw_provider : requested)
+    {
+        const std::string provider = lowerCopy(trimCopy(raw_provider));
+        if (provider.empty())
+        {
+            continue;
+        }
+        if (provider == "cpu" || provider == "cpuexecutionprovider")
+        {
+            recordProvider("CPUExecutionProvider");
+            continue;
+        }
+        if (provider == "cuda" || provider == "cudaexecutionprovider")
+        {
+            if (!hasAvailable("CUDAExecutionProvider"))
+            {
+                const std::runtime_error e("provider is not listed by Ort::GetAvailableProviders()");
+                handleProviderError("CUDAExecutionProvider", e);
+                continue;
+            }
+            try
+            {
+                OrtCUDAProviderOptions cuda_options{};
+                cuda_options.device_id = cfg_.device_id;
+                cuda_options.arena_extend_strategy = cfg_.onnx_cuda_arena_extend_strategy;
+                cuda_options.do_copy_in_default_stream = cfg_.onnx_cuda_do_copy_in_default_stream ? 1 : 0;
+                session_options_.AppendExecutionProvider_CUDA(cuda_options);
+                recordProvider("CUDAExecutionProvider");
+            }
+            catch (const std::exception &e)
+            {
+                handleProviderError("CUDAExecutionProvider", e);
+            }
+            continue;
+        }
+        if (provider == "tensorrt" ||
+            provider == "trt" ||
+            provider == "tensorrtexecutionprovider")
+        {
+            if (!hasAvailable("TensorrtExecutionProvider"))
+            {
+                const std::runtime_error e("provider is not listed by Ort::GetAvailableProviders()");
+                handleProviderError("TensorrtExecutionProvider", e);
+                continue;
+            }
+            try
+            {
+                OrtTensorRTProviderOptions trt_options{};
+                trt_options.device_id = cfg_.device_id;
+                trt_options.trt_max_partition_iterations = 1000;
+                trt_options.trt_min_subgraph_size = 1;
+                trt_options.trt_max_workspace_size =
+                    static_cast<size_t>(std::max<int64_t>(0, cfg_.onnx_tensorrt_max_workspace_size));
+                trt_options.trt_fp16_enable = cfg_.onnx_tensorrt_fp16_enable ? 1 : 0;
+                trt_options.trt_int8_enable = cfg_.onnx_tensorrt_int8_enable ? 1 : 0;
+                trt_options.trt_engine_cache_enable = cfg_.onnx_tensorrt_engine_cache_enable ? 1 : 0;
+                trt_options.trt_engine_cache_path = cfg_.onnx_tensorrt_engine_cache_path.c_str();
+                session_options_.AppendExecutionProvider_TensorRT(trt_options);
+                recordProvider("TensorrtExecutionProvider");
+            }
+            catch (const std::exception &e)
+            {
+                handleProviderError("TensorrtExecutionProvider", e);
+            }
+            continue;
+        }
+
+        const std::runtime_error e("unsupported provider token; expected cpu/cuda/tensorrt");
+        handleProviderError(raw_provider, e);
+    }
+
+    recordProvider("CPUExecutionProvider");
+    std::cout << "[" << policy_tag_ << "] ONNX Runtime requested providers: "
+              << joinStrings(requested) << std::endl;
+    if (!available.empty())
+    {
+        std::cout << "[" << policy_tag_ << "] ONNX Runtime available providers: "
+                  << joinStrings(available) << std::endl;
+    }
+    std::cout << "[" << policy_tag_ << "] ONNX Runtime effective provider chain: "
+              << joinStrings(effective_execution_providers_) << std::endl;
 }
 
 std::vector<float> OnnxPolicyRunner::resolveInputData(
@@ -911,6 +1063,7 @@ std::string OnnxPolicyRunner::summary() const
         }
     }
     oss << ", action_output=" << output_names_[static_cast<size_t>(action_output_index_)];
+    oss << "\n  execution_providers: " << joinStrings(effective_execution_providers_);
     return oss.str();
 }
 

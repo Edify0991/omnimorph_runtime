@@ -161,7 +161,7 @@ logging:
     include_policy_action: true
     include_motor_io: true
     include_joint_targets: true
-    include_external_observations: false
+    include_external_observations: true
   events:
     enabled: true
   reference_motion:

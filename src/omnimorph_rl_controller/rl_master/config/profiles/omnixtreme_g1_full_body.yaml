@@ -380,6 +380,16 @@ omnixtreme_g1_full_body:
       body_orientation_representation: rot6
   onnx_intra_threads: 1
   onnx_inter_threads: 1
+  onnx_execution_providers: [tensorrt, cuda, cpu]
+  onnx_fail_on_provider_error: false
+  onnx_log_inference_timing: true
+  onnx_cuda_arena_extend_strategy: 1
+  onnx_cuda_do_copy_in_default_stream: true
+  onnx_tensorrt_fp16_enable: true
+  onnx_tensorrt_int8_enable: false
+  onnx_tensorrt_engine_cache_enable: true
+  onnx_tensorrt_engine_cache_path: /tmp/omnixtreme_ort_trt_cache
+  onnx_tensorrt_max_workspace_size: 2147483648
   policy_io:
     obs_input_name: real_obs
     action_output_name: action

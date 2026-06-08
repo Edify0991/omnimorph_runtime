@@ -1080,6 +1080,16 @@ public:
 
     int onnx_intra_threads = 1;
     int onnx_inter_threads = 1;
+    std::vector<std::string> onnx_execution_providers{"cpu"};
+    bool onnx_fail_on_provider_error = false;
+    bool onnx_log_inference_timing = true;
+    int onnx_cuda_arena_extend_strategy = 1;
+    bool onnx_cuda_do_copy_in_default_stream = true;
+    bool onnx_tensorrt_fp16_enable = true;
+    bool onnx_tensorrt_int8_enable = false;
+    bool onnx_tensorrt_engine_cache_enable = true;
+    std::string onnx_tensorrt_engine_cache_path = ".ort_trt_cache";
+    int64_t onnx_tensorrt_max_workspace_size = 2147483648LL;
     std::string obs_input_name = "obs";
     std::string action_output_name = "actions";
     std::string time_step_input_name = "time_step";
@@ -2076,6 +2086,26 @@ public:
 
             onnx_intra_threads = yamlReadOr<int>(cfg, "onnx_intra_threads", 1);
             onnx_inter_threads = yamlReadOr<int>(cfg, "onnx_inter_threads", 1);
+            onnx_execution_providers =
+                yamlReadOr<std::vector<std::string>>(cfg, "onnx_execution_providers", onnx_execution_providers);
+            onnx_fail_on_provider_error =
+                yamlReadOr<bool>(cfg, "onnx_fail_on_provider_error", onnx_fail_on_provider_error);
+            onnx_log_inference_timing =
+                yamlReadOr<bool>(cfg, "onnx_log_inference_timing", onnx_log_inference_timing);
+            onnx_cuda_arena_extend_strategy =
+                yamlReadOr<int>(cfg, "onnx_cuda_arena_extend_strategy", onnx_cuda_arena_extend_strategy);
+            onnx_cuda_do_copy_in_default_stream =
+                yamlReadOr<bool>(cfg, "onnx_cuda_do_copy_in_default_stream", onnx_cuda_do_copy_in_default_stream);
+            onnx_tensorrt_fp16_enable =
+                yamlReadOr<bool>(cfg, "onnx_tensorrt_fp16_enable", onnx_tensorrt_fp16_enable);
+            onnx_tensorrt_int8_enable =
+                yamlReadOr<bool>(cfg, "onnx_tensorrt_int8_enable", onnx_tensorrt_int8_enable);
+            onnx_tensorrt_engine_cache_enable =
+                yamlReadOr<bool>(cfg, "onnx_tensorrt_engine_cache_enable", onnx_tensorrt_engine_cache_enable);
+            onnx_tensorrt_engine_cache_path =
+                yamlReadOr<std::string>(cfg, "onnx_tensorrt_engine_cache_path", onnx_tensorrt_engine_cache_path);
+            onnx_tensorrt_max_workspace_size =
+                yamlReadOr<int64_t>(cfg, "onnx_tensorrt_max_workspace_size", onnx_tensorrt_max_workspace_size);
 
             const YAML::Node policy_io_cfg = cfg["policy_io"] ? cfg["policy_io"] : cfg;
             obs_input_name = yamlReadOr<std::string>(policy_io_cfg, "obs_input_name", "obs");

@@ -1329,6 +1329,10 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
         oss << "\"obs_stack_n\":" << cfg.obs_stack_N << ",";
         oss << "\"policy_hz\":" << cfg.RL_control_f << ",";
         oss << "\"solver_control_hz\":" << cfg.solver_control_hz << ",";
+        oss << "\"onnx_execution_providers\":";
+        appendStringVector(oss, cfg.onnx_execution_providers);
+        oss << ",";
+        oss << "\"onnx_log_inference_timing\":" << (cfg.onnx_log_inference_timing ? "true" : "false") << ",";
         oss << "\"motor_io_backend\":";
         appendQuoted(oss, cfg.motor_io_backend);
         oss << ",";

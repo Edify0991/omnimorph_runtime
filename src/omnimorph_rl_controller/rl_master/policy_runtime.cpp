@@ -106,6 +106,11 @@ const std::unordered_map<std::string, std::string> &OnnxPolicyAdapter::customMet
     return runner_->customMetadata();
 }
 
+std::vector<std::string> OnnxPolicyAdapter::effectiveExecutionProviders() const
+{
+    return runner_ ? runner_->effectiveExecutionProviders() : std::vector<std::string>{};
+}
+
 std::string OnnxPolicyAdapter::summary() const
 {
     return runner_->summary();
@@ -220,6 +225,7 @@ PolicyGroupExecutionResult ResidualAdditiveInferenceStrategy::execute(
         {
             output.action[i] += weight * residual_result.action[i];
         }
+        output.extra_outputs[node.name + "/action"] = residual_result.action;
         for (auto &kv : residual_result.extra_outputs)
         {
             output.extra_outputs[node.name + "/" + kv.first] = std::move(kv.second);

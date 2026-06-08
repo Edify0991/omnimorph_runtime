@@ -3132,9 +3132,71 @@ rl_master::RobotCommandData RL_controller::step(
     latest_log_snapshot_.joint_target_tau = robot->joint_target_tau;
     latest_log_snapshot_.observation = deploy_output.enable_policy ? obs : std::vector<float>{};
     latest_log_snapshot_.policy_action = deploy_output.enable_policy ? action : std::vector<float>{};
-    latest_log_snapshot_.named_features =
-        deploy_output.enable_policy ? latest_observation_feature_context_.named_features
-                                    : std::unordered_map<std::string, std::vector<float>>{};
+    latest_log_snapshot_.named_features.clear();
+    if (deploy_output.enable_policy)
+    {
+        latest_log_snapshot_.named_features = latest_observation_feature_context_.named_features;
+        latest_log_snapshot_.named_features["policy_action_final"] = action;
+
+        const std::string policy_output_prefix = "policy_output/";
+        for (const auto &kv : latest_policy_extra_outputs_)
+        {
+            latest_log_snapshot_.named_features[policy_output_prefix + kv.first] = kv.second;
+        }
+
+        const std::string active_prefix = activeModeProfile().tag + "/";
+        auto addPolicyOutputAlias = [&](const std::string &source_suffix, const std::string &alias) {
+            const auto it = latest_policy_extra_outputs_.find(active_prefix + source_suffix);
+            if (it != latest_policy_extra_outputs_.end())
+            {
+                latest_log_snapshot_.named_features[alias] = it->second;
+            }
+        };
+        addPolicyOutputAlias("main/action", "base_action");
+        addPolicyOutputAlias("main/__inference_time_ms", "base_inference_time_ms");
+        addPolicyOutputAlias("main/__ort_run_time_ms", "base_ort_run_time_ms");
+        addPolicyOutputAlias("residual/action", "residual_action");
+        addPolicyOutputAlias("residual/__inference_time_ms", "residual_inference_time_ms");
+        addPolicyOutputAlias("residual/__ort_run_time_ms", "residual_ort_run_time_ms");
+
+        auto providerFlags = [](const std::vector<std::string> &providers) {
+            std::vector<float> flags(3, 0.0f); // [TensorRT, CUDA, CPU]
+            for (const auto &provider_name : providers)
+            {
+                const std::string provider = toLowerCopy(provider_name);
+                if (provider.find("tensorrt") != std::string::npos)
+                {
+                    flags[0] = 1.0f;
+                }
+                if (provider.find("cuda") != std::string::npos)
+                {
+                    flags[1] = 1.0f;
+                }
+                if (provider.find("cpu") != std::string::npos)
+                {
+                    flags[2] = 1.0f;
+                }
+            }
+            return flags;
+        };
+        for (const auto &node : activePolicyGroup().runners)
+        {
+            if (!node.runner)
+            {
+                continue;
+            }
+            const std::vector<float> flags = providerFlags(node.runner->effectiveExecutionProviders());
+            latest_log_snapshot_.named_features["policy_provider_flags/" + node.name] = flags;
+            if (node.name == active_prefix + "main")
+            {
+                latest_log_snapshot_.named_features["base_provider_flags"] = flags;
+            }
+            else if (node.name == active_prefix + "residual")
+            {
+                latest_log_snapshot_.named_features["residual_provider_flags"] = flags;
+            }
+        }
+    }
     latest_log_snapshot_.external_feature_names.clear();
     for (const auto &spec : activePolicyCfg().external_observations)
     {
