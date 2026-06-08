@@ -154,6 +154,7 @@ engineaigym_walk_lower_body:
   enable_state_telemetry: true
   state_telemetry_hz: 50.0
   startup_completion_action: hold
+  zeroing_run_mode: csp
   zeroing_duration_s: 5.0
   zeroing_position_tolerance: 0.8
   zeroing_velocity_tolerance: 0.8

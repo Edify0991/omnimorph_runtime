@@ -130,6 +130,7 @@ private:
     std::vector<float> installed_joint_tau_limits_;
     std::vector<float> installed_motor_torque_limits_;
     std::vector<MotorRunMode> installed_joint_configured_run_modes_;
+    MotorRunMode zeroing_run_mode_ = RUN_MODE_CSP;
     int last_mode_reload_failure_id_ = std::numeric_limits<int>::min();
 
     std::vector<rl_master::filters::MovingAverageFilter> velocity_filters_;

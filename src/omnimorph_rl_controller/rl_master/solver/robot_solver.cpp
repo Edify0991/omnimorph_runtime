@@ -25,6 +25,31 @@ namespace
 {
 constexpr long kNanosecondsPerSecond = 1'000'000'000L;
 
+MotorRunMode parseRunModeToken(
+    const std::string &context,
+    const std::string &raw_mode)
+{
+    std::string mode = raw_mode;
+    std::transform(
+        mode.begin(),
+        mode.end(),
+        mode.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (mode == "csp")
+    {
+        return RUN_MODE_CSP;
+    }
+    if (mode == "cst")
+    {
+        return RUN_MODE_CST;
+    }
+    if (mode == "r1")
+    {
+        return RUN_MODE_R1;
+    }
+    throw std::runtime_error(context + " must be one of: csp, cst, r1");
+}
+
 bool parseTaggedModeId(
     const std::map<std::string, std::string> &tags,
     const char *key,
@@ -666,24 +691,7 @@ void RobotSolver::cacheInstalledZeroPoseFromCfg()
 void RobotSolver::cacheInstalledJointRunModesFromCfg()
 {
     installed_joint_configured_run_modes_.assign(installed_joint_names_.size(), RUN_MODE_CSP);
-
-    auto parseConfiguredRunMode = [](const std::string &joint_name, const std::string &raw_mode) -> MotorRunMode {
-        if (raw_mode == "csp")
-        {
-            return RUN_MODE_CSP;
-        }
-        if (raw_mode == "cst")
-        {
-            return RUN_MODE_CST;
-        }
-        if (raw_mode == "r1")
-        {
-            return RUN_MODE_R1;
-        }
-        throw std::runtime_error(
-            "installed_joint_run_modes for joint '" + joint_name +
-            "' must be one of: csp, cst, r1");
-    };
+    zeroing_run_mode_ = parseRunModeToken("zeroing_run_mode", sim2real_cfg_.zeroing_run_mode);
 
     for (size_t i = 0; i < installed_joint_names_.size(); ++i)
     {
@@ -694,7 +702,9 @@ void RobotSolver::cacheInstalledJointRunModesFromCfg()
             throw std::runtime_error(
                 "installed_joint_run_modes missing installed joint: " + joint_name);
         }
-        installed_joint_configured_run_modes_[i] = parseConfiguredRunMode(joint_name, it->second);
+        installed_joint_configured_run_modes_[i] = parseRunModeToken(
+            "installed_joint_run_modes for joint '" + joint_name + "'",
+            it->second);
     }
 }
 
@@ -1053,10 +1063,22 @@ void RobotSolver::applyRuntimeCommand(
             }
         }
     }
-    else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kCommandStream ||
-             runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCsp)
+    else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kCommandStream)
     {
-        // Position stream: keep joints in CSP and track commanded positions.
+        // Lifecycle position stream, primarily zeroing: track commanded positions
+        // with the profile-selected run mode.
+        const size_t installed_count = installedJointCount();
+        for (size_t i = 0; i < installed_count; ++i)
+        {
+            joint_cmd_[i].q = commandQAt(i);
+            joint_cmd_[i].dq = 0.0f;
+            joint_cmd_[i].tau = 0.0f;
+            joint_cmd_[i].mode = zeroing_run_mode_;
+        }
+    }
+    else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestCsp)
+    {
+        // Explicit CSP test stream: keep this independent from zeroing_run_mode.
         const size_t installed_count = installedJointCount();
         for (size_t i = 0; i < installed_count; ++i)
         {
@@ -1267,6 +1289,9 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
         oss << "\"solver_control_hz\":" << cfg.solver_control_hz << ",";
         oss << "\"motor_io_backend\":";
         appendQuoted(oss, cfg.motor_io_backend);
+        oss << ",";
+        oss << "\"zeroing_run_mode\":";
+        appendQuoted(oss, cfg.zeroing_run_mode);
         oss << ",";
         oss << "\"installed_joint_run_modes\":";
         appendStringMap(oss, cfg.installed_joint_run_modes);

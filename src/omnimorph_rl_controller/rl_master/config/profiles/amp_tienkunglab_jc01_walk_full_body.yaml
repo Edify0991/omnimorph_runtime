@@ -246,6 +246,7 @@ amp_tienkunglab_jc01_walk_full_body:
       body_quat_frame: world
       body_orientation_representation: rot6
   startup_completion_action: hold
+  zeroing_run_mode: csp
   prefill_observation_history_on_running_start: false
   zeroing_duration_s: 5.0
   zeroing_position_tolerance: 100.0

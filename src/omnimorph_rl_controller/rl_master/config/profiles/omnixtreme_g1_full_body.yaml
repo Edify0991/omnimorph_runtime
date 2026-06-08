@@ -446,6 +446,7 @@ omnixtreme_g1_full_body:
   enable_state_telemetry: true
   state_telemetry_hz: 50.0
   startup_completion_action: hold
+  zeroing_run_mode: r1
   policy_startup_warmup_steps: 0
   seed_running_start_observation_from_reference: false
   zeroing_duration_s: 5.0

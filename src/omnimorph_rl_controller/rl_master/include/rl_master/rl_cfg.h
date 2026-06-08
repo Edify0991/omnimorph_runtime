@@ -1133,6 +1133,7 @@ public:
     int policy_startup_warmup_steps = 0;
     bool prefill_observation_history_on_running_start = false;
     bool seed_running_start_observation_from_reference = false;
+    std::string zeroing_run_mode = "csp";
     double zeroing_duration_s = 2.0;
     double zeroing_position_tolerance = 0.05;
     double zeroing_velocity_tolerance = 0.2;
@@ -2830,6 +2831,16 @@ public:
                 yamlReadOr<bool>(cfg, "prefill_observation_history_on_running_start", false);
             seed_running_start_observation_from_reference =
                 yamlReadOr<bool>(cfg, "seed_running_start_observation_from_reference", false);
+            zeroing_run_mode = yamlReadOr<std::string>(cfg, "zeroing_run_mode", "csp");
+            std::transform(
+                zeroing_run_mode.begin(),
+                zeroing_run_mode.end(),
+                zeroing_run_mode.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (zeroing_run_mode != "csp" && zeroing_run_mode != "r1")
+            {
+                throw std::runtime_error("zeroing_run_mode must be 'csp' or 'r1'");
+            }
             zeroing_duration_s = yamlReadOr<double>(cfg, "zeroing_duration_s", 2.0);
             zeroing_position_tolerance = yamlReadOr<double>(cfg, "zeroing_position_tolerance", 0.05);
             if (zeroing_position_tolerance < 0.0)
@@ -3007,6 +3018,7 @@ public:
         std::cout << "Control Mode: " << control_mode << std::endl;
         std::cout << "Installed Joint Run Modes: " << installed_joint_run_modes.size() << std::endl;
         std::cout << "Startup Completion Action: " << startup_completion_action << std::endl;
+        std::cout << "Zeroing Run Mode: " << zeroing_run_mode << std::endl;
         std::cout << "Policy Frequency: " << RL_control_f << std::endl;
         std::cout << "Solver Control Frequency: " << solver_control_hz << std::endl;
         std::cout << "Sub Models: " << sub_models.size() << std::endl;
