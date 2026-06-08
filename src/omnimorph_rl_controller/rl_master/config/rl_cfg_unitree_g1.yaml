@@ -123,6 +123,7 @@ config_files:
   beyondmimic_g1_walk_full_body_wo_state_estimation: profiles/beyondmimic_g1_walk_full_body_wo_state_estimation.yaml
   omnixtreme_g1_full_body: profiles/omnixtreme_g1_full_body.yaml
 path_variables:
+  robot_assets_dir: ${ROBOT_ASSETS_DIR}
   g1_pinocchio_urdf: ${G1_PINOCCHIO_URDF}
   g1_scene_xml: ${G1_SCENE_XML}
 

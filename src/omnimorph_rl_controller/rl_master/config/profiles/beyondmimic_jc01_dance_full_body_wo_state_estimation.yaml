@@ -2,7 +2,7 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
   policy_name: beyondmimic_jc01_dance_wo_state_estimation
   policy_family: beyondmimic
   policy_adapter: onnx
-  policy_file: policies/beyondmimic_jc01_taichi_wo_state_estimation.onnx
+  policy_file: policies/beyondmimic_jc01_taichi_wo_state_estimation_short.onnx
   inference_strategy: sync_step
   # For chunked/generative policies, switch to:
   # inference_strategy: chunked_receding

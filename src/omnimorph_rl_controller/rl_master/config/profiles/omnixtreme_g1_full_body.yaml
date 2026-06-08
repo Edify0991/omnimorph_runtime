@@ -245,7 +245,7 @@ omnixtreme_g1_full_body:
   reference_motion_sampling: step
   reference_motion_step_offset: 1
   reference_motion_source: file
-  reference_motion_path: /home/edify/Code/OmniXtreme/policy/motion.npz
+  reference_motion_path: /home/edify/Code/OmniXtreme/policy/motion_arms_open_aligned_68s.npz
   reference_anchor_current_source: fk_onnx
   reference_anchor_fk_path: /home/edify/Code/OmniXtreme/policy/fk_trt.onnx
   reference_anchor_fk_joint_indices: [12, 13, 14]

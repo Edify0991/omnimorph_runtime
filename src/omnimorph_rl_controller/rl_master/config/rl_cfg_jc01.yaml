@@ -153,9 +153,6 @@ path_variables:
   jc01_pinocchio_urdf: ${robot_assets_dir}/JC01-URDF.urdf
   jc01_scene_xml: ${robot_assets_dir}/scene_jingchu01.xml
   jc01_isaaclab_locomotion_newpd_sim2sim_xml: ../../../omnimorph_sim2sim/mujoco_sim2sim/models/jingchu01_isaaclab_locomotion_newpd_sim2sim.xml
-  jc01_legs_xml: ${robot_assets_dir}/jingchu01_legs.xml
-  jc01_fullbody_engineai_walk_xml: ${robot_assets_dir}/jc01_fullbody_engineai_walk_sim2sim.xml
-  jc01_default_sim_xml: ${robot_assets_dir}/jingchu01_new_0304.xml
 runtime_process:
   controller:
     enabled: true
