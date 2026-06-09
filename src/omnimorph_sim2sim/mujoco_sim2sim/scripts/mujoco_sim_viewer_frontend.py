@@ -126,9 +126,6 @@ class MujocoViewerFrontend(Node):
         self.video_renderer = None
         self.video_next_sim_time: Optional[float] = None
         self.video_output_resolved = self._resolve_video_output_path()
-        self.video_frame_count = 0
-        self.video_next_sim_time: Optional[float] = None
-        self.video_drop_warned = False
 
         qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -309,18 +306,6 @@ class MujocoViewerFrontend(Node):
         self.video_renderer.update_scene(self.data, camera=camera)
         frame = self.video_renderer.render()
         self.video_writer.append_data(frame)
-        self.video_frame_count += 1
-
-    def _record_video_frame_if_due(self, viewer=None) -> None:
-        if not self.enable_video_recording:
-            return
-        sim_time = float(self.data.time)
-        if self.video_next_sim_time is None:
-            self.video_next_sim_time = sim_time
-        period = 1.0 / self.video_fps
-        while sim_time + 1.0e-9 >= self.video_next_sim_time:
-            self._record_video_frame(viewer)
-            self.video_next_sim_time += period
 
     def _record_video_frame_if_due(self, viewer=None) -> None:
         if not self.enable_video_recording:
@@ -337,11 +322,7 @@ class MujocoViewerFrontend(Node):
         if self.video_writer is not None:
             self.video_writer.close()
             self.video_writer = None
-            duration_sec = self.video_frame_count / self.video_fps if self.video_fps > 0.0 else 0.0
-            self.get_logger().info(
-                f"video recording saved: {self.video_output_resolved} "
-                f"frames={self.video_frame_count} duration={duration_sec:.2f}s"
-            )
+            self.get_logger().info(f"video recording saved: {self.video_output_resolved}")
         if self.video_renderer is not None:
             close_fn = getattr(self.video_renderer, "close", None)
             if callable(close_fn):
