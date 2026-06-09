@@ -348,6 +348,7 @@ void MujocoSimBridge::controlLoopTick()
     const bool allow_inactive_step_for_hold_settle = (hold_settle_ticks_remaining_ > 0);
     if (reference_pose_replay_applied)
     {
+        recordVideoFrameIfDue();
         viewer_step_once_ = false;
     }
     else if (should_step &&
@@ -399,6 +400,7 @@ void MujocoSimBridge::controlLoopTick()
                 }
             }
             enforceBaseLock();
+            recordVideoFrameIfDue();
         }
         mj_forward(model_, data_);
         viewer_step_once_ = false;
@@ -415,6 +417,7 @@ void MujocoSimBridge::controlLoopTick()
     {
         enforceBaseLock();
         mj_forward(model_, data_);
+        recordVideoFrameIfDue();
     }
 
     const rl_master::RobotStateData post_state = buildRobotState();

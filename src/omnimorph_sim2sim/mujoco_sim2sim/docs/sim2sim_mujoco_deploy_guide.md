@@ -164,7 +164,28 @@ For a complete topic summary across fused and Python frontend paths, see:
 
 - [topic_interface_matrix.md](${OMNIMORPH_RUNTIME_ROOT}/src/omnimorph_rl_controller/rl_master/docs/topic_interface_matrix.md)
 
-## 9. JC01 Legs `engineai_walk` Preset
+## 9. Native MP4 Recording
+
+Use the C++ recorder for sim2sim videos. It renders the backend MuJoCo state
+directly and samples frames by physical simulation time, so Python GUI frame
+drops and sim speed changes do not make the MP4 play too fast.
+
+```bash
+ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
+  model_path:=/abs/path/to/robot.xml \
+  backend:=cpp \
+  enable_video_recording:=true \
+  video_output_name:=jc01_walk_check.mp4
+```
+
+Recordings are written under `/tmp/omnimorph_sim2sim_videos` by default. Leave
+`video_output_name` empty to generate `mujoco_sim2sim_YYYYMMDD_HHMMSS.mp4`.
+
+The recorder uses `ffmpeg` from `video_ffmpeg_path` and can run without showing
+the native viewer window. The Python viewer frontend should now be treated as a
+display/inspection UI rather than the primary recording path.
+
+## 10. JC01 Legs `engineai_walk` Preset
 
 For the JC01 legs-only `engineai_walk` policy with Python GUI frontend, use:
 

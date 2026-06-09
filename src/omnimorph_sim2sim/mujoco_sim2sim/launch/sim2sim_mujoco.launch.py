@@ -133,6 +133,36 @@ def generate_launch_description():
         default_value="MuJoCo Sim2Sim Viewer",
         description="Viewer window title.",
     )
+    enable_video_recording_arg = DeclareLaunchArgument(
+        "enable_video_recording",
+        default_value="false",
+        description="Record native C++ MuJoCo MP4 video using physical simulation time.",
+    )
+    video_output_dir_arg = DeclareLaunchArgument(
+        "video_output_dir",
+        default_value="/tmp/omnimorph_sim2sim_videos",
+        description="Fixed directory for native C++ sim2sim MP4 recordings.",
+    )
+    video_output_name_arg = DeclareLaunchArgument(
+        "video_output_name",
+        default_value="",
+        description="Optional MP4 file name inside video_output_dir. Empty generates a timestamped name.",
+    )
+    video_fps_arg = DeclareLaunchArgument(
+        "video_fps",
+        default_value="60.0",
+        description="Native C++ video frame rate in physical simulation seconds.",
+    )
+    video_width_arg = DeclareLaunchArgument(
+        "video_width",
+        default_value="1280",
+        description="Native C++ video width in pixels.",
+    )
+    video_height_arg = DeclareLaunchArgument(
+        "video_height",
+        default_value="720",
+        description="Native C++ video height in pixels.",
+    )
     enable_state_telemetry_arg = DeclareLaunchArgument(
         "enable_state_telemetry",
         default_value="true",
@@ -178,6 +208,12 @@ def generate_launch_description():
             "viewer_width": ParameterValue(LaunchConfiguration("viewer_width"), value_type=int),
             "viewer_height": ParameterValue(LaunchConfiguration("viewer_height"), value_type=int),
             "viewer_title": LaunchConfiguration("viewer_title"),
+            "enable_video_recording": ParameterValue(LaunchConfiguration("enable_video_recording"), value_type=bool),
+            "video_output_dir": LaunchConfiguration("video_output_dir"),
+            "video_output_name": LaunchConfiguration("video_output_name"),
+            "video_fps": ParameterValue(LaunchConfiguration("video_fps"), value_type=float),
+            "video_width": ParameterValue(LaunchConfiguration("video_width"), value_type=int),
+            "video_height": ParameterValue(LaunchConfiguration("video_height"), value_type=int),
             "enable_state_telemetry": ParameterValue(LaunchConfiguration("enable_state_telemetry"), value_type=bool),
             "state_telemetry_hz": ParameterValue(LaunchConfiguration("state_telemetry_hz"), value_type=float),
         },
@@ -252,6 +288,12 @@ def generate_launch_description():
             viewer_width_arg,
             viewer_height_arg,
             viewer_title_arg,
+            enable_video_recording_arg,
+            video_output_dir_arg,
+            video_output_name_arg,
+            video_fps_arg,
+            video_width_arg,
+            video_height_arg,
             enable_state_telemetry_arg,
             state_telemetry_hz_arg,
             show_left_ui_arg,

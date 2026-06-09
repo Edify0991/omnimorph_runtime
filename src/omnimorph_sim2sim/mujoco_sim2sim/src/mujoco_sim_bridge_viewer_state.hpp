@@ -51,4 +51,60 @@ struct MujocoSimBridge::ViewerState
 };
 #endif
 
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+struct MujocoSimBridge::VideoRecorderState
+{
+    GLFWwindow *window = nullptr;
+    mjvCamera camera;
+    mjvOption option;
+    mjvScene scene;
+    mjrContext context;
+    FILE *pipe = nullptr;
+    std::vector<unsigned char> readback_rgb;
+    std::vector<unsigned char> frame_rgb;
+    std::string output_path;
+    bool owns_glfw = false;
+    bool scene_initialized = false;
+    bool context_initialized = false;
+
+    VideoRecorderState()
+    {
+        mjv_defaultCamera(&camera);
+        mjv_defaultOption(&option);
+        mjv_defaultScene(&scene);
+        mjr_defaultContext(&context);
+    }
+
+    ~VideoRecorderState()
+    {
+        if (pipe)
+        {
+            pclose(pipe);
+            pipe = nullptr;
+        }
+        if (context_initialized)
+        {
+            mjr_freeContext(&context);
+        }
+        if (scene_initialized)
+        {
+            mjv_freeScene(&scene);
+        }
+        if (window)
+        {
+            glfwDestroyWindow(window);
+            window = nullptr;
+        }
+        if (owns_glfw)
+        {
+            glfwTerminate();
+        }
+    }
+};
+#else
+struct MujocoSimBridge::VideoRecorderState
+{
+};
+#endif
+
 } // namespace mujoco_sim2sim
