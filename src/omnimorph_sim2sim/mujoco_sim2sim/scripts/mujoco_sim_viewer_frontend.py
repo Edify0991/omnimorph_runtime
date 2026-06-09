@@ -72,7 +72,7 @@ class MujocoViewerFrontend(Node):
         self.declare_parameter("follow_elevation", -20.0)
         self.declare_parameter("follow_lookat_offset", [0.0, 0.0, 0.8])
         self.declare_parameter("enable_video_recording", False)
-        self.declare_parameter("video_output_dir", "../videos")
+        self.declare_parameter("video_output_dir", "src/omnimorph_sim2sim/mujoco_sim2sim/videos")
         self.declare_parameter("video_output_path", "")
         self.declare_parameter("video_fps", 60.0)
         self.declare_parameter("video_width", 1280)

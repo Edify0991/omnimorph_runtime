@@ -1332,12 +1332,9 @@ bool RL_controller::canHotSwitch(int from_mode, int to_mode) const
         return false;
     };
 
-    if (from_cfg.policy_family != to_cfg.policy_family)
-    {
-        return reject(
-            "policy_family mismatch: '" + from_cfg.policy_family +
-            "' vs '" + to_cfg.policy_family + "'");
-    }
+    // Hot switching only needs the robot-facing runtime contract to stay
+    // compatible. Policy family, observation layout, reference usage, and
+    // manifest internals are reset on switch and do not need to match.
     if (from_cfg.action_dim != to_cfg.action_dim)
     {
         return reject("action_dim mismatch");
@@ -1355,43 +1352,6 @@ bool RL_controller::canHotSwitch(int from_mode, int to_mode) const
     if (from_cfg.installed_joint_run_modes != to_cfg.installed_joint_run_modes)
     {
         return reject("installed_joint_run_modes mismatch");
-    }
-    if (from_cfg.obs_joint_order != to_cfg.obs_joint_order)
-    {
-        return reject("obs_joint_order mismatch");
-    }
-    if (from_cfg.reference_joint_order != to_cfg.reference_joint_order)
-    {
-        return reject("reference_joint_order mismatch");
-    }
-    if (from_cfg.enable_reference_motion != to_cfg.enable_reference_motion)
-    {
-        return reject("enable_reference_motion mismatch");
-    }
-    if (from_cfg.observation_manifest_path != to_cfg.observation_manifest_path)
-    {
-        return reject("observation_manifest_path mismatch");
-    }
-    if (from_cfg.observation_stack_layout != to_cfg.observation_stack_layout)
-    {
-        return reject("observation_stack_layout mismatch");
-    }
-    if (from_cfg.external_observations.size() != to_cfg.external_observations.size())
-    {
-        return reject("external_observations size mismatch");
-    }
-    for (size_t i = 0; i < from_cfg.external_observations.size(); ++i)
-    {
-        const auto &from_spec = from_cfg.external_observations[i];
-        const auto &to_spec = to_cfg.external_observations[i];
-        if (from_spec.name != to_spec.name ||
-            from_spec.dim != to_spec.dim ||
-            from_spec.required != to_spec.required ||
-            from_spec.topic != to_spec.topic ||
-            from_spec.message_type != to_spec.message_type)
-        {
-            return reject("external_observations contract mismatch");
-        }
     }
     return true;
 }
@@ -2915,7 +2875,11 @@ rl_master::RobotCommandData RL_controller::step(
     const bool auto_hot_switch_applied = applyPendingAutoModeSwitch(phase_t);
 
     const double now_s = rl_master::monotonicTimeSec();
-    const int sanitized_mode_command = sanitizeRuntimeModeCommand(mode_command);
+    int sanitized_mode_command = sanitizeRuntimeModeCommand(mode_command);
+    if (auto_hot_switch_applied)
+    {
+        sanitized_mode_command = rl_master::kCtrlWordSetModeBase + active_mode_id_;
+    }
     const auto deploy_output = deploy_state_machine_.update(
         sanitized_mode_command,
         now_s,
