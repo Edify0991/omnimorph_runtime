@@ -227,6 +227,13 @@ void MujocoSimBridge::initializeVideoRecorder()
     state->scene_initialized = true;
     mjr_makeContext(model_, &state->context, mjFONTSCALE_150);
     state->context_initialized = true;
+    state->data = mj_makeData(model_);
+    if (!state->data)
+    {
+        RCLCPP_WARN(this->get_logger(), "Failed to allocate MuJoCo data for video recording. Disable recording.");
+        enable_video_recording_ = false;
+        return;
+    }
     state->camera.type = mjCAMERA_FREE;
     state->camera.azimuth = video_follow_azimuth_;
     state->camera.elevation = video_follow_elevation_;
@@ -262,11 +269,51 @@ void MujocoSimBridge::initializeVideoRecorder()
     state->output_path = video_output_path_;
     next_video_frame_time_ = std::numeric_limits<double>::quiet_NaN();
     video_frame_count_ = 0;
+    video_queue_overflow_warned_ = false;
+    video_recorder_stop_requested_.store(false);
+    video_recorder_failed_.store(false);
+    {
+        std::lock_guard<std::mutex> lock(video_recorder_mutex_);
+        pending_video_frames_.clear();
+    }
     video_recorder_state_ = std::move(state);
+    video_recorder_thread_ = std::thread([this]() {
+        while (true)
+        {
+            VideoFrameSnapshot snapshot;
+            {
+                std::unique_lock<std::mutex> lock(video_recorder_mutex_);
+                video_recorder_cv_.wait(
+                    lock,
+                    [this]() {
+                        return video_recorder_stop_requested_.load() ||
+                               !pending_video_frames_.empty();
+                    });
+
+                if (pending_video_frames_.empty())
+                {
+                    if (video_recorder_stop_requested_.load())
+                    {
+                        break;
+                    }
+                    continue;
+                }
+
+                snapshot = std::move(pending_video_frames_.front());
+                pending_video_frames_.pop_front();
+            }
+
+            if (!writeVideoFrame(snapshot))
+            {
+                video_recorder_failed_.store(true);
+                break;
+            }
+        }
+    });
 
     RCLCPP_INFO(
         this->get_logger(),
-        "Native sim2sim video recording started: %s (%dx%d @ %.1f fps, physical-time sampling)",
+        "Native sim2sim video recording started: %s (%dx%d @ %.1f fps, async physical-time sampling)",
         video_output_path_.c_str(),
         video_width_,
         video_height_,
@@ -289,6 +336,12 @@ void MujocoSimBridge::shutdownVideoRecorder()
     {
         return;
     }
+    video_recorder_stop_requested_.store(true);
+    video_recorder_cv_.notify_all();
+    if (video_recorder_thread_.joinable())
+    {
+        video_recorder_thread_.join();
+    }
     int close_status = 0;
     if (video_recorder_state_->pipe)
     {
@@ -297,10 +350,15 @@ void MujocoSimBridge::shutdownVideoRecorder()
     }
     RCLCPP_INFO(
         this->get_logger(),
-        "Native sim2sim video saved: %s frames=%lu ffmpeg_status=%d",
+        "Native sim2sim video saved: %s frames=%lu ffmpeg_status=%d%s",
         video_recorder_state_->output_path.c_str(),
         static_cast<unsigned long>(video_frame_count_),
-        close_status);
+        close_status,
+        video_recorder_failed_.load() ? " recorder_failed=1" : "");
+    {
+        std::lock_guard<std::mutex> lock(video_recorder_mutex_);
+        pending_video_frames_.clear();
+    }
     video_recorder_state_.reset();
 #endif
 }
@@ -308,7 +366,7 @@ void MujocoSimBridge::shutdownVideoRecorder()
 void MujocoSimBridge::recordVideoFrameIfDue()
 {
 #ifdef MUJOCO_SIM2SIM_WITH_VIEWER
-    if (!enable_video_recording_ || !video_recorder_state_ || !data_)
+    if (!enable_video_recording_ || !video_recorder_state_ || !data_ || video_recorder_failed_.load())
     {
         return;
     }
@@ -318,35 +376,96 @@ void MujocoSimBridge::recordVideoFrameIfDue()
         next_video_frame_time_ = sim_time;
     }
     const double period = 1.0 / std::max(1.0, video_fps_);
+    if ((sim_time + 1.0e-9) < next_video_frame_time_)
+    {
+        return;
+    }
+
+    VideoFrameSnapshot snapshot;
+    snapshot.qpos.assign(model_->nq, 0.0);
+    snapshot.qvel.assign(model_->nv, 0.0);
+    snapshot.ctrl.assign(model_->nu, 0.0);
+    snapshot.sim_time = sim_time;
+    for (int i = 0; i < model_->nq; ++i)
+    {
+        snapshot.qpos[i] = data_->qpos[i];
+    }
+    for (int i = 0; i < model_->nv; ++i)
+    {
+        snapshot.qvel[i] = data_->qvel[i];
+    }
+    for (int i = 0; i < model_->nu; ++i)
+    {
+        snapshot.ctrl[i] = data_->ctrl[i];
+    }
+
+    bool should_warn_overflow = false;
     while ((sim_time + 1.0e-9) >= next_video_frame_time_)
     {
-        writeVideoFrame();
-        if (!enable_video_recording_ || !video_recorder_state_)
         {
-            break;
+            std::lock_guard<std::mutex> lock(video_recorder_mutex_);
+            constexpr size_t kMaxPendingVideoFrames = 3600;
+            if (pending_video_frames_.size() >= kMaxPendingVideoFrames)
+            {
+                pending_video_frames_.pop_front();
+                if (!video_queue_overflow_warned_)
+                {
+                    video_queue_overflow_warned_ = true;
+                    should_warn_overflow = true;
+                }
+            }
+            pending_video_frames_.push_back(snapshot);
         }
         next_video_frame_time_ += period;
+    }
+    video_recorder_cv_.notify_all();
+    if (should_warn_overflow)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Native sim2sim video recorder queue exceeded capacity; dropping oldest frames to keep physics loop non-blocking.");
     }
 #endif
 }
 
-void MujocoSimBridge::writeVideoFrame()
+bool MujocoSimBridge::writeVideoFrame(const VideoFrameSnapshot &snapshot)
 {
 #ifdef MUJOCO_SIM2SIM_WITH_VIEWER
-    if (!video_recorder_state_ || !video_recorder_state_->pipe)
+    if (!video_recorder_state_ || !video_recorder_state_->pipe || !video_recorder_state_->data)
     {
-        return;
+        return false;
     }
     auto &state = *video_recorder_state_;
+    if (static_cast<int>(snapshot.qpos.size()) != model_->nq ||
+        static_cast<int>(snapshot.qvel.size()) != model_->nv ||
+        static_cast<int>(snapshot.ctrl.size()) != model_->nu)
+    {
+        return false;
+    }
+    for (int i = 0; i < model_->nq; ++i)
+    {
+        state.data->qpos[i] = snapshot.qpos[i];
+    }
+    for (int i = 0; i < model_->nv; ++i)
+    {
+        state.data->qvel[i] = snapshot.qvel[i];
+    }
+    for (int i = 0; i < model_->nu; ++i)
+    {
+        state.data->ctrl[i] = snapshot.ctrl[i];
+    }
+    state.data->time = snapshot.sim_time;
+    mj_forward(model_, state.data);
+
     glfwMakeContextCurrent(state.window);
     mjr_setBuffer(mjFB_OFFSCREEN, &state.context);
 
     if (video_follow_robot_ && base_body_id_ >= 0 && base_body_id_ < model_->nbody)
     {
         state.camera.type = mjCAMERA_FREE;
-        state.camera.lookat[0] = data_->xpos[3 * base_body_id_ + 0] + video_follow_lookat_offset_[0];
-        state.camera.lookat[1] = data_->xpos[3 * base_body_id_ + 1] + video_follow_lookat_offset_[1];
-        state.camera.lookat[2] = data_->xpos[3 * base_body_id_ + 2] + video_follow_lookat_offset_[2];
+        state.camera.lookat[0] = state.data->xpos[3 * base_body_id_ + 0] + video_follow_lookat_offset_[0];
+        state.camera.lookat[1] = state.data->xpos[3 * base_body_id_ + 1] + video_follow_lookat_offset_[1];
+        state.camera.lookat[2] = state.data->xpos[3 * base_body_id_ + 2] + video_follow_lookat_offset_[2];
         state.camera.distance = video_follow_distance_;
         state.camera.azimuth = video_follow_azimuth_;
         state.camera.elevation = video_follow_elevation_;
@@ -362,7 +481,7 @@ void MujocoSimBridge::writeVideoFrame()
     const mjrRect viewport{0, 0, video_width_, video_height_};
     mjv_updateScene(
         model_,
-        data_,
+        state.data,
         &state.option,
         nullptr,
         &state.camera,
@@ -391,11 +510,13 @@ void MujocoSimBridge::writeVideoFrame()
             "ffmpeg pipe write failed for sim2sim video: wrote=%zu expected=%zu. Stop recording.",
             written,
             expected);
-        enable_video_recording_ = false;
-        shutdownVideoRecorder();
-        return;
+        return false;
     }
     ++video_frame_count_;
+    return true;
+#else
+    (void)snapshot;
+    return false;
 #endif
 }
 

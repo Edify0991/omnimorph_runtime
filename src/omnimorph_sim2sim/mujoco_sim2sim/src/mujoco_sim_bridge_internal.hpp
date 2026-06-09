@@ -89,6 +89,13 @@ public:
 private:
     struct ViewerState;
     struct VideoRecorderState;
+    struct VideoFrameSnapshot
+    {
+        std::vector<double> qpos;
+        std::vector<double> qvel;
+        std::vector<double> ctrl;
+        double sim_time = 0.0;
+    };
 
     // Core setup and MuJoCo model mapping.
     void loadParameters();
@@ -109,7 +116,7 @@ private:
     void initializeVideoRecorder();
     void shutdownVideoRecorder();
     void recordVideoFrameIfDue();
-    void writeVideoFrame();
+    bool writeVideoFrame(const VideoFrameSnapshot &snapshot);
 
     // Command input, lifecycle handling, and control-loop timing.
     void teleopCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
@@ -304,6 +311,13 @@ private:
     std::unique_ptr<VideoRecorderState> video_recorder_state_;
     double next_video_frame_time_ = std::numeric_limits<double>::quiet_NaN();
     uint64_t video_frame_count_ = 0;
+    std::thread video_recorder_thread_;
+    std::mutex video_recorder_mutex_;
+    std::condition_variable video_recorder_cv_;
+    std::deque<VideoFrameSnapshot> pending_video_frames_;
+    std::atomic<bool> video_recorder_stop_requested_{false};
+    std::atomic<bool> video_recorder_failed_{false};
+    bool video_queue_overflow_warned_ = false;
     bool viewer_mouse_left_down_ = false;
     bool viewer_mouse_middle_down_ = false;
     bool viewer_mouse_right_down_ = false;

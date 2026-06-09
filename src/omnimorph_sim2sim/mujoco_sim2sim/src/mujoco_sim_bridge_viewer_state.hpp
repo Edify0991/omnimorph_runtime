@@ -59,6 +59,7 @@ struct MujocoSimBridge::VideoRecorderState
     mjvOption option;
     mjvScene scene;
     mjrContext context;
+    mjData *data = nullptr;
     FILE *pipe = nullptr;
     std::vector<unsigned char> readback_rgb;
     std::vector<unsigned char> frame_rgb;
@@ -85,6 +86,11 @@ struct MujocoSimBridge::VideoRecorderState
         if (context_initialized)
         {
             mjr_freeContext(&context);
+        }
+        if (data)
+        {
+            mj_deleteData(data);
+            data = nullptr;
         }
         if (scene_initialized)
         {
