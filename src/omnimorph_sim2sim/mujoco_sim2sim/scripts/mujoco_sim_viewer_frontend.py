@@ -68,7 +68,7 @@ class MujocoViewerFrontend(Node):
         self.declare_parameter("follow_robot", False)
         self.declare_parameter("follow_body_name", "Body")
         self.declare_parameter("follow_distance", 3.0)
-        self.declare_parameter("follow_azimuth", 90.0)
+        self.declare_parameter("follow_azimuth", 180.0)
         self.declare_parameter("follow_elevation", -20.0)
         self.declare_parameter("follow_lookat_offset", [0.0, 0.0, 0.8])
         self.declare_parameter("enable_video_recording", False)
@@ -123,6 +123,9 @@ class MujocoViewerFrontend(Node):
         self.video_writer = None
         self.video_renderer = None
         self.video_output_resolved = self._resolve_video_output_path()
+        self.video_frame_count = 0
+        self.video_next_sim_time: Optional[float] = None
+        self.video_drop_warned = False
 
         qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -302,12 +305,42 @@ class MujocoViewerFrontend(Node):
         self.video_renderer.update_scene(self.data, camera=camera)
         frame = self.video_renderer.render()
         self.video_writer.append_data(frame)
+        self.video_frame_count += 1
+
+    def _record_video_frame_for_sim_time(self, sim_time: float, viewer=None) -> None:
+        if not self.enable_video_recording:
+            return
+        sim_time = float(sim_time)
+        frame_period = 1.0 / self.video_fps
+        if self.video_next_sim_time is None:
+            self.video_next_sim_time = sim_time
+        if sim_time + 1e-9 < self.video_next_sim_time:
+            return
+
+        max_catchup_frames = 2
+        appended = 0
+        while self.video_next_sim_time is not None and sim_time + 1e-9 >= self.video_next_sim_time:
+            self._record_video_frame(viewer)
+            appended += 1
+            self.video_next_sim_time += frame_period
+            if appended >= max_catchup_frames:
+                if not self.video_drop_warned:
+                    self.get_logger().warn(
+                        "video recorder is dropping excess sim-time frames to keep live viewer responsive"
+                    )
+                    self.video_drop_warned = True
+                self.video_next_sim_time = sim_time + frame_period
+                break
 
     def _close_video_recording(self) -> None:
         if self.video_writer is not None:
             self.video_writer.close()
             self.video_writer = None
-            self.get_logger().info(f"video recording saved: {self.video_output_resolved}")
+            duration_sec = self.video_frame_count / self.video_fps if self.video_fps > 0.0 else 0.0
+            self.get_logger().info(
+                f"video recording saved: {self.video_output_resolved} "
+                f"frames={self.video_frame_count} duration={duration_sec:.2f}s"
+            )
         if self.video_renderer is not None:
             close_fn = getattr(self.video_renderer, "close", None)
             if callable(close_fn):
@@ -360,7 +393,7 @@ class MujocoViewerFrontend(Node):
             while rclpy.ok():
                 updated = self._apply_pending_frame()
                 if updated and self.enable_video_recording:
-                    self._record_video_frame()
+                    self._record_video_frame_for_sim_time(self.data.time)
                 self._warn_if_stale()
                 self._log_inspector_periodically()
                 time.sleep(render_period)
@@ -379,11 +412,11 @@ class MujocoViewerFrontend(Node):
                     self._apply_follow_camera(viewer.cam)
                 if updated:
                     viewer.sync()
+                    if self.enable_video_recording:
+                        self._record_video_frame_for_sim_time(self.data.time, viewer)
                 else:
                     self._warn_if_stale()
                     viewer.sync()
-                if self.enable_video_recording:
-                    self._record_video_frame(viewer)
                 self._log_inspector_periodically()
                 time.sleep(render_period)
 

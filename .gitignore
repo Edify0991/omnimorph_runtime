@@ -58,3 +58,5 @@ data/
 # Local assistant / tooling artifacts
 command.md
 .codex
+
+src/omnimorph_sim2sim/mujoco_sim2sim/video
