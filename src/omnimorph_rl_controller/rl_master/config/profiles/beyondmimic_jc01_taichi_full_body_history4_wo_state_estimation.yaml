@@ -291,6 +291,8 @@ beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation:
     - right_wrist_roll
   source_contract:
     imu_input:
+      source_type: sensor_msgs_imu
+      topic: /imu/yesense
       payload: euler_compat
       euler_order: [roll, pitch, yaw]
       euler_unit: rad
@@ -328,6 +330,7 @@ beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation:
       reference_joint_vel_key: joint_vel
       reference_joint_order_metadata_key: command_joint_names
       preserve_reference_joint_order: true
+      reference_body_pos_w_key: body_pos_w
       reference_body_quat_w_key: body_quat_w
       reference_body_ang_vel_w_key: body_ang_vel_w
       body_quat_order: wxyz
