@@ -9,7 +9,6 @@ source "${SCRIPT_DIR}/common.sh"
 cd "${WORKSPACE_DIR}"
 source_ros_workspace
 
-export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 
 exec ros2 "$@"

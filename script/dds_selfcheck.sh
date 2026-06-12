@@ -54,6 +54,7 @@ fi
 
 print_banner "DDS Deploy Self-Check"
 source_ros_workspace
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 
 command -v ros2 >/dev/null 2>&1 || die "ros2 command not found in current environment"
 

@@ -65,8 +65,7 @@ source_ros_workspace
 SOLVER_EXEC="$(resolve_ros_executable "rl_master" "RL_solver")" || \
   die "RL_solver executable not found"
 
-export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-${RMW_DEFAULT}}"
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+prepare_ros_network_env "${RMW_DEFAULT}" || exit 1
 if [[ "${RMW_IMPLEMENTATION}" == "rmw_cyclonedds_cpp" && -z "${CYCLONEDDS_URI:-}" ]]; then
   log_warn "RMW is rmw_cyclonedds_cpp but CYCLONEDDS_URI is empty. For Unitree, source unitree_ros2/setup.sh first."
 fi

@@ -56,6 +56,7 @@ done
 
 print_banner "MuJoCo Reference Pose Replay Test"
 source_ros_workspace
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 
 CMD=(
   ros2 run mujoco_sim2sim mujoco_sim_bridge

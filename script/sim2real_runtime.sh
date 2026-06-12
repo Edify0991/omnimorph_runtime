@@ -11,6 +11,7 @@ Usage:
   sim2real_runtime.sh [options]
 
 Options:
+  --rl-cfg <path>                 root RL config path (default: rl_cfg_jc01.yaml)
   --mode-id <int>                 startup deploy mode_id (default: 0)
   --skip-precheck                 skip validate_deploy_config.py
   --precheck-skip-onnx            run precheck with --skip-onnx
@@ -22,6 +23,7 @@ USAGE
 }
 
 MODE_ID=0
+RL_CFG_PATH_OVERRIDE=""
 SKIP_PRECHECK="false"
 PRECHECK_SKIP_ONNX="false"
 PRECHECK_PYTHON=""
@@ -30,6 +32,14 @@ AUTO_START_DELAY="3.0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --rl-cfg|--config)
+      RL_CFG_PATH_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    --rl-cfg=*|--config=*)
+      RL_CFG_PATH_OVERRIDE="${1#*=}"
+      shift
+      ;;
     --mode-id)
       MODE_ID="${2:-}"
       shift 2
@@ -67,6 +77,12 @@ done
 [[ "${MODE_ID}" =~ ^[0-9]+$ ]] || die "--mode-id must be a non-negative integer"
 print_banner "Morph Runtime Sim2Real (Single-Process RL_solver)"
 
+if [[ -z "${RL_CFG_PATH_OVERRIDE}" ]]; then
+  RL_CFG_PATH_OVERRIDE="${WORKSPACE_DIR}/src/omnimorph_rl_controller/rl_master/config/rl_cfg_jc01.yaml"
+fi
+[[ -f "${RL_CFG_PATH_OVERRIDE}" ]] || die "rl config not found: ${RL_CFG_PATH_OVERRIDE}"
+log_info "RL config: ${RL_CFG_PATH_OVERRIDE}"
+
 CURRENT_PYTHON="$(command -v python3 || true)"
 [[ -n "${CURRENT_PYTHON}" ]] || die "python3 not found in PATH"
 
@@ -86,7 +102,7 @@ log_info "Precheck python: ${PRECHECK_PYTHON}"
 if [[ "${SKIP_PRECHECK}" != "true" ]]; then
   VALIDATOR="${WORKSPACE_DIR}/src/omnimorph_rl_controller/rl_master/tools/analysis/validate_deploy_config.py"
   [[ -f "${VALIDATOR}" ]] || die "validator not found: ${VALIDATOR}"
-  CHECK_CMD=("${PRECHECK_PYTHON}" "${VALIDATOR}" --mode-id "${MODE_ID}")
+  CHECK_CMD=("${PRECHECK_PYTHON}" "${VALIDATOR}" --rl-cfg "${RL_CFG_PATH_OVERRIDE}" --mode-id "${MODE_ID}")
   if [[ "${PRECHECK_SKIP_ONNX}" == "true" ]]; then
     CHECK_CMD+=(--skip-onnx)
   fi
@@ -95,6 +111,7 @@ if [[ "${SKIP_PRECHECK}" != "true" ]]; then
 fi
 
 source_ros_workspace
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 export ROS_LOG_DIR="${ROS_LOG_DIR:-${WORKSPACE_DIR}/log/ros2}"
 mkdir -p "${ROS_LOG_DIR}" >/dev/null 2>&1 || true
 
@@ -107,7 +124,7 @@ if [[ "${AUTO_START_MODE}" == "true" ]]; then
   log_info "Scheduled START control word: $((1000 + MODE_ID)) after ${AUTO_START_DELAY}s"
 fi
 
-CMD=("${SCRIPT_DIR}/start_rl_solver.sh" --mode-id "${MODE_ID}")
+CMD=("${SCRIPT_DIR}/start_rl_solver.sh" --rl-cfg "${RL_CFG_PATH_OVERRIDE}" --mode-id "${MODE_ID}")
 log_info "Launching fused sim2real runtime ..."
 log_info "${CMD[*]}"
 exec "${CMD[@]}"

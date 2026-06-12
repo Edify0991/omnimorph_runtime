@@ -30,8 +30,7 @@ fi
 
 export OMNIMORPH_RUNTIME_ROOT="${WORKSPACE_DIR}"
 export JC01_DEPLOY_ROOT="${OMNIMORPH_RUNTIME_ROOT}"
-export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+prepare_ros_network_env "rmw_fastrtps_cpp" || return 1
 export ROS_LOG_DIR="${ROS_LOG_DIR:-${WORKSPACE_DIR}/log/ros2}"
 mkdir -p "${ROS_LOG_DIR}" >/dev/null 2>&1 || true
 

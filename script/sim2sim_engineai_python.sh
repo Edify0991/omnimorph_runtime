@@ -174,6 +174,7 @@ if [[ "${CURRENT_PYTHON}" == *"/anaconda"* || "${CURRENT_PYTHON}" == *"/minicond
 fi
 
 source_ros_workspace
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 export ROS_LOG_DIR="${ROS_LOG_DIR:-${WORKSPACE_DIR}/log/ros2}"
 mkdir -p "${ROS_LOG_DIR}" >/dev/null 2>&1 || true
 

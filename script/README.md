@@ -7,6 +7,7 @@
 After opening a new terminal, initialize the workspace runtime environment with:
 
 ```bash
+export ROS_DOMAIN_ID=73  # choose one unique non-zero domain per robot/test setup
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
 ```
 
@@ -15,6 +16,8 @@ This prepares the shell by:
 - sourcing ROS2 and this workspace
 - exporting `OMNIMORPH_RUNTIME_ROOT` (and legacy `JC01_DEPLOY_ROOT`)
 - exporting `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` by default
+- refusing unset `ROS_DOMAIN_ID` and blocking default domain `0`
+- scanning the selected domain for already-visible ROS nodes in warning mode
 - exporting a writable `ROS_LOG_DIR`
 - preferring system/ROS runtime libraries before Conda copies in `LD_LIBRARY_PATH`
 
@@ -22,6 +25,7 @@ This prepares the shell by:
 
 ```bash
 export OMNIMORPH_RUNTIME_ROOT=/abs/path/to/omnimorph_runtime
+export ROS_DOMAIN_ID=73
 
 # JC01
 export ROBOT_ASSETS_DIR=/abs/path/to/JC01-URDF-18所
@@ -35,6 +39,17 @@ export MUJOCO_MODEL_PATH="${ROBOT_ASSETS_DIR}/scene_jingchu01.xml"
 ```
 
 When a startup command uses `sudo`, keep those variables with `sudo -E`.
+
+To preflight a domain before starting any control node:
+
+```bash
+./script/check_ros_domain.sh --domain "${ROS_DOMAIN_ID}" --strict
+```
+
+If a startup script warns that nodes are already visible, verify they are
+expected local nodes for this robot. Use another `ROS_DOMAIN_ID` if the domain
+may belong to a different machine. The scan can be disabled with
+`OMNIMORPH_ROS_DOMAIN_SCAN=off` after manual verification.
 
 ### Real Robot
 
@@ -63,7 +78,9 @@ Terminal 3:
 
 ```bash
 source ${OMNIMORPH_RUNTIME_ROOT}/script/dev_env.sh
-sudo -E ./script/sim2real_runtime.sh --mode-id 0
+sudo -E ./script/start_jc01_policy.sh --mode-id 0
+# Unitree G1:
+sudo -E ./script/start_unitree_g1_policy.sh --mode-id 0
 ```
 
 Terminal 4:
@@ -91,6 +108,8 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
 ### Manual runtime building blocks
 
 - `start_rl_solver.sh`: wrapper around the installed `RL_solver` executable
+- `start_jc01_policy.sh`: JC01 sim2real policy runtime entry
+- `start_unitree_g1_policy.sh`: Unitree G1 sim2real policy runtime entry
 - `start_driver_jc01.sh`: JC01 local driver wrapper
 - `start_unitree_g1_bridge.sh`: legacy standalone Unitree G1 bridge wrapper; normal G1 deployment now uses `RL_solver` in-process Unitree motor IO selected by `robot_identity.unitree_transport`
 - `start_imu_yesense.sh`: IMU node launcher
@@ -107,7 +126,7 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
 - it does not automatically inherit mode selection from a separately launched
   manual solver process
 
-Example manual G1 startup:
+Example direct G1 solver startup:
 
 Select `sdk2` or `ros2` in
 `src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml`:
@@ -119,6 +138,9 @@ robot_identity:
 
 ```bash
 source ./script/dev_env.sh
+./script/start_unitree_g1_policy.sh --mode-id 0
+
+# Equivalent direct solver command:
 ./script/start_rl_solver.sh \
   --rl-cfg src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml \
   --mode-id 0
@@ -176,9 +198,9 @@ The fused runtime still listens to the same operator topics:
 Useful helper:
 
 ```bash
-ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
-ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 2001}"
-ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 11}"
+./script/publish_mode_control.sh start --mode-id 0
+./script/publish_mode_control.sh switch --mode-id 1
+./script/publish_mode_control.sh stop
 ```
 
 Typical joystick combos:

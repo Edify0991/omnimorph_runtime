@@ -36,11 +36,17 @@ The YAML configs use environment-variable placeholders for robot assets. `script
 does not guess these paths for you anymore, because those directories are machine-specific.
 Set them explicitly before startup, and preserve them with `sudo -E` when a command needs root.
 
+ROS 2/DDS traffic is also intentionally domain-gated. Pick one non-zero
+`ROS_DOMAIN_ID` per robot or test setup before sourcing `script/dev_env.sh`;
+domain `0` is blocked by the project scripts because it is the ROS 2 default
+and can collide with other machines on the same LAN.
+
 JC01:
 
 ```bash
 export OMNIMORPH_RUNTIME_ROOT=/abs/path/to/omnimorph_runtime
-export ROBOT_ASSETS_DIR=/abs/path/to/JC01-URDF-18所
+export ROS_DOMAIN_ID=73
+export ROBOT_ASSETS_DIR=/abs/path/to/jc01-model
 export MUJOCO_MODEL_PATH="${ROBOT_ASSETS_DIR}/scene_jingchu01.xml"
 ```
 
@@ -48,6 +54,7 @@ Unitree G1:
 
 ```bash
 export OMNIMORPH_RUNTIME_ROOT=/abs/path/to/omnimorph_runtime
+export ROS_DOMAIN_ID=83
 export G1_PINOCCHIO_URDF=/abs/path/to/g1_29dof.urdf
 export G1_SCENE_XML=/abs/path/to/scene_29dof.xml
 export MUJOCO_MODEL_PATH="${G1_SCENE_XML}"
@@ -60,6 +67,17 @@ These variables are consumed here:
 - sim2sim CLI examples below: `${MUJOCO_MODEL_PATH}`
 
 If you want this to persist across sessions, add those `export` lines to `~/.bashrc` or a machine-local startup file.
+
+Before bringing up hardware, you can check whether the chosen domain already
+sees ROS nodes:
+
+```bash
+./script/check_ros_domain.sh --domain "${ROS_DOMAIN_ID}" --strict
+```
+
+Startup scripts run the same scan in warning mode by default. Set
+`OMNIMORPH_ROS_DOMAIN_SCAN=off` only after manually verifying the domain is
+expected to be shared.
 
 ## Terminal Workflow
 
@@ -91,11 +109,9 @@ Terminal 3:
 
 ```bash
 source ./script/dev_env.sh
-sudo -E ./script/sim2real_runtime.sh --mode-id 0
+sudo -E ./script/start_jc01_policy.sh --mode-id 0
 # Unitree G1:
-sudo -E ./script/start_rl_solver.sh \
-  --rl-cfg src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml \
-  --mode-id 0
+sudo -E ./script/start_unitree_g1_policy.sh --mode-id 0
 ```
 
 Terminal 4:
@@ -108,7 +124,9 @@ sudo -E ./script/start_joylaunch.sh
 Start policy manually:
 
 ```bash
-ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+./script/publish_mode_control.sh start --mode-id 0
+# Equivalent raw ROS 2 publish:
+# ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
 ```
 
 
@@ -140,7 +158,7 @@ ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args \
 Start policy manually:
 
 ```bash
-ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000}"
+./script/publish_mode_control.sh start --mode-id 0
 ```
 
 ## What Lives Here
@@ -162,14 +180,16 @@ ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000
 
 | Purpose | Command |
 | --- | --- |
-| Start solver | `./script/start_rl_solver.sh --ros-args -p startup_mode_id:=<N>` |
+| Start JC01 policy runtime | `sudo -E ./script/start_jc01_policy.sh --mode-id <N>` |
+| Start Unitree G1 policy runtime | `sudo -E ./script/start_unitree_g1_policy.sh --mode-id <N>` |
+| Start solver directly | `./script/start_rl_solver.sh --rl-cfg <rl_cfg.yaml> --mode-id <N>` |
 | Start JC01 driver | `sudo ./script/start_driver_jc01.sh` |
 | Check Unitree G1 lowstate | `source ~/unitree_ros2/setup.sh && ros2 topic echo lowstate --once` |
 | Start MuJoCo Python frontend | `ros2 run mujoco_sim2sim mujoco_sim_viewer_frontend.py --ros-args -p model_path:="${MUJOCO_MODEL_PATH}" -p enable_viewer:=true -p viewer_fps:=500.0` |
 | Start MuJoCo fused backend (optional) | `./script/sim2sim_runtime.sh --model-path "${MUJOCO_MODEL_PATH}" --mode-id <N>` |
-| Start policy | `ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 1000 + N}"` |
-| Switch mode only | `ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 2000 + N}"` |
-| Stop policy | `ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: 11}"` |
+| Start policy | `./script/publish_mode_control.sh start --mode-id <N>` |
+| Switch mode only | `./script/publish_mode_control.sh switch --mode-id <N>` |
+| Stop policy | `./script/publish_mode_control.sh stop` |
 
 ## Documentation
 

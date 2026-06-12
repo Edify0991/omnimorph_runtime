@@ -58,6 +58,7 @@ done
 
 print_banner "ROS2 ${PACKAGE_NAME}/${EXECUTABLE_NAME}"
 source_ros_workspace
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 
 EXECUTABLE_PATH=""
 if EXECUTABLE_PATH="$(resolve_ros_executable "${PACKAGE_NAME}" "${EXECUTABLE_NAME}")"; then
@@ -67,6 +68,7 @@ else
     log_warn "Executable not found. Building package ${PACKAGE_NAME}..."
     build_ros_package "${PACKAGE_NAME}"
     source_ros_workspace
+    prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
     EXECUTABLE_PATH="$(resolve_ros_executable "${PACKAGE_NAME}" "${EXECUTABLE_NAME}")" || \
       die "Executable ${EXECUTABLE_NAME} still missing after build"
   else
@@ -80,4 +82,3 @@ fi
 
 log_info "Starting: ${EXECUTABLE_PATH} ${NODE_ARGS[*]:-}"
 exec "${EXECUTABLE_PATH}" "${NODE_ARGS[@]}"
-
