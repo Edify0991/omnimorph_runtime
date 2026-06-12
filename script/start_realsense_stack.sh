@@ -9,8 +9,7 @@ source "${SCRIPT_DIR}/common.sh"
 cd "${WORKSPACE_DIR}"
 source_ros_workspace
 
-export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 
 CAMERA_NAME="${CAMERA_NAME:-camera}"
 CAMERA_NAMESPACE="${CAMERA_NAMESPACE:-}"
@@ -35,7 +34,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-"${SCRIPT_DIR}/start_realsense_driver.sh" "$@" &
+OMNIMORPH_ROS_DOMAIN_SCAN=off "${SCRIPT_DIR}/start_realsense_driver.sh" "$@" &
 driver_pid=$!
 
 for _ in $(seq 1 50); do
@@ -45,4 +44,4 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 
-exec "${SCRIPT_DIR}/start_realsense_bridge.sh"
+OMNIMORPH_ROS_DOMAIN_SCAN=off exec "${SCRIPT_DIR}/start_realsense_bridge.sh"

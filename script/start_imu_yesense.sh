@@ -61,6 +61,6 @@ fi
 IMU_EXEC="$(resolve_ros_executable "imu_communication_yesense" "imu_communication_yesense")" || \
   die "imu_communication_yesense executable not found"
 
-export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 log_info "Starting: ${IMU_EXEC} ${NODE_ARGS[*]:-}"
 exec "${IMU_EXEC}" "${NODE_ARGS[@]}"

@@ -80,5 +80,6 @@ case "${ACTION}" in
 esac
 
 source_ros_workspace
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 log_info "Publishing /omnimorph/rl/mode_control = ${CONTROL_WORD}"
 exec ros2 topic pub --once /omnimorph/rl/mode_control std_msgs/msg/Int32 "{data: ${CONTROL_WORD}}"

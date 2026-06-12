@@ -88,6 +88,97 @@ source_ros_workspace() {
   fi
 }
 
+require_ros_domain_id() {
+  local suggested="${OMNIMORPH_SUGGESTED_ROS_DOMAIN_ID:-73}"
+
+  if [[ -z "${ROS_DOMAIN_ID:-}" ]]; then
+    log_error "ROS_DOMAIN_ID is not set. Refusing to use ROS 2 default domain 0."
+    log_error "Choose a unique domain per robot/test setup, for example:"
+    log_error "  export ROS_DOMAIN_ID=${suggested}"
+    log_error "Then run the startup command again. Override the suggestion with OMNIMORPH_SUGGESTED_ROS_DOMAIN_ID."
+    return 1
+  fi
+
+  if ! [[ "${ROS_DOMAIN_ID}" =~ ^[0-9]+$ ]]; then
+    log_error "ROS_DOMAIN_ID must be an integer in [1, 232], got: ${ROS_DOMAIN_ID}"
+    return 1
+  fi
+
+  if (( ROS_DOMAIN_ID < 1 || ROS_DOMAIN_ID > 232 )); then
+    if [[ "${ROS_DOMAIN_ID}" == "0" ]]; then
+      log_error "ROS_DOMAIN_ID=0 is blocked by this project because it is the ROS 2 default and can collide on shared LANs."
+      log_error "Set a robot-specific domain, e.g. export ROS_DOMAIN_ID=${suggested}."
+      log_error "For a one-off lab diagnostic only, set OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO=1."
+      if [[ "${OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO:-0}" == "1" ]]; then
+        log_warn "OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO=1 set; allowing ROS_DOMAIN_ID=0 for this run."
+        export ROS_DOMAIN_ID
+        return 0
+      fi
+      return 1
+    fi
+    log_error "ROS_DOMAIN_ID must be in [1, 232], got: ${ROS_DOMAIN_ID}"
+    return 1
+  fi
+
+  export ROS_DOMAIN_ID
+}
+
+scan_ros_domain_graph() {
+  local mode="${OMNIMORPH_ROS_DOMAIN_SCAN:-warn}"
+  local timeout_sec="${OMNIMORPH_ROS_DOMAIN_SCAN_TIMEOUT_SEC:-3}"
+
+  case "${mode}" in
+    off|false|0)
+      return 0
+      ;;
+    warn|strict)
+      ;;
+    *)
+      log_warn "Unknown OMNIMORPH_ROS_DOMAIN_SCAN=${mode}; use off, warn, or strict. Falling back to warn."
+      mode="warn"
+      ;;
+  esac
+
+  command -v ros2 >/dev/null 2>&1 || {
+    log_warn "ros2 command not found; skipping ROS_DOMAIN_ID=${ROS_DOMAIN_ID} graph scan"
+    return 0
+  }
+
+  command -v timeout >/dev/null 2>&1 || {
+    log_warn "timeout command not found; skipping ROS_DOMAIN_ID=${ROS_DOMAIN_ID} graph scan"
+    return 0
+  }
+
+  local nodes
+  nodes="$(timeout "${timeout_sec}" ros2 node list 2>/dev/null || true)"
+  nodes="$(printf '%s\n' "${nodes}" | sed '/^[[:space:]]*$/d' || true)"
+
+  if [[ -z "${nodes}" ]]; then
+    log_info "ROS_DOMAIN_ID=${ROS_DOMAIN_ID} scan: no existing ROS nodes visible."
+    return 0
+  fi
+
+  log_warn "ROS_DOMAIN_ID=${ROS_DOMAIN_ID} scan: existing ROS nodes are already visible:"
+  printf '%s\n' "${nodes}" | sed 's/^/  /'
+  log_warn "If these are not expected local nodes for this robot, another machine may be using the same domain."
+  log_warn "Use a different ROS_DOMAIN_ID or set OMNIMORPH_ROS_DOMAIN_SCAN=off after manual verification."
+
+  if [[ "${mode}" == "strict" ]]; then
+    log_error "OMNIMORPH_ROS_DOMAIN_SCAN=strict: aborting because the domain is not empty."
+    return 1
+  fi
+
+  return 0
+}
+
+prepare_ros_network_env() {
+  local rmw_default="${1:-rmw_fastrtps_cpp}"
+
+  export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-${rmw_default}}"
+  require_ros_domain_id || return 1
+  scan_ros_domain_graph || return 1
+}
+
 build_ros_package() {
   local package_name="$1"
   (cd "${WORKSPACE_DIR}" && colcon build --packages-select "${package_name}")

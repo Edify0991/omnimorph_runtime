@@ -11,7 +11,6 @@ source_ros_workspace
 BRIDGE_EXEC="$(resolve_ros_executable "unitree_g1_bridge" "unitree_g1_bridge")" || \
   die "unitree_g1_bridge executable not found. Source the official Unitree ROS2 workspace and build package unitree_g1_bridge."
 
-export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
 log_info "Starting: ${BRIDGE_EXEC} $*"
 exec "${BRIDGE_EXEC}" "$@"
