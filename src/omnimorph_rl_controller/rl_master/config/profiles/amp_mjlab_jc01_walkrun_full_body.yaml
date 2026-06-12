@@ -233,6 +233,8 @@ amp_mjlab_jc01_walkrun_full_body:
   enable_reference_motion: false
   source_contract:
     imu_input:
+      source_type: sensor_msgs_imu
+      topic: /imu/yesense
       payload: euler_compat
       euler_order: [roll, pitch, yaw]
       euler_unit: rad

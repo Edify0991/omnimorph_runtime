@@ -167,6 +167,8 @@ beyondmimic_jc01_walk_lower_body_w_state_estimation:
     - right_ankle_roll
   source_contract:
     imu_input:
+      source_type: sensor_msgs_imu
+      topic: /imu/yesense
       payload: euler_compat
       euler_order: [roll, pitch, yaw]
       euler_unit: rad
