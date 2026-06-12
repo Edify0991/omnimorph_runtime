@@ -1,6 +1,6 @@
 jingchu01_dcmotor_formal:
   policy_name: jingchu01_dcmotor_formal
-  policy_file: policies/jingchu01_pacedcmotor_dr_small_seed61_model3000.onnx
+  policy_file: policies/jingchu01_dcmotor_dr_small_seed61_model3000.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 15

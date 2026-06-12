@@ -1,6 +1,6 @@
 jingchu01_pacedcmotor_formal:
   policy_name: jingchu01_pacedcmotor_formal
-  policy_file: policies/jingchu01_pacedcmotor_newfit2_dr_medium_seed71_model10000.onnx
+  policy_file: policies/jingchu01_hybrid_pacehipankle_dcmotorknee_phys3_qdq_viscousfix_dr_small_seed71_model6000.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 15
