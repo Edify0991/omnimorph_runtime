@@ -896,6 +896,11 @@ bool SolverDdsBridge::readLatestModeControlWord(int *control_word)
         return false;
     }
     *control_word = latest_mode_control_word_;
+    // Mode control is an edge-triggered command stream. Consume each received
+    // command once; RobotSolver keeps its own mode_command_cache for the
+    // latched runtime state. Returning the same DDS sample every tick can
+    // replay stale start/switch commands after automatic policy hot switches.
+    has_mode_control_word_ = false;
     return true;
 }
 
