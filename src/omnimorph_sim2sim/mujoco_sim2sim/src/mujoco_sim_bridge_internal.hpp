@@ -22,10 +22,13 @@
 #include <utility>
 #include <vector>
 
+#include <Eigen/Core>
 #include <mujoco/mujoco.h>
 #ifdef MUJOCO_SIM2SIM_WITH_VIEWER
 #include <GLFW/glfw3.h>
 #endif
+#include <pinocchio/multibody/data.hpp>
+#include <pinocchio/multibody/model.hpp>
 
 #include "rl_master/RL_controller.h"
 #include "rl_master/command_runtime_mode.h"
@@ -96,6 +99,12 @@ private:
         std::vector<double> ctrl;
         double sim_time = 0.0;
     };
+    struct ComSupportOverlay
+    {
+        bool valid = false;
+        std::array<double, 3> com{0.0, 0.0, 0.0};
+        std::vector<std::array<double, 3>> support_polygon;
+    };
 
     // Core setup and MuJoCo model mapping.
     void loadParameters();
@@ -109,6 +118,9 @@ private:
     void initializeViewer();
     void shutdownViewer();
     void renderViewerFrame();
+    void initializeComSupportVisualization();
+    ComSupportOverlay computeComSupportOverlay(const mjData_ *data) const;
+    void appendComSupportOverlay(mjvScene *scene, const ComSupportOverlay &overlay) const;
     void handleViewerMouseButton(int button, int action, int mods);
     void handleViewerMouseMove(double xpos, double ypos);
     void handleViewerScroll(double yoffset);
@@ -239,6 +251,14 @@ private:
     double video_follow_azimuth_ = 90.0;
     double video_follow_elevation_ = -20.0;
     std::array<double, 3> video_follow_lookat_offset_{0.0, 0.0, 0.8};
+    bool enable_com_support_visualization_ = false;
+    std::string com_support_pinocchio_urdf_path_;
+    std::vector<std::string> support_foot_site_names_;
+    double support_foot_half_length_ = 0.11;
+    double support_foot_half_width_ = 0.055;
+    double support_contact_height_threshold_ = 0.05;
+    double com_marker_radius_ = 0.035;
+    double com_projection_marker_radius_ = 0.025;
 
     // Hold and policy-resolved gains/limits.
     std::vector<double> hold_kp_;
@@ -302,6 +322,12 @@ private:
     int base_free_qpos_adr_ = -1;
     int base_free_qvel_adr_ = -1;
     int substeps_per_control_ = 1;
+    bool com_support_visualization_ready_ = false;
+    pinocchio::Model com_pinocchio_model_;
+    std::unique_ptr<pinocchio::Data> com_pinocchio_data_;
+    pinocchio::Model::ConfigVectorType com_pinocchio_q_;
+    std::vector<int> com_pinocchio_joint_q_indices_;
+    std::vector<int> support_foot_site_ids_;
 
     mjModel_ *model_ = nullptr;
     mjData_ *data_ = nullptr;

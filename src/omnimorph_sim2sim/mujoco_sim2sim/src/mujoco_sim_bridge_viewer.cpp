@@ -487,6 +487,7 @@ bool MujocoSimBridge::writeVideoFrame(const VideoFrameSnapshot &snapshot)
         &state.camera,
         mjCAT_ALL,
         &state.scene);
+    appendComSupportOverlay(&state.scene, computeComSupportOverlay(state.data));
     mjr_render(viewport, &state.scene, &state.context);
     mjr_readPixels(state.readback_rgb.data(), nullptr, viewport, &state.context);
 
@@ -571,6 +572,7 @@ void MujocoSimBridge::renderViewerFrame()
         &viewer_state_->camera,
         mjCAT_ALL,
         &viewer_state_->scene);
+    appendComSupportOverlay(&viewer_state_->scene, computeComSupportOverlay(data_));
     mjr_render(viewport, &viewer_state_->scene, &viewer_state_->context);
 
     if (viewer_show_hud_)

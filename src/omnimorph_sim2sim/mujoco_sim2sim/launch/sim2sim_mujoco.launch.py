@@ -133,6 +133,31 @@ def generate_launch_description():
         default_value="MuJoCo Sim2Sim Viewer",
         description="Viewer window title.",
     )
+    enable_com_support_visualization_arg = DeclareLaunchArgument(
+        "enable_com_support_visualization",
+        default_value="false",
+        description="Overlay Pinocchio COM, COM projection, and support polygon in the native MuJoCo viewer/video.",
+    )
+    com_support_pinocchio_urdf_path_arg = DeclareLaunchArgument(
+        "com_support_pinocchio_urdf_path",
+        default_value="",
+        description="Optional Pinocchio URDF override for COM overlay. Empty uses active profile pinocchio_urdf_path.",
+    )
+    support_foot_half_length_arg = DeclareLaunchArgument(
+        "support_foot_half_length",
+        default_value="0.11",
+        description="Half length of each foot support rectangle in meters.",
+    )
+    support_foot_half_width_arg = DeclareLaunchArgument(
+        "support_foot_half_width",
+        default_value="0.055",
+        description="Half width of each foot support rectangle in meters.",
+    )
+    support_contact_height_threshold_arg = DeclareLaunchArgument(
+        "support_contact_height_threshold",
+        default_value="0.05",
+        description="Foot sites within this height of the lowest foot site are included in support polygon.",
+    )
     enable_video_recording_arg = DeclareLaunchArgument(
         "enable_video_recording",
         default_value="false",
@@ -208,6 +233,17 @@ def generate_launch_description():
             "viewer_width": ParameterValue(LaunchConfiguration("viewer_width"), value_type=int),
             "viewer_height": ParameterValue(LaunchConfiguration("viewer_height"), value_type=int),
             "viewer_title": LaunchConfiguration("viewer_title"),
+            "enable_com_support_visualization": ParameterValue(
+                LaunchConfiguration("enable_com_support_visualization"),
+                value_type=bool,
+            ),
+            "com_support_pinocchio_urdf_path": LaunchConfiguration("com_support_pinocchio_urdf_path"),
+            "support_foot_half_length": ParameterValue(LaunchConfiguration("support_foot_half_length"), value_type=float),
+            "support_foot_half_width": ParameterValue(LaunchConfiguration("support_foot_half_width"), value_type=float),
+            "support_contact_height_threshold": ParameterValue(
+                LaunchConfiguration("support_contact_height_threshold"),
+                value_type=float,
+            ),
             "enable_video_recording": ParameterValue(LaunchConfiguration("enable_video_recording"), value_type=bool),
             "video_output_dir": LaunchConfiguration("video_output_dir"),
             "video_output_name": LaunchConfiguration("video_output_name"),
@@ -288,6 +324,11 @@ def generate_launch_description():
             viewer_width_arg,
             viewer_height_arg,
             viewer_title_arg,
+            enable_com_support_visualization_arg,
+            com_support_pinocchio_urdf_path_arg,
+            support_foot_half_length_arg,
+            support_foot_half_width_arg,
+            support_contact_height_threshold_arg,
             enable_video_recording_arg,
             video_output_dir_arg,
             video_output_name_arg,

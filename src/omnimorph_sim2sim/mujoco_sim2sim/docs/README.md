@@ -31,6 +31,13 @@ ros2 topic pub -r 20 /omnimorph/rl/teleop geometry_msgs/msg/Twist \
 - Mode-0 tick call flow:
   [amp_sim2sim_mode0_tick_call_flow.md](./amp_sim2sim_mode0_tick_call_flow.md)
 
+## Visualization Tools
+
+- Offline MCAP replay with MuJoCo plus Pinocchio COM/support overlay:
+  `src/omnimorph_sim2sim/mujoco_sim2sim/scripts/replay_mcap_com_support.py`
+- Live native viewer overlay:
+  launch with `enable_viewer:=true enable_com_support_visualization:=true`.
+
 ## Maintainer Notes
 
 - The standard path is the fused C++ backend.

@@ -96,6 +96,14 @@ mujoco_sim_bridge:
     viewer_width: 1280
     viewer_height: 720
     viewer_title: "MuJoCo Sim2Sim Viewer"
+    enable_com_support_visualization: false
+    com_support_pinocchio_urdf_path: ""
+    support_foot_site_names: ["right_foot_site", "left_foot_site"]
+    support_foot_half_length: 0.11
+    support_foot_half_width: 0.055
+    support_contact_height_threshold: 0.05
+    com_marker_radius: 0.035
+    com_projection_marker_radius: 0.025
     enable_state_telemetry: true
     state_telemetry_hz: 50.0
     show_left_ui: true

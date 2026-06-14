@@ -50,6 +50,7 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rl_master REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(pinocchio CONFIG REQUIRED)
 
 set(ONNXRUNTIME_ROOT "" CACHE PATH "ONNX Runtime installation prefix.")
 if(NOT ONNXRUNTIME_ROOT AND DEFINED ENV{ONNXRUNTIME_ROOT})
@@ -190,6 +191,7 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
 
     # Shared helpers and optional native viewer.
     src/mujoco_sim_bridge_utils.cpp
+    src/mujoco_sim_bridge_com_support.cpp
     src/mujoco_sim_bridge_viewer.cpp
   )
 
@@ -211,11 +213,13 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
     std_msgs
     geometry_msgs
     rl_master
+    pinocchio
   )
 
   target_link_libraries(mujoco_sim_bridge
     rl_master::rl_master_runtime
     onnxruntime::onnxruntime
+    pinocchio::pinocchio
     ${MUJOCO_LIBRARY}
     yaml-cpp
     mujoco_sim2sim_arch_flags
@@ -281,6 +285,7 @@ install(PROGRAMS
   scripts/keyboard_teleop.py
   scripts/mujoco_velocity_source_probe.py
   scripts/mujoco_sim_viewer_frontend.py
+  scripts/replay_mcap_com_support.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
