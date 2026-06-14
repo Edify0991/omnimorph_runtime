@@ -60,6 +60,16 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<double>("video_follow_azimuth", 90.0);
     this->declare_parameter<double>("video_follow_elevation", -20.0);
     this->declare_parameter<std::vector<double>>("video_follow_lookat_offset", std::vector<double>{0.0, 0.0, 0.8});
+    this->declare_parameter<bool>("enable_com_support_visualization", false);
+    this->declare_parameter<std::string>("com_support_pinocchio_urdf_path", "");
+    this->declare_parameter<std::vector<std::string>>(
+        "support_foot_site_names",
+        std::vector<std::string>{"right_foot_site", "left_foot_site"});
+    this->declare_parameter<double>("support_foot_half_length", 0.11);
+    this->declare_parameter<double>("support_foot_half_width", 0.055);
+    this->declare_parameter<double>("support_contact_height_threshold", 0.05);
+    this->declare_parameter<double>("com_marker_radius", 0.035);
+    this->declare_parameter<double>("com_projection_marker_radius", 0.025);
     this->declare_parameter<bool>("enable_state_telemetry", true);
     this->declare_parameter<double>("state_telemetry_hz", 50.0);
 
@@ -136,6 +146,21 @@ void MujocoSimBridge::loadParameters()
     {
         video_follow_lookat_offset_ = {video_lookat_offset[0], video_lookat_offset[1], video_lookat_offset[2]};
     }
+    enable_com_support_visualization_ = this->get_parameter("enable_com_support_visualization").as_bool();
+    com_support_pinocchio_urdf_path_ =
+        trimCopy(this->get_parameter("com_support_pinocchio_urdf_path").as_string());
+    support_foot_site_names_ = this->get_parameter("support_foot_site_names").as_string_array();
+    if (support_foot_site_names_.empty())
+    {
+        support_foot_site_names_ = {"right_foot_site", "left_foot_site"};
+    }
+    support_foot_half_length_ = std::max(0.001, this->get_parameter("support_foot_half_length").as_double());
+    support_foot_half_width_ = std::max(0.001, this->get_parameter("support_foot_half_width").as_double());
+    support_contact_height_threshold_ =
+        std::max(0.0, this->get_parameter("support_contact_height_threshold").as_double());
+    com_marker_radius_ = std::max(0.001, this->get_parameter("com_marker_radius").as_double());
+    com_projection_marker_radius_ =
+        std::max(0.001, this->get_parameter("com_projection_marker_radius").as_double());
     enable_state_telemetry_ = this->get_parameter("enable_state_telemetry").as_bool();
     state_telemetry_hz_ = std::max(0.0, this->get_parameter("state_telemetry_hz").as_double());
 

@@ -22,6 +22,7 @@ MujocoSimBridge::MujocoSimBridge()
     resolveModelMappings();
     controller_runtime_.setModeProfileRegistry(mode_registry_);
     controller_runtime_.initialize(startup_mode_id_);
+    initializeComSupportVisualization();
     initializeState();
     initRuntimeRecorder();
     mode_command_cache_.store(rl_master::kCtrlWordSetModeBase + startup_mode_id_);

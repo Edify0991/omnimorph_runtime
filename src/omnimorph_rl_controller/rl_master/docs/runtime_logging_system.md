@@ -236,3 +236,27 @@ Current active path:
 - `export_runtime_log.py`
 
 The old JSONL structured logger and its helper scripts have been removed from the active codebase.
+
+## 10. COM Trajectory Reconstruction
+
+For whole-body logs with joint positions, reconstruct the center of mass with
+Pinocchio and export the COM path plus its ground projection:
+
+```bash
+python3 script/visualize_com_trajectory.py \
+  --mcap src/omnimorph_rl_controller/rl_master/data/runtime_logs/Jun12_09-46-01_beyondmimic_jc01_dance_wo_state_estimation.mcap \
+  --running-only \
+  --joint-field joint_q
+```
+
+Outputs are written under `analysis_outputs/com_trajectory/<mcap_stem>/`:
+
+- `com_trajectory.csv`
+- `com_trajectory.html`
+- `com_trajectory.png`
+
+The Jun12 no-state-estimation logs do not include `base_pos_w/base_quat` in
+`runtime/tick`, so the tool defaults to a fixed free-flyer base
+(`--base-pos 0,0,0 --base-quat-xyzw 0,0,0,1`). This visualizes COM motion due
+to the recorded joints, not the robot's global odometry. If future logs include
+base pose fields, the same tool will use them automatically.
