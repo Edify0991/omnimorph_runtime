@@ -372,7 +372,7 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
       - body_ang_vel_w
     onnx_inputs: []
   auto_switch_on_reference_end:
-    enabled: true
+    enabled: false
     target_mode_id: 0
     metadata_keys:
       - motion_num_frames
