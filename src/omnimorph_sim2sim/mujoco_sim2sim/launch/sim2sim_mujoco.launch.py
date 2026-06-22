@@ -158,6 +158,11 @@ def generate_launch_description():
         default_value="0.05",
         description="Foot sites within this height of the lowest foot site are included in support polygon.",
     )
+    cop_marker_radius_arg = DeclareLaunchArgument(
+        "cop_marker_radius",
+        default_value="0.025",
+        description="Radius of the COP marker in the native MuJoCo viewer/video.",
+    )
     enable_video_recording_arg = DeclareLaunchArgument(
         "enable_video_recording",
         default_value="false",
@@ -244,6 +249,7 @@ def generate_launch_description():
                 LaunchConfiguration("support_contact_height_threshold"),
                 value_type=float,
             ),
+            "cop_marker_radius": ParameterValue(LaunchConfiguration("cop_marker_radius"), value_type=float),
             "enable_video_recording": ParameterValue(LaunchConfiguration("enable_video_recording"), value_type=bool),
             "video_output_dir": LaunchConfiguration("video_output_dir"),
             "video_output_name": LaunchConfiguration("video_output_name"),
@@ -329,6 +335,7 @@ def generate_launch_description():
             support_foot_half_length_arg,
             support_foot_half_width_arg,
             support_contact_height_threshold_arg,
+            cop_marker_radius_arg,
             enable_video_recording_arg,
             video_output_dir_arg,
             video_output_name_arg,

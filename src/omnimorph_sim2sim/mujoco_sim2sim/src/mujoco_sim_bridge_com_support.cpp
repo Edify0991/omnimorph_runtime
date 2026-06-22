@@ -21,6 +21,38 @@ std::array<double, 4> normalizedXyzw(const double x, const double y, const doubl
     return {x / norm, y / norm, z / norm, w / norm};
 }
 
+std::array<double, 3> add3(
+    const std::array<double, 3> &a,
+    const std::array<double, 3> &b)
+{
+    return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
+}
+
+std::array<double, 3> cross3(
+    const std::array<double, 3> &a,
+    const std::array<double, 3> &b)
+{
+    return {
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    };
+}
+
+std::array<double, 3> contactFrameToWorld(const mjtNum frame[9], const std::array<double, 3> &local)
+{
+    return {
+        frame[0] * local[0] + frame[3] * local[1] + frame[6] * local[2],
+        frame[1] * local[0] + frame[4] * local[1] + frame[7] * local[2],
+        frame[2] * local[0] + frame[5] * local[1] + frame[8] * local[2],
+    };
+}
+
+bool containsId(const std::vector<int> &ids, int value)
+{
+    return std::find(ids.begin(), ids.end(), value) != ids.end();
+}
+
 double cross2d(
     const std::array<double, 3> &origin,
     const std::array<double, 3> &a,
@@ -132,6 +164,7 @@ void MujocoSimBridge::initializeComSupportVisualization()
     com_support_visualization_ready_ = false;
     com_pinocchio_data_.reset();
     com_pinocchio_joint_q_indices_.clear();
+    support_foot_body_ids_.clear();
     support_foot_site_ids_.clear();
 
     if (!enable_com_support_visualization_)
@@ -196,7 +229,16 @@ void MujocoSimBridge::initializeComSupportVisualization()
                 continue;
             }
             support_foot_site_ids_.push_back(site_id);
+            const int body_id = model_->site_bodyid[site_id];
+            if (body_id >= 0)
+            {
+                support_foot_body_ids_.push_back(body_id);
+            }
         }
+        std::sort(support_foot_body_ids_.begin(), support_foot_body_ids_.end());
+        support_foot_body_ids_.erase(
+            std::unique(support_foot_body_ids_.begin(), support_foot_body_ids_.end()),
+            support_foot_body_ids_.end());
         if (support_foot_site_ids_.empty())
         {
             RCLCPP_WARN(
@@ -219,6 +261,7 @@ void MujocoSimBridge::initializeComSupportVisualization()
             e.what());
         com_pinocchio_data_.reset();
         com_pinocchio_joint_q_indices_.clear();
+        support_foot_body_ids_.clear();
         support_foot_site_ids_.clear();
     }
 }
@@ -323,6 +366,110 @@ MujocoSimBridge::computeComSupportOverlay(const mjData_ *data) const
     {
         point[2] = 0.018;
     }
+
+    if (!support_foot_body_ids_.empty())
+    {
+        std::array<double, 3> selected_force{0.0, 0.0, 0.0};
+        std::array<double, 3> selected_moment{0.0, 0.0, 0.0};
+        double selected_force_z_abs = 0.0;
+        double selected_plane_z_weight = 0.0;
+        double selected_plane_z_sum = 0.0;
+
+        std::array<double, 3> fallback_force{0.0, 0.0, 0.0};
+        std::array<double, 3> fallback_moment{0.0, 0.0, 0.0};
+        double fallback_force_z_abs = 0.0;
+        double fallback_plane_z_weight = 0.0;
+        double fallback_plane_z_sum = 0.0;
+
+        for (int contact_idx = 0; contact_idx < data->ncon; ++contact_idx)
+        {
+            const mjContact &contact = data->contact[contact_idx];
+            if (contact.geom[0] < 0 || contact.geom[1] < 0)
+            {
+                continue;
+            }
+
+            const int body1 = model_->geom_bodyid[contact.geom[0]];
+            const int body2 = model_->geom_bodyid[contact.geom[1]];
+            const bool body1_support = containsId(support_foot_body_ids_, body1);
+            const bool body2_support = containsId(support_foot_body_ids_, body2);
+            if (body1_support == body2_support)
+            {
+                continue;
+            }
+
+            mjtNum wrench_local[6] = {};
+            mj_contactForce(model_, data, contact_idx, wrench_local);
+            const std::array<double, 3> force_local{
+                static_cast<double>(wrench_local[0]),
+                static_cast<double>(wrench_local[1]),
+                static_cast<double>(wrench_local[2]),
+            };
+            const std::array<double, 3> torque_local{
+                static_cast<double>(wrench_local[3]),
+                static_cast<double>(wrench_local[4]),
+                static_cast<double>(wrench_local[5]),
+            };
+            const std::array<double, 3> force_world = contactFrameToWorld(contact.frame, force_local);
+            const std::array<double, 3> torque_world = contactFrameToWorld(contact.frame, torque_local);
+            const std::array<double, 3> pos_world{
+                static_cast<double>(contact.pos[0]),
+                static_cast<double>(contact.pos[1]),
+                static_cast<double>(contact.pos[2]),
+            };
+            const std::array<double, 3> moment_world = add3(cross3(pos_world, force_world), torque_world);
+            const double force_z_abs = std::abs(force_world[2]);
+            if (force_z_abs <= 1.0e-8)
+            {
+                continue;
+            }
+
+            const bool is_ground_contact = (body1 == 0 || body2 == 0);
+            auto &force_acc = is_ground_contact ? selected_force : fallback_force;
+            auto &moment_acc = is_ground_contact ? selected_moment : fallback_moment;
+            auto &force_z_abs_acc = is_ground_contact ? selected_force_z_abs : fallback_force_z_abs;
+            auto &plane_z_weight_acc = is_ground_contact ? selected_plane_z_weight : fallback_plane_z_weight;
+            auto &plane_z_sum_acc = is_ground_contact ? selected_plane_z_sum : fallback_plane_z_sum;
+
+            force_acc[0] += force_world[0];
+            force_acc[1] += force_world[1];
+            force_acc[2] += force_world[2];
+            moment_acc[0] += moment_world[0];
+            moment_acc[1] += moment_world[1];
+            moment_acc[2] += moment_world[2];
+            force_z_abs_acc += force_z_abs;
+            plane_z_weight_acc += force_z_abs;
+            plane_z_sum_acc += force_z_abs * pos_world[2];
+        }
+
+        const std::array<double, 3> *force = &selected_force;
+        const std::array<double, 3> *moment = &selected_moment;
+        double plane_z = 0.0;
+        if (selected_force_z_abs <= 1.0e-8)
+        {
+            force = &fallback_force;
+            moment = &fallback_moment;
+            if (fallback_force_z_abs <= 1.0e-8)
+            {
+                return overlay;
+            }
+            plane_z = fallback_plane_z_weight > 1.0e-8 ? fallback_plane_z_sum / fallback_plane_z_weight : 0.0;
+        }
+        else
+        {
+            plane_z = selected_plane_z_weight > 1.0e-8 ? selected_plane_z_sum / selected_plane_z_weight : 0.0;
+        }
+
+        if (std::abs((*force)[2]) > 1.0e-8)
+        {
+            overlay.cop = {
+                (plane_z * (*force)[0] - (*moment)[1]) / (*force)[2],
+                ((*moment)[0] + plane_z * (*force)[1]) / (*force)[2],
+                plane_z,
+            };
+            overlay.cop_valid = true;
+        }
+    }
     return overlay;
 }
 
@@ -337,12 +484,18 @@ void MujocoSimBridge::appendComSupportOverlay(
 
     constexpr float kComRgba[4] = {1.0f, 0.18f, 0.05f, 1.0f};
     constexpr float kProjectionRgba[4] = {0.05f, 0.45f, 1.0f, 1.0f};
+    constexpr float kCopRgba[4] = {1.0f, 0.85f, 0.10f, 1.0f};
     constexpr float kSupportRgba[4] = {0.05f, 0.85f, 0.30f, 0.95f};
 
     std::array<double, 3> projection{overlay.com[0], overlay.com[1], 0.02};
     addSphere(scene, overlay.com, com_marker_radius_, kComRgba);
     addSphere(scene, projection, com_projection_marker_radius_, kProjectionRgba);
     addSegment(scene, overlay.com, projection, 0.006, kComRgba);
+    if (overlay.cop_valid)
+    {
+        std::array<double, 3> cop_display{overlay.cop[0], overlay.cop[1], 0.02};
+        addSphere(scene, cop_display, cop_marker_radius_, kCopRgba);
+    }
 
     if (overlay.support_polygon.size() >= 2)
     {

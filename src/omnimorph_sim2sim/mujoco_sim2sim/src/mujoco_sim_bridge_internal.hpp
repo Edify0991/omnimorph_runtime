@@ -103,6 +103,8 @@ private:
     {
         bool valid = false;
         std::array<double, 3> com{0.0, 0.0, 0.0};
+        bool cop_valid = false;
+        std::array<double, 3> cop{0.0, 0.0, 0.0};
         std::vector<std::array<double, 3>> support_polygon;
     };
 
@@ -259,6 +261,7 @@ private:
     double support_contact_height_threshold_ = 0.05;
     double com_marker_radius_ = 0.035;
     double com_projection_marker_radius_ = 0.025;
+    double cop_marker_radius_ = 0.025;
 
     // Hold and policy-resolved gains/limits.
     std::vector<double> hold_kp_;
@@ -327,6 +330,7 @@ private:
     std::unique_ptr<pinocchio::Data> com_pinocchio_data_;
     pinocchio::Model::ConfigVectorType com_pinocchio_q_;
     std::vector<int> com_pinocchio_joint_q_indices_;
+    std::vector<int> support_foot_body_ids_;
     std::vector<int> support_foot_site_ids_;
 
     mjModel_ *model_ = nullptr;

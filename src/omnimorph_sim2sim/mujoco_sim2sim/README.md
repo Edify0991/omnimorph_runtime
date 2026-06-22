@@ -46,8 +46,8 @@ top of the fused C++ backend.
 
 ## COM And Support Visualization
 
-Offline MCAP replay in MuJoCo with Pinocchio COM, COM projection, and support
-polygon overlay:
+Offline MCAP replay in MuJoCo with Pinocchio COM, COM projection, COP, and
+support polygon overlay:
 
 ```bash
 python3 src/omnimorph_sim2sim/mujoco_sim2sim/scripts/replay_mcap_com_support.py \
@@ -65,10 +65,10 @@ ros2 launch mujoco_sim2sim sim2sim_mujoco.launch.py \
   enable_com_support_visualization:=true
 ```
 
-The overlay uses Pinocchio for COM and MuJoCo foot sites
-(`right_foot_site`, `left_foot_site` by default) to construct an approximate
-support polygon. If the runtime log does not contain `base_pos_w/base_quat`,
-offline replay uses the fixed fallback base pose.
+The overlay uses Pinocchio for COM, MuJoCo contact forces for COP, and MuJoCo
+foot sites (`right_foot_site`, `left_foot_site` by default) to construct an
+approximate support polygon. If the runtime log does not contain
+`base_pos_w/base_quat`, offline replay uses the fixed fallback base pose.
 
 Useful references:
 

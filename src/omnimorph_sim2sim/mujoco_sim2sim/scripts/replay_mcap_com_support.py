@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import math
 import os
 import subprocess
 import sys
 import time
 import types
+from bisect import bisect_right
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -66,6 +68,19 @@ DEFAULT_SIM_CONFIG = REPO_ROOT / "src/omnimorph_sim2sim/mujoco_sim2sim/config/jc
 
 
 def import_pinocchio():
+    errors: List[str] = []
+    for module_name in ("pinocchio", "pinocchio.pinocchio_pywrap_default"):
+        try:
+            pin = importlib.import_module(module_name)
+        except Exception as exc:
+            errors.append(f"{module_name}: {exc}")
+            continue
+        if all(hasattr(pin, attr) for attr in ("JointModelFreeFlyer", "neutral", "centerOfMass")):
+            return pin
+        errors.append(
+            f"{module_name}: imported from {getattr(pin, '__file__', '<unknown>')} "
+            "but does not look like Pinocchio robotics bindings"
+        )
     try:
         import pinocchio as pin  # type: ignore
     except ImportError as exc:
@@ -73,7 +88,29 @@ def import_pinocchio():
             "Python Pinocchio is required for COM reconstruction. "
             "Install/source Pinocchio Python bindings and rerun this replay tool."
         ) from exc
-    return pin
+    raise RuntimeError(
+        "Imported a 'pinocchio' module, but it does not expose the expected robotics API. "
+        "Check that you are not loading the unrelated pip package. Details: " + "; ".join(errors)
+    )
+
+
+def build_pinocchio_model(pin: Any, urdf_path: Path) -> Any:
+    if hasattr(pin, "buildModelFromUrdf"):
+        return pin.buildModelFromUrdf(str(urdf_path), pin.JointModelFreeFlyer())
+    try:
+        from pinocchio.robot_wrapper import RobotWrapper  # type: ignore
+
+        robot = RobotWrapper.BuildFromURDF(
+            str(urdf_path),
+            [],
+            pin.JointModelFreeFlyer(),
+        )
+        return robot.model
+    except Exception as exc:
+        raise RuntimeError(
+            "Pinocchio Python binding does not provide buildModelFromUrdf or "
+            f"RobotWrapper.BuildFromURDF. Loaded module: {getattr(pin, '__file__', '<unknown>')}"
+        ) from exc
 
 
 def load_yaml(path: Path) -> Dict[str, Any]:
@@ -237,6 +274,48 @@ def finite_vector(value: Any, minimum_len: int) -> Optional[List[float]]:
     return out
 
 
+def selected_base_imu_quats(mcap_path: Path) -> List[Tuple[float, np.ndarray]]:
+    messages = load_runtime_messages(mcap_path, "runtime/source/base_imu")
+    samples: List[Tuple[float, np.ndarray]] = []
+    for message in messages:
+        data = message.get("data")
+        if not isinstance(data, dict):
+            continue
+        try:
+            timestamp = float(data.get("monotonic_time_sec"))
+        except (TypeError, ValueError):
+            continue
+        values = data.get("values")
+        if not isinstance(values, dict):
+            continue
+        quat_xyzw = finite_vector(values.get("quat_xyzw"), 4)
+        if quat_xyzw is None:
+            continue
+        samples.append((timestamp, normalized_xyzw(quat_xyzw)))
+    return samples
+
+
+def align_base_imu_to_ticks(
+    ticks: Sequence[Dict[str, Any]],
+    imu_samples: Sequence[Tuple[float, np.ndarray]],
+) -> int:
+    if not ticks or not imu_samples:
+        return 0
+    imu_times = [sample[0] for sample in imu_samples]
+    aligned = 0
+    for tick in ticks:
+        try:
+            tick_time = float(tick.get("monotonic_time_sec"))
+        except (TypeError, ValueError):
+            continue
+        sample_idx = bisect_right(imu_times, tick_time) - 1
+        if sample_idx < 0:
+            continue
+        tick["_aligned_base_imu_quat_xyzw"] = imu_samples[sample_idx][1]
+        aligned += 1
+    return aligned
+
+
 def selected_ticks(mcap_path: Path, running_only: bool, joint_field: str, stride: int, max_samples: int) -> List[Dict[str, Any]]:
     messages = load_runtime_messages(mcap_path, "runtime/tick")
     ticks: List[Dict[str, Any]] = []
@@ -263,7 +342,7 @@ def pin_property(value: Any) -> Any:
 class PinocchioCom:
     def __init__(self, pin: Any, urdf_path: Path, joint_order: Sequence[str]) -> None:
         self.pin = pin
-        self.model = pin.buildModelFromUrdf(str(urdf_path), pin.JointModelFreeFlyer())
+        self.model = build_pinocchio_model(pin, urdf_path)
         self.data = self.model.createData()
         self.neutral = pin.neutral(self.model)
         self.q_indices: List[int] = []
@@ -320,9 +399,15 @@ def set_pose_from_tick(
         raise RuntimeError(f"Tick does not contain usable '{joint_field}'")
 
     logged_pos = finite_vector(tick.get("base_pos_w"), 3)
+    aligned_imu_quat = tick.get("_aligned_base_imu_quat_xyzw")
     logged_quat = finite_vector(tick.get("base_quat"), 4)
+    if logged_quat is None:
+        logged_quat = finite_vector(tick.get("base_quat_xyzw"), 4)
     pos = np.asarray((logged_pos or list(base_pos))[:3], dtype=np.float64)
-    quat_xyzw = normalized_xyzw((logged_quat or list(base_quat_xyzw))[:4])
+    if isinstance(aligned_imu_quat, np.ndarray) and aligned_imu_quat.shape == (4,):
+        quat_xyzw = normalized_xyzw(aligned_imu_quat)
+    else:
+        quat_xyzw = normalized_xyzw((logged_quat or list(base_quat_xyzw))[:4])
 
     if free_qpos >= 0 and free_qpos + 6 < model.nq:
         data.qpos[free_qpos : free_qpos + 3] = pos
@@ -392,6 +477,104 @@ def support_polygon(
     return convex_hull_xy(points)
 
 
+def support_foot_body_ids(model: mujoco.MjModel, site_names: Sequence[str]) -> List[int]:
+    body_ids: List[int] = []
+    for site_name in site_names:
+        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
+        if site_id < 0:
+            continue
+        body_id = int(model.site_bodyid[site_id])
+        if body_id >= 0:
+            body_ids.append(body_id)
+    return sorted(set(body_ids))
+
+
+def contact_frame_to_world(frame: Sequence[float], local: Sequence[float]) -> np.ndarray:
+    mat = np.asarray(frame, dtype=np.float64).reshape(3, 3)
+    vec = np.asarray(local, dtype=np.float64).reshape(3)
+    return mat.T @ vec
+
+
+def compute_cop(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    support_body_ids: Sequence[int],
+) -> Optional[np.ndarray]:
+    support_set = set(support_body_ids)
+    if not support_set:
+        return None
+
+    selected_force = np.zeros(3, dtype=np.float64)
+    selected_moment = np.zeros(3, dtype=np.float64)
+    selected_force_z_abs = 0.0
+    selected_plane_z_weight = 0.0
+    selected_plane_z_sum = 0.0
+
+    fallback_force = np.zeros(3, dtype=np.float64)
+    fallback_moment = np.zeros(3, dtype=np.float64)
+    fallback_force_z_abs = 0.0
+    fallback_plane_z_weight = 0.0
+    fallback_plane_z_sum = 0.0
+
+    wrench = np.zeros(6, dtype=np.float64)
+    for contact_idx in range(int(data.ncon)):
+        contact = data.contact[contact_idx]
+        if int(contact.geom1) < 0 or int(contact.geom2) < 0:
+            continue
+        body1 = int(model.geom_bodyid[int(contact.geom1)])
+        body2 = int(model.geom_bodyid[int(contact.geom2)])
+        support1 = body1 in support_set
+        support2 = body2 in support_set
+        if support1 == support2:
+            continue
+
+        wrench[:] = 0.0
+        mujoco.mj_contactForce(model, data, contact_idx, wrench)
+        force_world = contact_frame_to_world(contact.frame, wrench[:3])
+        torque_world = contact_frame_to_world(contact.frame, wrench[3:])
+        pos_world = np.asarray(contact.pos, dtype=np.float64)
+        moment_world = np.cross(pos_world, force_world) + torque_world
+        force_z_abs = abs(float(force_world[2]))
+        if force_z_abs <= 1.0e-8:
+            continue
+
+        is_ground_contact = body1 == 0 or body2 == 0
+        force_acc = selected_force if is_ground_contact else fallback_force
+        moment_acc = selected_moment if is_ground_contact else fallback_moment
+        if is_ground_contact:
+            selected_force_z_abs += force_z_abs
+            selected_plane_z_weight += force_z_abs
+            selected_plane_z_sum += force_z_abs * float(pos_world[2])
+        else:
+            fallback_force_z_abs += force_z_abs
+            fallback_plane_z_weight += force_z_abs
+            fallback_plane_z_sum += force_z_abs * float(pos_world[2])
+
+        force_acc[:] += force_world
+        moment_acc[:] += moment_world
+
+    force = selected_force
+    moment = selected_moment
+    plane_z = selected_plane_z_sum / selected_plane_z_weight if selected_plane_z_weight > 1.0e-8 else 0.0
+    if selected_force_z_abs <= 1.0e-8:
+        force = fallback_force
+        moment = fallback_moment
+        if fallback_force_z_abs <= 1.0e-8:
+            return None
+        plane_z = fallback_plane_z_sum / fallback_plane_z_weight if fallback_plane_z_weight > 1.0e-8 else 0.0
+
+    if abs(float(force[2])) <= 1.0e-8:
+        return None
+    return np.array(
+        [
+            (plane_z * force[0] - moment[1]) / force[2],
+            (moment[0] + plane_z * force[1]) / force[2],
+            plane_z,
+        ],
+        dtype=np.float64,
+    )
+
+
 def add_marker(
     scene: mujoco.MjvScene,
     geom_type: int,
@@ -434,11 +617,14 @@ def add_segment(scene: mujoco.MjvScene, start: Sequence[float], end: Sequence[fl
     scene.ngeom += 1
 
 
-def add_overlay(scene: mujoco.MjvScene, com: np.ndarray, polygon: Sequence[np.ndarray]) -> None:
+def add_overlay(scene: mujoco.MjvScene, com: np.ndarray, cop: Optional[np.ndarray], polygon: Sequence[np.ndarray]) -> None:
     projection = np.array([com[0], com[1], 0.02], dtype=np.float64)
     add_marker(scene, mujoco.mjtGeom.mjGEOM_SPHERE, [0.035, 0.035, 0.035], com, [1.0, 0.18, 0.05, 1.0])
     add_marker(scene, mujoco.mjtGeom.mjGEOM_SPHERE, [0.025, 0.025, 0.025], projection, [0.05, 0.45, 1.0, 1.0])
     add_segment(scene, com, projection, 0.006, [1.0, 0.18, 0.05, 0.95])
+    if cop is not None:
+        cop_display = np.array([cop[0], cop[1], 0.02], dtype=np.float64)
+        add_marker(scene, mujoco.mjtGeom.mjGEOM_SPHERE, [0.025, 0.025, 0.025], cop_display, [1.0, 0.85, 0.10, 1.0])
     if len(polygon) >= 2:
         lifted = [np.array([p[0], p[1], 0.018], dtype=np.float64) for p in polygon]
         for idx, start in enumerate(lifted):
@@ -507,6 +693,8 @@ def main() -> int:
     ticks = selected_ticks(mcap_path, args.running_only, args.joint_field, args.stride, args.max_samples)
     if not ticks:
         raise RuntimeError("No runtime/tick samples selected")
+    imu_samples = selected_base_imu_quats(mcap_path)
+    aligned_imu_count = align_base_imu_to_ticks(ticks, imu_samples)
 
     model = mujoco.MjModel.from_xml_path(str(model_path))
     data = mujoco.MjData(model)
@@ -525,11 +713,20 @@ def main() -> int:
         fallback_base_quat_xyzw = [0.0, 0.0, 0.0, 1.0]
     com_solver = PinocchioCom(pin, urdf_path, joint_order)
     foot_sites = [token.strip() for token in args.foot_sites.split(",") if token.strip()]
+    foot_body_ids = support_foot_body_ids(model, foot_sites)
 
     print(f"profile: {section}")
     print(f"mujoco_model: {model_path}")
     print(f"pinocchio_urdf: {urdf_path}")
     print(f"samples: {len(ticks)} joint_field={args.joint_field}")
+    print(f"support_foot_body_ids: {foot_body_ids}")
+    if imu_samples:
+        print(
+            "base_orientation_source: runtime/source/base_imu "
+            f"(aligned {aligned_imu_count}/{len(ticks)} ticks from {len(imu_samples)} imu samples)"
+        )
+    else:
+        print("base_orientation_source: runtime/tick base_quat/base_quat_xyzw or fallback base quat")
 
     period = 1.0 / max(1.0, args.fps)
     with mujoco.viewer.launch_passive(model, data) as viewer:
@@ -547,6 +744,7 @@ def main() -> int:
                     fallback_base_quat_xyzw,
                 )
                 com = com_solver.compute(base_pos, base_quat_xyzw, joint_q)
+                cop = compute_cop(model, data, foot_body_ids)
                 polygon = support_polygon(
                     model,
                     data,
@@ -557,7 +755,7 @@ def main() -> int:
                 )
                 with viewer.lock():
                     viewer.user_scn.ngeom = 0
-                    add_overlay(viewer.user_scn, com, polygon)
+                    add_overlay(viewer.user_scn, com, cop, polygon)
                 viewer.sync()
                 sleep_s = period - (time.monotonic() - begin)
                 if sleep_s > 0.0:

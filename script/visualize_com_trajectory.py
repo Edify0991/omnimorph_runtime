@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib
 import math
 import os
 import subprocess
@@ -71,6 +72,19 @@ DEFAULT_ROOT_CONFIG = RL_MASTER_ROOT / "config/rl_cfg_jc01.yaml"
 
 
 def import_pinocchio():
+    errors: List[str] = []
+    for module_name in ("pinocchio", "pinocchio.pinocchio_pywrap_default"):
+        try:
+            pin = importlib.import_module(module_name)
+        except Exception as exc:
+            errors.append(f"{module_name}: {exc}")
+            continue
+        if all(hasattr(pin, attr) for attr in ("JointModelFreeFlyer", "neutral", "centerOfMass")):
+            return pin
+        errors.append(
+            f"{module_name}: imported from {getattr(pin, '__file__', '<unknown>')} "
+            "but does not look like Pinocchio robotics bindings"
+        )
     try:
         import pinocchio as pin  # type: ignore
     except ImportError as exc:
@@ -78,7 +92,29 @@ def import_pinocchio():
             "Python Pinocchio is required for COM reconstruction. "
             "Install the Python bindings in this environment, then rerun this tool."
         ) from exc
-    return pin
+    raise RuntimeError(
+        "Imported a 'pinocchio' module, but it does not expose the expected robotics API. "
+        "Check that you are not loading the unrelated pip package. Details: " + "; ".join(errors)
+    )
+
+
+def build_pinocchio_model(pin: Any, urdf_path: Path) -> Any:
+    if hasattr(pin, "buildModelFromUrdf"):
+        return pin.buildModelFromUrdf(str(urdf_path), pin.JointModelFreeFlyer())
+    try:
+        from pinocchio.robot_wrapper import RobotWrapper  # type: ignore
+
+        robot = RobotWrapper.BuildFromURDF(
+            str(urdf_path),
+            [],
+            pin.JointModelFreeFlyer(),
+        )
+        return robot.model
+    except Exception as exc:
+        raise RuntimeError(
+            "Pinocchio Python binding does not provide buildModelFromUrdf or "
+            f"RobotWrapper.BuildFromURDF. Loaded module: {getattr(pin, '__file__', '<unknown>')}"
+        ) from exc
 
 
 def load_yaml(path: Path) -> Dict[str, Any]:
@@ -594,7 +630,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     urdf_path = resolve_urdf_path(args, profile, root_config, root_config_path)
     joint_order = resolve_joint_order(profile, root_config, args)
 
-    model = pin.buildModelFromUrdf(str(urdf_path), pin.JointModelFreeFlyer())
+    model = build_pinocchio_model(pin, urdf_path)
     joint_q_indices = build_joint_index_map(model, joint_order)
 
     messages = load_runtime_messages(mcap_path, "runtime/tick")

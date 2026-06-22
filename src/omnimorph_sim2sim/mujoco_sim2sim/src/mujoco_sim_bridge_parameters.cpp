@@ -70,6 +70,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<double>("support_contact_height_threshold", 0.05);
     this->declare_parameter<double>("com_marker_radius", 0.035);
     this->declare_parameter<double>("com_projection_marker_radius", 0.025);
+    this->declare_parameter<double>("cop_marker_radius", 0.025);
     this->declare_parameter<bool>("enable_state_telemetry", true);
     this->declare_parameter<double>("state_telemetry_hz", 50.0);
 
@@ -161,6 +162,7 @@ void MujocoSimBridge::loadParameters()
     com_marker_radius_ = std::max(0.001, this->get_parameter("com_marker_radius").as_double());
     com_projection_marker_radius_ =
         std::max(0.001, this->get_parameter("com_projection_marker_radius").as_double());
+    cop_marker_radius_ = std::max(0.001, this->get_parameter("cop_marker_radius").as_double());
     enable_state_telemetry_ = this->get_parameter("enable_state_telemetry").as_bool();
     state_telemetry_hz_ = std::max(0.0, this->get_parameter("state_telemetry_hz").as_double());
 
