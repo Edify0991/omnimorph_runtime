@@ -38,8 +38,10 @@ Set them explicitly before startup, and preserve them with `sudo -E` when a comm
 
 ROS 2/DDS traffic is also intentionally domain-gated. Pick one non-zero
 `ROS_DOMAIN_ID` per robot or test setup before sourcing `script/dev_env.sh`;
-domain `0` is blocked by the project scripts because it is the ROS 2 default
-and can collide with other machines on the same LAN.
+domain `0` is blocked by default because it is the ROS 2 default and can
+collide with other machines on the same LAN. Unitree G1 ROS2 is the explicit
+exception: use `script/unitree_g1_env.sh` when matching Unitree's default
+domain `0`.
 
 JC01:
 
@@ -54,11 +56,18 @@ Unitree G1:
 
 ```bash
 export OMNIMORPH_RUNTIME_ROOT=/abs/path/to/omnimorph_runtime
-export ROS_DOMAIN_ID=83
+export ROS_DOMAIN_ID=0
+export OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO=1
 export G1_PINOCCHIO_URDF=/abs/path/to/g1_29dof.urdf
 export G1_SCENE_XML=/abs/path/to/scene_29dof.xml
 export MUJOCO_MODEL_PATH="${G1_SCENE_XML}"
+source ./script/unitree_g1_env.sh
 ```
+
+Unitree's official ROS 2 stack commonly uses DDS domain `0`. This repository
+blocks domain `0` by default for lab safety, so G1 terminals should either use
+`script/unitree_g1_env.sh` or explicitly set
+`OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO=1` before sourcing `script/dev_env.sh`.
 
 These variables are consumed here:
 
@@ -114,7 +123,7 @@ For Unitree G1, Terminal 1 is the official Unitree low-level runtime/DDS check
 instead of a repository driver:
 
 ```bash
-source ~/unitree_ros2/setup.sh
+source ./script/unitree_g1_env.sh
 ros2 topic echo lowstate --once
 ```
 

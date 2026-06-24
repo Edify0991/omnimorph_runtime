@@ -106,14 +106,15 @@ require_ros_domain_id() {
 
   if (( ROS_DOMAIN_ID < 1 || ROS_DOMAIN_ID > 232 )); then
     if [[ "${ROS_DOMAIN_ID}" == "0" ]]; then
-      log_error "ROS_DOMAIN_ID=0 is blocked by this project because it is the ROS 2 default and can collide on shared LANs."
-      log_error "Set a robot-specific domain, e.g. export ROS_DOMAIN_ID=${suggested}."
-      log_error "For a one-off lab diagnostic only, set OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO=1."
       if [[ "${OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO:-0}" == "1" ]]; then
         log_warn "OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO=1 set; allowing ROS_DOMAIN_ID=0 for this run."
         export ROS_DOMAIN_ID
         return 0
       fi
+      log_error "ROS_DOMAIN_ID=0 is blocked by this project because it is the ROS 2 default and can collide on shared LANs."
+      log_error "Set a robot-specific domain, e.g. export ROS_DOMAIN_ID=${suggested}."
+      log_error "For Unitree G1 ROS2, use: source script/unitree_g1_env.sh"
+      log_error "For a one-off lab diagnostic only, set OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO=1."
       return 1
     fi
     log_error "ROS_DOMAIN_ID must be in [1, 232], got: ${ROS_DOMAIN_ID}"
@@ -182,6 +183,39 @@ prepare_ros_network_env() {
 build_ros_package() {
   local package_name="$1"
   (cd "${WORKSPACE_DIR}" && colcon build --packages-select "${package_name}")
+}
+
+detect_unitree_transport_from_config() {
+  local cfg_path="$1"
+  [[ -f "${cfg_path}" ]] || return 1
+  awk -F: '
+    /^[[:space:]]*unitree_transport[[:space:]]*:/ {
+      value = $2
+      sub(/#.*/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      print value
+      exit
+    }
+  ' "${cfg_path}"
+}
+
+is_unitree_ros2_transport() {
+  local transport="$1"
+  case "${transport}" in
+    ros2|dds|unitree_ros2|unitree_g1_dds)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+prepare_unitree_ros2_domain_zero_env() {
+  export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+  export OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO="${OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO:-1}"
+  export OMNIMORPH_ROS_DOMAIN_SCAN="${OMNIMORPH_ROS_DOMAIN_SCAN:-warn}"
+  log_warn "Unitree ROS2 transport selected; allowing ROS_DOMAIN_ID=${ROS_DOMAIN_ID} to match Unitree's default DDS domain."
 }
 
 resolve_ros_executable() {

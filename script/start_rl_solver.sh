@@ -28,34 +28,16 @@ detect_rl_cfg_arg() {
   return 1
 }
 
-detect_unitree_transport() {
-  local cfg_path="$1"
-  [[ -f "${cfg_path}" ]] || return 1
-  awk -F: '
-    /^[[:space:]]*unitree_transport[[:space:]]*:/ {
-      value = $2
-      sub(/#.*/, "", value)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-      print value
-      exit
-    }
-  ' "${cfg_path}"
-}
-
 RL_CFG_ARG="$(detect_rl_cfg_arg "$@" || true)"
 RMW_DEFAULT="rmw_fastrtps_cpp"
 if [[ -n "${RL_CFG_ARG}" ]]; then
   case "$(basename "${RL_CFG_ARG}")" in
     rl_cfg_unitree_g1.yaml)
-      UNITREE_TRANSPORT="$(detect_unitree_transport "${RL_CFG_ARG}" || true)"
-      case "${UNITREE_TRANSPORT}" in
-        ros2|dds|unitree_ros2|unitree_g1_dds)
-          RMW_DEFAULT="rmw_cyclonedds_cpp"
-          ;;
-        *)
-          RMW_DEFAULT="rmw_fastrtps_cpp"
-          ;;
-      esac
+      UNITREE_TRANSPORT="$(detect_unitree_transport_from_config "${RL_CFG_ARG}" || true)"
+      if is_unitree_ros2_transport "${UNITREE_TRANSPORT}"; then
+        RMW_DEFAULT="rmw_cyclonedds_cpp"
+        prepare_unitree_ros2_domain_zero_env
+      fi
       ;;
   esac
 fi

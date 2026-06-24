@@ -83,6 +83,15 @@ fi
 [[ -f "${RL_CFG_PATH_OVERRIDE}" ]] || die "rl config not found: ${RL_CFG_PATH_OVERRIDE}"
 log_info "RL config: ${RL_CFG_PATH_OVERRIDE}"
 
+RMW_DEFAULT="rmw_fastrtps_cpp"
+if [[ "$(basename "${RL_CFG_PATH_OVERRIDE}")" == "rl_cfg_unitree_g1.yaml" ]]; then
+  UNITREE_TRANSPORT="$(detect_unitree_transport_from_config "${RL_CFG_PATH_OVERRIDE}" || true)"
+  if is_unitree_ros2_transport "${UNITREE_TRANSPORT}"; then
+    RMW_DEFAULT="rmw_cyclonedds_cpp"
+    prepare_unitree_ros2_domain_zero_env
+  fi
+fi
+
 CURRENT_PYTHON="$(command -v python3 || true)"
 [[ -n "${CURRENT_PYTHON}" ]] || die "python3 not found in PATH"
 
@@ -111,7 +120,7 @@ if [[ "${SKIP_PRECHECK}" != "true" ]]; then
 fi
 
 source_ros_workspace
-prepare_ros_network_env "rmw_fastrtps_cpp" || exit 1
+prepare_ros_network_env "${RMW_DEFAULT}" || exit 1
 export ROS_LOG_DIR="${ROS_LOG_DIR:-${WORKSPACE_DIR}/log/ros2}"
 mkdir -p "${ROS_LOG_DIR}" >/dev/null 2>&1 || true
 

@@ -16,7 +16,7 @@ This prepares the shell by:
 - sourcing ROS2 and this workspace
 - exporting `OMNIMORPH_RUNTIME_ROOT` (and legacy `JC01_DEPLOY_ROOT`)
 - exporting `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` by default
-- refusing unset `ROS_DOMAIN_ID` and blocking default domain `0`
+- refusing unset `ROS_DOMAIN_ID` and blocking default domain `0`, except through the explicit Unitree G1 ROS2 flow
 - scanning the selected domain for already-visible ROS nodes in warning mode
 - exporting a writable `ROS_LOG_DIR`
 - preferring system/ROS runtime libraries before Conda copies in `LD_LIBRARY_PATH`
@@ -31,8 +31,11 @@ export ROS_DOMAIN_ID=73
 export ROBOT_ASSETS_DIR=/abs/path/to/JC01-URDF-18所
 
 # Unitree G1
+export ROS_DOMAIN_ID=0
+export OMNIMORPH_ALLOW_ROS_DOMAIN_ID_ZERO=1
 export G1_PINOCCHIO_URDF=/abs/path/to/g1_29dof.urdf
 export G1_SCENE_XML=/abs/path/to/scene_29dof.xml
+source ${OMNIMORPH_RUNTIME_ROOT}/script/unitree_g1_env.sh
 
 # Optional CLI convenience for sim2sim viewer/backend examples
 export MUJOCO_MODEL_PATH="${ROBOT_ASSETS_DIR}/scene_jingchu01.xml"
@@ -63,7 +66,7 @@ sudo -E ./script/start_driver_jc01.sh
 For Unitree G1, use the official Unitree low-level runtime/DDS check instead:
 
 ```bash
-source ~/unitree_ros2/setup.sh
+source ${OMNIMORPH_RUNTIME_ROOT}/script/unitree_g1_env.sh
 ros2 topic echo lowstate --once
 ```
 
@@ -137,7 +140,7 @@ robot_identity:
 ```
 
 ```bash
-source ./script/dev_env.sh
+source ./script/unitree_g1_env.sh
 ./script/start_unitree_g1_policy.sh --mode-id 0
 
 # Equivalent direct solver command:
