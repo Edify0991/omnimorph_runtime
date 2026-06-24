@@ -99,13 +99,17 @@ private:
         std::vector<double> ctrl;
         double sim_time = 0.0;
     };
+    using ViewerOverlayPoint = std::array<double, 3>;
     struct ComSupportOverlay
     {
         bool valid = false;
-        std::array<double, 3> com{0.0, 0.0, 0.0};
+        ViewerOverlayPoint com{0.0, 0.0, 0.0};
+        bool dcm_valid = false;
+        ViewerOverlayPoint dcm{0.0, 0.0, 0.0};
+        bool dcm_inside_capture_region = false;
         bool cop_valid = false;
-        std::array<double, 3> cop{0.0, 0.0, 0.0};
-        std::vector<std::array<double, 3>> support_polygon;
+        ViewerOverlayPoint cop{0.0, 0.0, 0.0};
+        std::vector<ViewerOverlayPoint> support_polygon;
     };
 
     // Core setup and MuJoCo model mapping.
@@ -189,7 +193,12 @@ private:
         const rl_master::RobotStateData &state,
         const rl_master::RobotCommandData &command,
         const rl_master::CommandRuntimeDecision &runtime_mode);
-    void publishViewerFrameMirror(const std::vector<float> &qpos, const std::vector<float> &qvel, const std::vector<float> &ctrl, float sim_time);
+    void publishViewerFrameMirror(
+        const std::vector<float> &qpos,
+        const std::vector<float> &qvel,
+        const std::vector<float> &ctrl,
+        float sim_time,
+        const ComSupportOverlay &overlay);
     void publishViewerInspectorText(const std::string &text);
     void resolvePerJointControlConfig(int active_mode_id);
 
@@ -262,6 +271,11 @@ private:
     double com_marker_radius_ = 0.035;
     double com_projection_marker_radius_ = 0.025;
     double cop_marker_radius_ = 0.025;
+    bool enable_dcm_capture_visualization_ = false;
+    double dcm_marker_radius_ = 0.028;
+    double capture_region_line_width_ = 0.012;
+    double capture_min_com_height_ = 0.05;
+    double capture_gravity_ = 9.81;
 
     // Hold and policy-resolved gains/limits.
     std::vector<double> hold_kp_;
@@ -330,6 +344,7 @@ private:
     std::unique_ptr<pinocchio::Data> com_pinocchio_data_;
     pinocchio::Model::ConfigVectorType com_pinocchio_q_;
     std::vector<int> com_pinocchio_joint_q_indices_;
+    std::vector<int> com_pinocchio_joint_v_indices_;
     std::vector<int> support_foot_body_ids_;
     std::vector<int> support_foot_site_ids_;
 
@@ -392,6 +407,7 @@ private:
     std::vector<float> latest_viewer_qvel_;
     std::vector<float> latest_viewer_ctrl_;
     float latest_viewer_sim_time_ = 0.0f;
+    ComSupportOverlay latest_viewer_overlay_;
     bool has_viewer_frame_ = false;
     std::string latest_viewer_inspector_text_;
     bool has_viewer_inspector_ = false;

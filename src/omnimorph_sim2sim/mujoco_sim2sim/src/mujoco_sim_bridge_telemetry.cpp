@@ -70,6 +70,7 @@ void MujocoSimBridge::startViewerTelemetry()
             std::vector<float> qvel;
             std::vector<float> ctrl;
             float sim_time = 0.0f;
+            ComSupportOverlay overlay;
             std::string inspector_text;
             bool has_frame = false;
             bool has_inspector = false;
@@ -98,6 +99,7 @@ void MujocoSimBridge::startViewerTelemetry()
                     qvel = latest_viewer_qvel_;
                     ctrl = latest_viewer_ctrl_;
                     sim_time = latest_viewer_sim_time_;
+                    overlay = latest_viewer_overlay_;
                 }
                 if (has_inspector)
                 {
@@ -112,7 +114,7 @@ void MujocoSimBridge::startViewerTelemetry()
                 if (last_frame_pub.time_since_epoch().count() == 0 ||
                     (now - last_frame_pub) >= frame_period)
                 {
-                    publishViewerFrameMirror(qpos, qvel, ctrl, sim_time);
+                    publishViewerFrameMirror(qpos, qvel, ctrl, sim_time, overlay);
                     last_frame_pub = now;
                 }
             }
@@ -186,6 +188,7 @@ void MujocoSimBridge::updateViewerFrameMirror()
             latest_viewer_ctrl_[i] = static_cast<float>(data_->ctrl[i]);
         }
         latest_viewer_sim_time_ = static_cast<float>(data_->time);
+        latest_viewer_overlay_ = computeComSupportOverlay(data_);
         has_viewer_frame_ = true;
     }
     if (should_notify)

@@ -79,6 +79,26 @@ Startup scripts run the same scan in warning mode by default. Set
 `OMNIMORPH_ROS_DOMAIN_SCAN=off` only after manually verifying the domain is
 expected to be shared.
 
+## Low-Memory Remote Build
+
+On small embedded machines or SSH sessions that disconnect during compilation,
+use the low-memory build helper. It limits parallelism, reduces compiler debug
+metadata, uses lower optimization during compilation, and skips optional
+developer targets by default.
+
+```bash
+tmux new -s omnimorph-build
+./script/build_low_memory.sh rl_master mujoco_sim2sim
+```
+
+By default this also disables the optional Unitree SDK2 backend and `test_kine`
+tool to reduce compile/link pressure. Re-enable them only when needed:
+
+```bash
+OMNIMORPH_LOW_MEMORY_DISABLE_UNITREE_SDK2=0 ./script/build_low_memory.sh rl_master
+OMNIMORPH_LOW_MEMORY_BUILD_TEST_TOOLS=1 ./script/build_low_memory.sh rl_master
+```
+
 ## Terminal Workflow
 
 ### Real robot

@@ -3,6 +3,7 @@ project(mujoco_sim2sim)
 option(MUJOCO_SIM2SIM_ENABLE_VIEWER "Enable optional MuJoCo GLFW viewer support" ON)
 option(MUJOCO_SIM2SIM_ENABLE_ARCH_TUNING "Enable architecture-aware compile tuning." ON)
 option(MUJOCO_SIM2SIM_ENABLE_NATIVE_TUNING "Use -march=native for local machine tuning." OFF)
+option(MUJOCO_SIM2SIM_LOW_MEMORY_BUILD "Reduce peak compiler/linker memory usage for constrained machines." OFF)
 set(MUJOCO_SIM2SIM_ARM_BASELINE "armv8-a" CACHE STRING "Baseline ARM architecture when native tuning is off.")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -10,6 +11,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+add_library(mujoco_sim2sim_low_memory_flags INTERFACE)
+if(MUJOCO_SIM2SIM_LOW_MEMORY_BUILD AND (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+  target_compile_options(mujoco_sim2sim_low_memory_flags INTERFACE
+    $<$<COMPILE_LANGUAGE:CXX>:-O1>
+    $<$<COMPILE_LANGUAGE:CXX>:-g0>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-var-tracking>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-var-tracking-assignments>
+  )
+  target_link_options(mujoco_sim2sim_low_memory_flags INTERFACE
+    $<$<CXX_COMPILER_ID:GNU>:-Wl,--no-keep-memory>
+  )
+  message(STATUS "mujoco_sim2sim: low-memory build enabled (-O1 -g0 and linker memory reduction).")
 endif()
 
 string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" MUJOCO_SIM2SIM_SYSTEM_PROCESSOR)
@@ -223,6 +238,7 @@ if(MUJOCO_INCLUDE_DIR AND MUJOCO_LIBRARY)
     ${MUJOCO_LIBRARY}
     yaml-cpp
     mujoco_sim2sim_arch_flags
+    mujoco_sim2sim_low_memory_flags
   )
 
   set(_mujoco_sim2sim_rpath_dirs "")

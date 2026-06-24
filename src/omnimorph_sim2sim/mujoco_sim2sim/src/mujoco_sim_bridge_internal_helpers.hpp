@@ -4,7 +4,7 @@ namespace mujoco_sim2sim::bridge_internal
 {
 inline constexpr const char *kDefaultViewerFrameTopic = "/omnimorph/sim2sim/mujoco_viewer_frame";
 inline constexpr float kViewerFrameMagic = 260413.0f;
-inline constexpr float kViewerFrameVersion = 1.0f;
+inline constexpr float kViewerFrameVersion = 2.0f;
 
 inline bool endsWith(const std::string &value, const std::string &suffix)
 {

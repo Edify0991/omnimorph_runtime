@@ -163,6 +163,31 @@ def generate_launch_description():
         default_value="0.025",
         description="Radius of the COP marker in the native MuJoCo viewer/video.",
     )
+    enable_dcm_capture_visualization_arg = DeclareLaunchArgument(
+        "enable_dcm_capture_visualization",
+        default_value="false",
+        description="Overlay DCM/ICP and color the current support polygon as the instantaneous capture region.",
+    )
+    dcm_marker_radius_arg = DeclareLaunchArgument(
+        "dcm_marker_radius",
+        default_value="0.028",
+        description="Radius of the DCM/ICP marker in the native MuJoCo viewer/video.",
+    )
+    capture_region_line_width_arg = DeclareLaunchArgument(
+        "capture_region_line_width",
+        default_value="0.012",
+        description="Line width for the instantaneous capture-region overlay.",
+    )
+    capture_min_com_height_arg = DeclareLaunchArgument(
+        "capture_min_com_height",
+        default_value="0.05",
+        description="Minimum COM height used in DCM omega=sqrt(g/h) to avoid singular values.",
+    )
+    capture_gravity_arg = DeclareLaunchArgument(
+        "capture_gravity",
+        default_value="9.81",
+        description="Gravity used in DCM omega=sqrt(g/h).",
+    )
     enable_video_recording_arg = DeclareLaunchArgument(
         "enable_video_recording",
         default_value="false",
@@ -250,6 +275,20 @@ def generate_launch_description():
                 value_type=float,
             ),
             "cop_marker_radius": ParameterValue(LaunchConfiguration("cop_marker_radius"), value_type=float),
+            "enable_dcm_capture_visualization": ParameterValue(
+                LaunchConfiguration("enable_dcm_capture_visualization"),
+                value_type=bool,
+            ),
+            "dcm_marker_radius": ParameterValue(LaunchConfiguration("dcm_marker_radius"), value_type=float),
+            "capture_region_line_width": ParameterValue(
+                LaunchConfiguration("capture_region_line_width"),
+                value_type=float,
+            ),
+            "capture_min_com_height": ParameterValue(
+                LaunchConfiguration("capture_min_com_height"),
+                value_type=float,
+            ),
+            "capture_gravity": ParameterValue(LaunchConfiguration("capture_gravity"), value_type=float),
             "enable_video_recording": ParameterValue(LaunchConfiguration("enable_video_recording"), value_type=bool),
             "video_output_dir": LaunchConfiguration("video_output_dir"),
             "video_output_name": LaunchConfiguration("video_output_name"),
@@ -336,6 +375,11 @@ def generate_launch_description():
             support_foot_half_width_arg,
             support_contact_height_threshold_arg,
             cop_marker_radius_arg,
+            enable_dcm_capture_visualization_arg,
+            dcm_marker_radius_arg,
+            capture_region_line_width_arg,
+            capture_min_com_height_arg,
+            capture_gravity_arg,
             enable_video_recording_arg,
             video_output_dir_arg,
             video_output_name_arg,

@@ -19,6 +19,9 @@ Scope:
   - `RL_MASTER_ENABLE_ARCH_TUNING` (default `ON`)
   - `RL_MASTER_ENABLE_NATIVE_TUNING` (default `OFF`)
   - `RL_MASTER_ARM_BASELINE` (default `armv8-a`)
+  - `RL_MASTER_LOW_MEMORY_BUILD` (default `OFF`)
+  - `RL_MASTER_ENABLE_UNITREE_SDK2` (default `ON`)
+  - `RL_MASTER_BUILD_TEST_TOOLS` (default `ON`)
 - Replaces hardcoded ONNX Runtime path with portable detection:
   - cache/env: `ONNXRUNTIME_ROOT` (or env `ONNXRUNTIME_DIR`)
   - auto-search in `/usr/local` and `/usr`
@@ -29,6 +32,7 @@ Scope:
   - `MUJOCO_SIM2SIM_ENABLE_ARCH_TUNING` (default `ON`)
   - `MUJOCO_SIM2SIM_ENABLE_NATIVE_TUNING` (default `OFF`)
   - `MUJOCO_SIM2SIM_ARM_BASELINE` (default `armv8-a`)
+  - `MUJOCO_SIM2SIM_LOW_MEMORY_BUILD` (default `OFF`)
 
 ## 2) Build Examples
 
@@ -57,6 +61,44 @@ colcon build --symlink-install \
   --cmake-args \
     -DRL_MASTER_ENABLE_NATIVE_TUNING=ON \
     -DMUJOCO_SIM2SIM_ENABLE_NATIVE_TUNING=ON
+```
+
+### Low-memory remote build
+Use this on embedded boards or SSH sessions where `colcon build` often stalls
+or disconnects under memory pressure:
+
+```bash
+tmux new -s omnimorph-build
+./script/build_low_memory.sh rl_master mujoco_sim2sim
+```
+
+The helper sets `CMAKE_BUILD_PARALLEL_LEVEL=1`, `MAKEFLAGS=-j1 -l1`, enables
+`RL_MASTER_LOW_MEMORY_BUILD` and `MUJOCO_SIM2SIM_LOW_MEMORY_BUILD`, disables
+native tuning, and skips optional `rl_master` SDK2/test-tool targets by default.
+
+Equivalent manual form:
+
+```bash
+colcon build --parallel-workers 1 \
+  --event-handlers console_direct+ \
+  --packages-select rl_master mujoco_sim2sim \
+  --cmake-args \
+    --no-warn-unused-cli \
+    -Wno-dev \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DRL_MASTER_LOW_MEMORY_BUILD=ON \
+    -DMUJOCO_SIM2SIM_LOW_MEMORY_BUILD=ON \
+    -DRL_MASTER_ENABLE_NATIVE_TUNING=OFF \
+    -DMUJOCO_SIM2SIM_ENABLE_NATIVE_TUNING=OFF \
+    -DRL_MASTER_ENABLE_UNITREE_SDK2=OFF \
+    -DRL_MASTER_BUILD_TEST_TOOLS=OFF
+```
+
+If the SDK2 backend or developer tools are required:
+
+```bash
+OMNIMORPH_LOW_MEMORY_DISABLE_UNITREE_SDK2=0 ./script/build_low_memory.sh rl_master
+OMNIMORPH_LOW_MEMORY_BUILD_TEST_TOOLS=1 ./script/build_low_memory.sh rl_master
 ```
 
 ## 3) ONNX Runtime Path

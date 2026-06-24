@@ -202,6 +202,12 @@ mujoco_sim_bridge:
     support_contact_height_threshold: 0.05
     com_marker_radius: 0.035
     com_projection_marker_radius: 0.025
+    cop_marker_radius: 0.025
+    enable_dcm_capture_visualization: true
+    dcm_marker_radius: 0.028
+    capture_region_line_width: 0.012
+    capture_min_com_height: 0.05
+    capture_gravity: 9.81
     enable_state_telemetry: true
     state_telemetry_hz: 50.0
     show_left_ui: true

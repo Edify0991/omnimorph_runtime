@@ -71,6 +71,11 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<double>("com_marker_radius", 0.035);
     this->declare_parameter<double>("com_projection_marker_radius", 0.025);
     this->declare_parameter<double>("cop_marker_radius", 0.025);
+    this->declare_parameter<bool>("enable_dcm_capture_visualization", false);
+    this->declare_parameter<double>("dcm_marker_radius", 0.028);
+    this->declare_parameter<double>("capture_region_line_width", 0.012);
+    this->declare_parameter<double>("capture_min_com_height", 0.05);
+    this->declare_parameter<double>("capture_gravity", 9.81);
     this->declare_parameter<bool>("enable_state_telemetry", true);
     this->declare_parameter<double>("state_telemetry_hz", 50.0);
 
@@ -163,6 +168,14 @@ void MujocoSimBridge::loadParameters()
     com_projection_marker_radius_ =
         std::max(0.001, this->get_parameter("com_projection_marker_radius").as_double());
     cop_marker_radius_ = std::max(0.001, this->get_parameter("cop_marker_radius").as_double());
+    enable_dcm_capture_visualization_ =
+        this->get_parameter("enable_dcm_capture_visualization").as_bool();
+    dcm_marker_radius_ = std::max(0.001, this->get_parameter("dcm_marker_radius").as_double());
+    capture_region_line_width_ =
+        std::max(0.001, this->get_parameter("capture_region_line_width").as_double());
+    capture_min_com_height_ =
+        std::max(0.001, this->get_parameter("capture_min_com_height").as_double());
+    capture_gravity_ = std::max(0.1, this->get_parameter("capture_gravity").as_double());
     enable_state_telemetry_ = this->get_parameter("enable_state_telemetry").as_bool();
     state_telemetry_hz_ = std::max(0.0, this->get_parameter("state_telemetry_hz").as_double());
 

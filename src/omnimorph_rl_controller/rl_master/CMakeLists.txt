@@ -13,7 +13,24 @@ endif()
 
 option(RL_MASTER_ENABLE_ARCH_TUNING "Enable architecture-aware compile tuning." ON)
 option(RL_MASTER_ENABLE_NATIVE_TUNING "Use -march=native for local machine tuning." OFF)
+option(RL_MASTER_LOW_MEMORY_BUILD "Reduce peak compiler/linker memory usage for constrained machines." OFF)
+option(RL_MASTER_ENABLE_UNITREE_SDK2 "Build optional Unitree SDK2 motor IO backend when SDK2 is available." ON)
+option(RL_MASTER_BUILD_TEST_TOOLS "Build small developer/test executables such as test_kine." ON)
 set(RL_MASTER_ARM_BASELINE "armv8-a" CACHE STRING "Baseline ARM architecture when native tuning is off.")
+
+add_library(rl_master_low_memory_flags INTERFACE)
+if(RL_MASTER_LOW_MEMORY_BUILD AND (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+  target_compile_options(rl_master_low_memory_flags INTERFACE
+    $<$<COMPILE_LANGUAGE:CXX>:-O1>
+    $<$<COMPILE_LANGUAGE:CXX>:-g0>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-var-tracking>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-var-tracking-assignments>
+  )
+  target_link_options(rl_master_low_memory_flags INTERFACE
+    $<$<CXX_COMPILER_ID:GNU>:-Wl,--no-keep-memory>
+  )
+  message(STATUS "rl_master: low-memory build enabled (-O1 -g0 and linker memory reduction).")
+endif()
 
 string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" RL_MASTER_SYSTEM_PROCESSOR)
 set(RL_MASTER_ARCH_KIND "generic")
@@ -69,13 +86,16 @@ find_package(SymEngine CONFIG QUIET)
 
 set(UNITREE_SDK2_FOUND FALSE)
 set(UNITREE_SDK2_ROOT "" CACHE PATH "Unitree SDK2 repository root.")
-if(NOT UNITREE_SDK2_ROOT AND DEFINED ENV{UNITREE_SDK2_ROOT})
+if(NOT RL_MASTER_ENABLE_UNITREE_SDK2)
+  message(STATUS "rl_master: Unitree SDK2 backend disabled by RL_MASTER_ENABLE_UNITREE_SDK2=OFF.")
+endif()
+if(RL_MASTER_ENABLE_UNITREE_SDK2 AND NOT UNITREE_SDK2_ROOT AND DEFINED ENV{UNITREE_SDK2_ROOT})
   set(UNITREE_SDK2_ROOT "$ENV{UNITREE_SDK2_ROOT}")
 endif()
-if(NOT UNITREE_SDK2_ROOT AND EXISTS "/home/edify/Code/unitree_sdk2")
+if(RL_MASTER_ENABLE_UNITREE_SDK2 AND NOT UNITREE_SDK2_ROOT AND EXISTS "/home/edify/Code/unitree_sdk2")
   set(UNITREE_SDK2_ROOT "/home/edify/Code/unitree_sdk2")
 endif()
-if(UNITREE_SDK2_ROOT)
+if(RL_MASTER_ENABLE_UNITREE_SDK2 AND UNITREE_SDK2_ROOT)
   set(UNITREE_SDK2_INCLUDE_DIR "${UNITREE_SDK2_ROOT}/include")
   set(UNITREE_SDK2_THIRDPARTY_INCLUDE_DIR "${UNITREE_SDK2_ROOT}/thirdparty/include")
   set(UNITREE_SDK2_DDSCXX_INCLUDE_DIR "${UNITREE_SDK2_ROOT}/thirdparty/include/ddscxx")
@@ -283,6 +303,7 @@ target_link_libraries(rl_master_runtime PRIVATE
 )
 target_link_libraries(rl_master_runtime PRIVATE
   rl_master_arch_flags
+  rl_master_low_memory_flags
 )
 target_compile_features(rl_master_runtime PUBLIC cxx_std_17)
 
@@ -304,6 +325,7 @@ target_include_directories(rl_master_jc01_kinematics PUBLIC
   /usr/include/eigen3
 )
 target_link_libraries(rl_master_jc01_kinematics PRIVATE rl_master_arch_flags)
+target_link_libraries(rl_master_jc01_kinematics PRIVATE rl_master_low_memory_flags)
 
 add_library(rl_master_robot_kinematics STATIC
   kinematics/robot_kinematics_adapter.cpp
@@ -318,19 +340,23 @@ target_link_libraries(rl_master_robot_kinematics
     rl_master_jc01_kinematics
   PRIVATE
     rl_master_arch_flags
+    rl_master_low_memory_flags
 )
 
-add_executable(test_kine
-  test_kine.cpp
-)
-target_include_directories(test_kine PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
-  /usr/include/eigen3
-)
-target_link_libraries(test_kine
-  rl_master_jc01_kinematics
-  rl_master_arch_flags
-)
+if(RL_MASTER_BUILD_TEST_TOOLS)
+  add_executable(test_kine
+    test_kine.cpp
+  )
+  target_include_directories(test_kine PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    /usr/include/eigen3
+  )
+  target_link_libraries(test_kine
+    rl_master_jc01_kinematics
+    rl_master_arch_flags
+    rl_master_low_memory_flags
+  )
+endif()
 
 add_executable(RL_solver
   filters/moving_average_filter.cpp
@@ -446,6 +472,7 @@ target_link_libraries(RL_solver
   yaml-cpp
   rl_master_robot_kinematics
   rl_master_arch_flags
+  rl_master_low_memory_flags
 )
 if(UNITREE_SDK2_FOUND)
   target_link_libraries(RL_solver
@@ -468,6 +495,7 @@ endif()
 
 install(TARGETS
   rl_master_arch_flags
+  rl_master_low_memory_flags
   rl_master_runtime
   EXPORT export_rl_master
   DESTINATION lib/${PROJECT_NAME}
@@ -475,9 +503,14 @@ install(TARGETS
 
 install(TARGETS
   RL_solver
-  test_kine
   DESTINATION lib/${PROJECT_NAME}
 )
+if(RL_MASTER_BUILD_TEST_TOOLS)
+  install(TARGETS
+    test_kine
+    DESTINATION lib/${PROJECT_NAME}
+  )
+endif()
 
 install(DIRECTORY include/
   DESTINATION include

@@ -116,6 +116,28 @@ std::vector<std::array<double, 3>> convexHull2d(std::vector<std::array<double, 3
     return lower;
 }
 
+bool pointInConvexPolygon2d(
+    const std::vector<std::array<double, 3>> &polygon,
+    const std::array<double, 3> &point)
+{
+    if (polygon.size() < 3)
+    {
+        return false;
+    }
+
+    constexpr double kTolerance = 1.0e-6;
+    for (size_t i = 0; i < polygon.size(); ++i)
+    {
+        const auto &a = polygon[i];
+        const auto &b = polygon[(i + 1) % polygon.size()];
+        if (cross2d(a, b, point) < -kTolerance)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void addSphere(
     mjvScene *scene,
     const std::array<double, 3> &pos,
@@ -157,6 +179,32 @@ void addSegment(
     mjv_connector(geom, mjGEOM_CAPSULE, width, from.data(), to.data());
     ++scene->ngeom;
 }
+
+void addPolygonBoundary(
+    mjvScene *scene,
+    const std::vector<std::array<double, 3>> &polygon,
+    const double z,
+    const double width,
+    const double vertex_radius,
+    const float rgba[4])
+{
+    if (polygon.size() < 2)
+    {
+        return;
+    }
+    for (size_t i = 0; i < polygon.size(); ++i)
+    {
+        const auto &from_raw = polygon[i];
+        const auto &to_raw = polygon[(i + 1) % polygon.size()];
+        const std::array<double, 3> from{from_raw[0], from_raw[1], z};
+        const std::array<double, 3> to{to_raw[0], to_raw[1], z};
+        addSegment(scene, from, to, width, rgba);
+        if (vertex_radius > 0.0)
+        {
+            addSphere(scene, from, vertex_radius, rgba);
+        }
+    }
+}
 } // namespace
 
 void MujocoSimBridge::initializeComSupportVisualization()
@@ -164,6 +212,7 @@ void MujocoSimBridge::initializeComSupportVisualization()
     com_support_visualization_ready_ = false;
     com_pinocchio_data_.reset();
     com_pinocchio_joint_q_indices_.clear();
+    com_pinocchio_joint_v_indices_.clear();
     support_foot_body_ids_.clear();
     support_foot_site_ids_.clear();
 
@@ -210,11 +259,12 @@ void MujocoSimBridge::initializeComSupportVisualization()
             }
             const pinocchio::JointIndex joint_id = com_pinocchio_model_.getJointId(joint_name);
             const auto &joint_model = com_pinocchio_model_.joints[joint_id];
-            if (joint_model.nq() != 1)
+            if (joint_model.nq() != 1 || joint_model.nv() != 1)
             {
                 throw std::runtime_error("Pinocchio joint '" + joint_name + "' is not 1-DOF");
             }
             com_pinocchio_joint_q_indices_.push_back(joint_model.idx_q());
+            com_pinocchio_joint_v_indices_.push_back(joint_model.idx_v());
         }
 
         for (const std::string &site_name : support_foot_site_names_)
@@ -261,6 +311,7 @@ void MujocoSimBridge::initializeComSupportVisualization()
             e.what());
         com_pinocchio_data_.reset();
         com_pinocchio_joint_q_indices_.clear();
+        com_pinocchio_joint_v_indices_.clear();
         support_foot_body_ids_.clear();
         support_foot_site_ids_.clear();
     }
@@ -274,12 +325,15 @@ MujocoSimBridge::computeComSupportOverlay(const mjData_ *data) const
         !com_support_visualization_ready_ ||
         !data ||
         !com_pinocchio_data_ ||
-        com_pinocchio_joint_q_indices_.size() != joint_names_.size())
+        com_pinocchio_joint_q_indices_.size() != joint_names_.size() ||
+        com_pinocchio_joint_v_indices_.size() != joint_names_.size())
     {
         return overlay;
     }
 
     pinocchio::Model::ConfigVectorType q = com_pinocchio_q_;
+    pinocchio::Model::TangentVectorType v =
+        pinocchio::Model::TangentVectorType::Zero(com_pinocchio_model_.nv);
     if (base_free_qpos_adr_ >= 0 && (base_free_qpos_adr_ + 6) < model_->nq)
     {
         q[0] = data->qpos[base_free_qpos_adr_ + 0];
@@ -295,27 +349,75 @@ MujocoSimBridge::computeComSupportOverlay(const mjData_ *data) const
         q[5] = quat_xyzw[2];
         q[6] = quat_xyzw[3];
     }
+    if (base_free_qvel_adr_ >= 0 && (base_free_qvel_adr_ + 5) < model_->nv && v.size() >= 6)
+    {
+        for (int i = 0; i < 6; ++i)
+        {
+            v[i] = data->qvel[base_free_qvel_adr_ + i];
+        }
+    }
 
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
         const int qpos_adr = (i < qpos_addrs_.size()) ? qpos_addrs_[i] : -1;
+        const int qvel_adr = (i < qvel_addrs_.size()) ? qvel_addrs_[i] : -1;
         const int pin_q_idx = com_pinocchio_joint_q_indices_[i];
+        const int pin_v_idx = com_pinocchio_joint_v_indices_[i];
         if (qpos_adr >= 0 && qpos_adr < model_->nq && pin_q_idx >= 0 && pin_q_idx < q.size())
         {
             q[pin_q_idx] = data->qpos[qpos_adr];
         }
+        if (qvel_adr >= 0 && qvel_adr < model_->nv && pin_v_idx >= 0 && pin_v_idx < v.size())
+        {
+            v[pin_v_idx] = data->qvel[qvel_adr];
+        }
     }
 
+    double capture_plane_z = 0.0;
     try
     {
         pinocchio::Data pin_data(com_pinocchio_model_);
-        const Eigen::Vector3d com = pinocchio::centerOfMass(
-            com_pinocchio_model_,
-            pin_data,
-            q,
-            false);
+        Eigen::Vector3d com = Eigen::Vector3d::Zero();
+        Eigen::Vector3d com_vel = Eigen::Vector3d::Zero();
+        if (enable_dcm_capture_visualization_)
+        {
+            pinocchio::centerOfMass(
+                com_pinocchio_model_,
+                pin_data,
+                q,
+                v,
+                false);
+            com = pin_data.com[0];
+            com_vel = pin_data.vcom[0];
+        }
+        else
+        {
+            com = pinocchio::centerOfMass(
+                com_pinocchio_model_,
+                pin_data,
+                q,
+                false);
+        }
         overlay.com = {com.x(), com.y(), com.z()};
         overlay.valid = true;
+        if (enable_dcm_capture_visualization_)
+        {
+            const double capture_height =
+                std::max(capture_min_com_height_, static_cast<double>(com.z()) - capture_plane_z);
+            const double omega = std::sqrt(capture_gravity_ / capture_height);
+            if (std::isfinite(omega) && omega > 1.0e-9)
+            {
+                overlay.dcm = {
+                    static_cast<double>(com.x()) + static_cast<double>(com_vel.x()) / omega,
+                    static_cast<double>(com.y()) + static_cast<double>(com_vel.y()) / omega,
+                    capture_plane_z,
+                };
+                overlay.dcm_valid =
+                    std::isfinite(overlay.dcm[0]) &&
+                    std::isfinite(overlay.dcm[1]) &&
+                    std::isfinite(overlay.dcm[2]);
+            }
+        }
     }
     catch (const std::exception &)
     {
@@ -365,6 +467,11 @@ MujocoSimBridge::computeComSupportOverlay(const mjData_ *data) const
     for (auto &point : overlay.support_polygon)
     {
         point[2] = 0.018;
+    }
+    if (overlay.dcm_valid)
+    {
+        overlay.dcm_inside_capture_region =
+            pointInConvexPolygon2d(overlay.support_polygon, overlay.dcm);
     }
 
     if (!support_foot_body_ids_.empty())
@@ -486,11 +593,20 @@ void MujocoSimBridge::appendComSupportOverlay(
     constexpr float kProjectionRgba[4] = {0.05f, 0.45f, 1.0f, 1.0f};
     constexpr float kCopRgba[4] = {1.0f, 0.85f, 0.10f, 1.0f};
     constexpr float kSupportRgba[4] = {0.05f, 0.85f, 0.30f, 0.95f};
+    constexpr float kDcmRgba[4] = {0.95f, 0.10f, 1.0f, 1.0f};
+    constexpr float kCaptureInsideRgba[4] = {0.00f, 0.95f, 0.85f, 1.0f};
+    constexpr float kCaptureOutsideRgba[4] = {1.0f, 0.10f, 0.20f, 1.0f};
 
     std::array<double, 3> projection{overlay.com[0], overlay.com[1], 0.02};
     addSphere(scene, overlay.com, com_marker_radius_, kComRgba);
     addSphere(scene, projection, com_projection_marker_radius_, kProjectionRgba);
     addSegment(scene, overlay.com, projection, 0.006, kComRgba);
+    if (overlay.dcm_valid)
+    {
+        const std::array<double, 3> dcm_display{overlay.dcm[0], overlay.dcm[1], 0.035};
+        addSphere(scene, dcm_display, dcm_marker_radius_, kDcmRgba);
+        addSegment(scene, projection, dcm_display, 0.006, kDcmRgba);
+    }
     if (overlay.cop_valid)
     {
         std::array<double, 3> cop_display{overlay.cop[0], overlay.cop[1], 0.02};
@@ -499,12 +615,16 @@ void MujocoSimBridge::appendComSupportOverlay(
 
     if (overlay.support_polygon.size() >= 2)
     {
-        for (size_t i = 0; i < overlay.support_polygon.size(); ++i)
+        addPolygonBoundary(scene, overlay.support_polygon, 0.018, 0.008, 0.018, kSupportRgba);
+        if (overlay.dcm_valid)
         {
-            const auto &from = overlay.support_polygon[i];
-            const auto &to = overlay.support_polygon[(i + 1) % overlay.support_polygon.size()];
-            addSegment(scene, from, to, 0.008, kSupportRgba);
-            addSphere(scene, from, 0.018, kSupportRgba);
+            addPolygonBoundary(
+                scene,
+                overlay.support_polygon,
+                0.032,
+                capture_region_line_width_,
+                0.0,
+                overlay.dcm_inside_capture_region ? kCaptureInsideRgba : kCaptureOutsideRgba);
         }
     }
 }

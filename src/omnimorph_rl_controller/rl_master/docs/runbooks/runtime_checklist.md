@@ -8,6 +8,13 @@
 colcon build --packages-select rl_master mujoco_sim2sim
 ```
 
+For memory-constrained remote machines:
+
+```bash
+tmux new -s omnimorph-build
+./script/build_low_memory.sh rl_master mujoco_sim2sim
+```
+
 ### Validate the target mode
 
 ```bash

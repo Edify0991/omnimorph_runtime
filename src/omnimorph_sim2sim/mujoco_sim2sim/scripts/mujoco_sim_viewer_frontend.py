@@ -41,7 +41,7 @@ except Exception as exc:
 
 K_VIEWER_FRAME_TOPIC = "/omnimorph/sim2sim/mujoco_viewer_frame"
 K_VIEWER_FRAME_MAGIC = 260413.0
-K_VIEWER_FRAME_VERSION = 1.0
+K_VIEWER_FRAME_VERSION = 2.0
 K_HEADER_LEN = 8
 K_VIEWER_INSPECTOR_TOPIC = "/omnimorph/sim2sim/mujoco_viewer_inspector"
 
@@ -114,6 +114,8 @@ class MujocoViewerFrontend(Node):
         self.pending_qpos: Optional[np.ndarray] = None
         self.pending_qvel: Optional[np.ndarray] = None
         self.pending_ctrl: Optional[np.ndarray] = None
+        self.pending_overlay = None
+        self.current_overlay = None
         self.pending_time: float = 0.0
         self.last_frame_wall_sec: float = 0.0
         self.last_stale_warn_sec: float = 0.0
@@ -211,14 +213,20 @@ class MujocoViewerFrontend(Node):
         if abs(magic - K_VIEWER_FRAME_MAGIC) > 0.5:
             self.get_logger().warn(f"unexpected viewer frame magic={magic}, ignore")
             return
-        if abs(version - K_VIEWER_FRAME_VERSION) > 0.5:
+        version_i = int(round(version))
+        if version_i not in (1, 2):
             self.get_logger().warn(f"unsupported viewer frame version={version}, ignore")
             return
 
-        expected_size = K_HEADER_LEN + nq + nv + nu
-        if len(data) != expected_size:
+        base_size = K_HEADER_LEN + nq + nv + nu
+        if len(data) < base_size:
             self.get_logger().warn(
-                f"viewer frame size mismatch: got={len(data)} expected={expected_size} (nq={nq}, nv={nv}, nu={nu})"
+                f"viewer frame size mismatch: got={len(data)} expected_at_least={base_size} (nq={nq}, nv={nv}, nu={nu})"
+            )
+            return
+        if version_i == 1 and len(data) != base_size:
+            self.get_logger().warn(
+                f"viewer frame v1 size mismatch: got={len(data)} expected={base_size} (nq={nq}, nv={nv}, nu={nu})"
             )
             return
         if nq != self.model.nq or nv != self.model.nv or nu != self.model.nu:
@@ -233,11 +241,48 @@ class MujocoViewerFrontend(Node):
         qvel = np.asarray(data[offset:offset + nv], dtype=np.float64)
         offset += nv
         ctrl = np.asarray(data[offset:offset + nu], dtype=np.float64)
+        offset += nu
+
+        overlay = None
+        if version_i >= 2:
+            overlay_header_len = 14
+            if len(data) < offset + overlay_header_len:
+                self.get_logger().warn(
+                    f"viewer frame v2 overlay too short: got={len(data)} expected_at_least={offset + overlay_header_len}"
+                )
+                return
+            overlay_valid = abs(float(data[offset])) > 0.5
+            com = np.asarray(data[offset + 1:offset + 4], dtype=np.float64)
+            dcm_valid = abs(float(data[offset + 4])) > 0.5
+            dcm_inside = abs(float(data[offset + 5])) > 0.5
+            dcm = np.asarray(data[offset + 6:offset + 9], dtype=np.float64)
+            cop_valid = abs(float(data[offset + 9])) > 0.5
+            cop = np.asarray(data[offset + 10:offset + 13], dtype=np.float64)
+            polygon_count = max(0, int(round(float(data[offset + 13]))))
+            offset += overlay_header_len
+            expected_size = offset + polygon_count * 3
+            if len(data) != expected_size:
+                self.get_logger().warn(
+                    f"viewer frame v2 overlay size mismatch: got={len(data)} expected={expected_size} polygon_count={polygon_count}"
+                )
+                return
+            polygon = np.asarray(data[offset:offset + polygon_count * 3], dtype=np.float64).reshape((-1, 3))
+            if overlay_valid:
+                overlay = {
+                    "com": com,
+                    "dcm_valid": dcm_valid,
+                    "dcm_inside": dcm_inside,
+                    "dcm": dcm,
+                    "cop_valid": cop_valid,
+                    "cop": cop,
+                    "polygon": polygon,
+                }
 
         with self.frame_lock:
             self.pending_qpos = qpos
             self.pending_qvel = qvel
             self.pending_ctrl = ctrl
+            self.pending_overlay = overlay
             self.pending_time = sim_time
             self.last_frame_wall_sec = time.monotonic()
             self.frame_count += 1
@@ -249,17 +294,99 @@ class MujocoViewerFrontend(Node):
             qpos = self.pending_qpos
             qvel = self.pending_qvel
             ctrl = self.pending_ctrl
+            overlay = self.pending_overlay
             sim_time = self.pending_time
             self.pending_qpos = None
             self.pending_qvel = None
             self.pending_ctrl = None
+            self.pending_overlay = None
 
         self.data.qpos[:] = qpos
         self.data.qvel[:] = qvel
         self.data.ctrl[:] = ctrl
         self.data.time = sim_time
+        self.current_overlay = overlay
         mujoco.mj_forward(self.model, self.data)
         return True
+
+    def _add_marker(self, scene, geom_type, size, pos, rgba) -> None:
+        if scene is None or scene.ngeom >= scene.maxgeom:
+            return
+        mat = np.eye(3, dtype=np.float64).reshape(-1)
+        mujoco.mjv_initGeom(
+            scene.geoms[scene.ngeom],
+            geom_type,
+            np.asarray(size, dtype=np.float64),
+            np.asarray(pos, dtype=np.float64),
+            mat,
+            np.asarray(rgba, dtype=np.float32),
+        )
+        scene.ngeom += 1
+
+    def _add_segment(self, scene, start, end, width, rgba) -> None:
+        if scene is None or scene.ngeom >= scene.maxgeom:
+            return
+        geom = scene.geoms[scene.ngeom]
+        mujoco.mjv_initGeom(
+            geom,
+            mujoco.mjtGeom.mjGEOM_CAPSULE,
+            np.asarray([width, 0.0, 0.0], dtype=np.float64),
+            np.zeros(3, dtype=np.float64),
+            np.eye(3, dtype=np.float64).reshape(-1),
+            np.asarray(rgba, dtype=np.float32),
+        )
+        mujoco.mjv_connector(
+            geom,
+            mujoco.mjtGeom.mjGEOM_CAPSULE,
+            float(width),
+            np.asarray(start, dtype=np.float64),
+            np.asarray(end, dtype=np.float64),
+        )
+        scene.ngeom += 1
+
+    def _add_polygon_boundary(self, scene, polygon, z, width, vertex_radius, rgba) -> None:
+        if polygon is None or len(polygon) < 2:
+            return
+        for i in range(len(polygon)):
+            start_raw = polygon[i]
+            end_raw = polygon[(i + 1) % len(polygon)]
+            start = np.asarray([start_raw[0], start_raw[1], z], dtype=np.float64)
+            end = np.asarray([end_raw[0], end_raw[1], z], dtype=np.float64)
+            self._add_segment(scene, start, end, width, rgba)
+            if vertex_radius > 0.0:
+                self._add_marker(scene, mujoco.mjtGeom.mjGEOM_SPHERE, [vertex_radius] * 3, start, rgba)
+
+    def _apply_overlay(self, scene) -> None:
+        if scene is None:
+            return
+        scene.ngeom = 0
+        overlay = self.current_overlay
+        if not overlay:
+            return
+
+        com = overlay["com"]
+        projection = np.asarray([com[0], com[1], 0.02], dtype=np.float64)
+        self._add_marker(scene, mujoco.mjtGeom.mjGEOM_SPHERE, [0.035, 0.035, 0.035], com, [1.0, 0.18, 0.05, 1.0])
+        self._add_marker(scene, mujoco.mjtGeom.mjGEOM_SPHERE, [0.025, 0.025, 0.025], projection, [0.05, 0.45, 1.0, 1.0])
+        self._add_segment(scene, com, projection, 0.006, [1.0, 0.18, 0.05, 0.95])
+
+        if overlay["dcm_valid"]:
+            dcm = overlay["dcm"]
+            dcm_display = np.asarray([dcm[0], dcm[1], 0.035], dtype=np.float64)
+            self._add_marker(scene, mujoco.mjtGeom.mjGEOM_SPHERE, [0.028, 0.028, 0.028], dcm_display, [0.95, 0.10, 1.0, 1.0])
+            self._add_segment(scene, projection, dcm_display, 0.006, [0.95, 0.10, 1.0, 0.95])
+
+        if overlay["cop_valid"]:
+            cop = overlay["cop"]
+            cop_display = np.asarray([cop[0], cop[1], 0.02], dtype=np.float64)
+            self._add_marker(scene, mujoco.mjtGeom.mjGEOM_SPHERE, [0.025, 0.025, 0.025], cop_display, [1.0, 0.85, 0.10, 1.0])
+
+        polygon = overlay["polygon"]
+        if len(polygon) >= 2:
+            self._add_polygon_boundary(scene, polygon, 0.018, 0.008, 0.018, [0.05, 0.85, 0.30, 0.95])
+            capture_rgba = [0.0, 0.95, 0.85, 1.0] if overlay["dcm_inside"] else [1.0, 0.10, 0.20, 1.0]
+            if overlay["dcm_valid"]:
+                self._add_polygon_boundary(scene, polygon, 0.032, 0.012, 0.0, capture_rgba)
 
     def _apply_follow_camera(self, camera) -> None:
         if not self.follow_robot or self.follow_body_id < 0:
@@ -392,6 +519,7 @@ class MujocoViewerFrontend(Node):
                 updated = self._apply_pending_frame()
                 with viewer.lock():
                     self._apply_follow_camera(viewer.cam)
+                    self._apply_overlay(viewer.user_scn)
                 if updated:
                     viewer.sync()
                 else:
