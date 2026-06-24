@@ -8,7 +8,7 @@ beyondmimic_g1_walk_full_body_wo_state_estimation:
   policy_name: g1_beyondmimic_walk1_1
   policy_family: beyondmimic
   policy_adapter: onnx
-  policy_file: policies/g1_beyondmimic_walk1_1.onnx
+  policy_file: policies/beyondmimic_g1_kick11_wo_state_estimation.onnx.onnx
   inference_strategy: sync_step
   obs_stack_N: 1
   cycle_time: 1.0
