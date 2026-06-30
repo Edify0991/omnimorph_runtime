@@ -54,6 +54,35 @@ CANONICAL_JOINT_ORDER: List[str] = [
     "right_elbow_yaw",
     "right_wrist_pitch",
     "right_wrist_roll",
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    "waist_yaw_joint",
+    "waist_roll_joint",
+    "waist_pitch_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
 ]
 
 SUPPORTED_MANIFEST_TERMS = {
@@ -84,6 +113,12 @@ SUPPORTED_MANIFEST_TERMS = {
     "robot_body_ori",
     "external_sensor",
     "feature",
+    "opentrack_loco_command",
+    "opentrack_loco_foot_height",
+    "opentrack_loco_gait_phase",
+    "opentrack_dif_joint_pos",
+    "opentrack_dif_joint_vel",
+    "opentrack_last_motor_targets",
 }
 
 DEFAULT_TERM_DIM = {
@@ -114,6 +149,12 @@ DEFAULT_TERM_DIM = {
     "reference_motion": 0,
     "external_sensor": 0,
     "feature": 0,
+    "opentrack_loco_command": 4,
+    "opentrack_loco_foot_height": 1,
+    "opentrack_loco_gait_phase": 4,
+    "opentrack_dif_joint_pos": 29,
+    "opentrack_dif_joint_vel": 29,
+    "opentrack_last_motor_targets": 29,
 }
 
 REQUIRES_POSITIVE_COUNT = {
@@ -944,6 +985,12 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
             default_count = 3
         elif name in {"motion_anchor_ori_b", "motion_ref_ori_b"}:
             default_count = 6
+        elif name == "opentrack_loco_command":
+            default_count = 4
+        elif name == "opentrack_loco_foot_height":
+            default_count = 1
+        elif name == "opentrack_loco_gait_phase":
+            default_count = 4
         else:
             default_count = 0
 
@@ -954,6 +1001,12 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
             continue
         if name in {"gait_phase_sin", "gait_phase_cos", "gait_phase_ratio"} and count > 2:
             issues.error(term_context, f"{name} count cannot exceed 2")
+            continue
+        if name in {"opentrack_loco_command", "opentrack_loco_gait_phase"} and count > 4:
+            issues.error(term_context, f"{name} count cannot exceed 4")
+            continue
+        if name == "opentrack_loco_foot_height" and count > 1:
+            issues.error(term_context, "opentrack_loco_foot_height count cannot exceed 1")
             continue
         if name == "command":
             if components and count != len(components):
@@ -2231,6 +2284,15 @@ def normalize_runtime_shape(shape: Sequence[Any]) -> List[int]:
     return normalized or [1]
 
 
+def has_nonbatch_dynamic_dim(shape: Sequence[Any]) -> bool:
+    for idx, dim in enumerate(list(shape or [])):
+        if idx == 0:
+            continue
+        if not isinstance(dim, int) or dim <= 0:
+            return True
+    return False
+
+
 def element_count_from_shape(shape: Sequence[int]) -> int:
     count = 1
     for dim in shape:
@@ -2510,18 +2572,25 @@ def check_onnx_contract(
                     issues.warn(context, f"extra output '{name}' not found (ignored by runtime)")
 
         if action_output_index >= 0 and action_output_index < len(outputs) and action_dim > 0:
-            shape = normalize_runtime_shape(list(outputs[action_output_index].shape or []))
-            static_count = element_count_from_shape(shape)
-            if static_count < action_dim:
-                issues.error(
-                    context,
-                    f"action output static element count {static_count} is smaller than action_dim {action_dim}",
-                )
-            elif static_count != action_dim:
+            raw_shape = list(outputs[action_output_index].shape or [])
+            if has_nonbatch_dynamic_dim(raw_shape):
                 issues.warn(
                     context,
-                    f"action output static element count {static_count} differs from action_dim {action_dim}",
+                    f"action output shape {raw_shape} has dynamic non-batch dims; static action_dim check skipped",
                 )
+            else:
+                shape = normalize_runtime_shape(raw_shape)
+                static_count = element_count_from_shape(shape)
+                if static_count < action_dim:
+                    issues.error(
+                        context,
+                        f"action output static element count {static_count} is smaller than action_dim {action_dim}",
+                    )
+                elif static_count != action_dim:
+                    issues.warn(
+                        context,
+                        f"action output static element count {static_count} differs from action_dim {action_dim}",
+                    )
 
     if session is None:
         return

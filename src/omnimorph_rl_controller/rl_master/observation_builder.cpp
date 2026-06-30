@@ -1,6 +1,7 @@
 #include "rl_master/observation_builder.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <sstream>
@@ -611,6 +612,24 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
         {
             term.count = getCountOrDefault(term_node, 0);
         }
+        else if (term.name == "opentrack_loco_command")
+        {
+            term.count = getCountOrDefault(term_node, 4);
+        }
+        else if (term.name == "opentrack_loco_foot_height")
+        {
+            term.count = getCountOrDefault(term_node, 1);
+        }
+        else if (term.name == "opentrack_loco_gait_phase")
+        {
+            term.count = getCountOrDefault(term_node, 4);
+        }
+        else if (term.name == "opentrack_dif_joint_pos" ||
+                 term.name == "opentrack_dif_joint_vel" ||
+                 term.name == "opentrack_last_motor_targets")
+        {
+            term.count = getCountOrDefault(term_node, 29);
+        }
         else
         {
             term.count = getCountOrDefault(term_node, 0);
@@ -749,6 +768,130 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           3,
           true,
           true}},
+        {"opentrack_loco_command",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &cmd, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const float vx = cmd.vx * cfg.scales.command_lin_vel;
+              const float vy = cmd.vy * cfg.scales.command_lin_vel;
+              const float dyaw = cmd.dyaw * cfg.scales.command_ang_vel;
+              const float move_flag = std::sqrt(vx * vx + vy * vy + dyaw * dyaw) > 0.2f ? 1.0f : 0.0f;
+              const std::array<float, 4> values{move_flag, vx, vy, dyaw};
+              for (int i = 0; i < term.count; ++i)
+              {
+                  pushPadded(out, i < static_cast<int>(values.size()) ? values[static_cast<size_t>(i)] : 0.0f, i, static_cast<int>(values.size()));
+              }
+          },
+          4,
+          true,
+          false}},
+        {"opentrack_loco_foot_height",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              for (int i = 0; i < term.count; ++i)
+              {
+                  out->push_back(i == 0 ? cfg.gait.foot_height : 0.0f);
+              }
+          },
+          1,
+          true,
+          false}},
+        {"opentrack_loco_gait_phase",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &cmd, const std::vector<float> &, double phase_t, const Sim2realCfg &cfg, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const float vx = cmd.vx * cfg.scales.command_lin_vel;
+              const float vy = cmd.vy * cfg.scales.command_lin_vel;
+              const float dyaw = cmd.dyaw * cfg.scales.command_ang_vel;
+              const bool moving = std::sqrt(vx * vx + vy * vy + dyaw * dyaw) > 0.2f;
+              const double cycle = std::max(1e-6, cfg.gait.gait_cycle);
+              const double normalized_phase = moving ? std::fmod(std::max(0.0, phase_t), cycle) / cycle : 0.0;
+              const double left_phase = 2.0 * M_PI * std::fmod(normalized_phase + static_cast<double>(cfg.gait.gait_phase_offset_l), 1.0);
+              const double right_phase = 2.0 * M_PI * std::fmod(normalized_phase + static_cast<double>(cfg.gait.gait_phase_offset_r), 1.0);
+              const std::array<float, 4> values{
+                  static_cast<float>(std::cos(left_phase)),
+                  static_cast<float>(std::cos(right_phase)),
+                  static_cast<float>(std::sin(left_phase)),
+                  static_cast<float>(std::sin(right_phase))};
+              for (int i = 0; i < term.count; ++i)
+              {
+                  pushPadded(out, i < static_cast<int>(values.size()) ? values[static_cast<size_t>(i)] : 0.0f, i, static_cast<int>(values.size()));
+              }
+          },
+          4,
+          true,
+          false}},
+        {"opentrack_dif_joint_pos",
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &obs_index_map, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              const std::string source_name = term.source.empty() ? "reference_joint_pos" : term.source;
+              const std::vector<float> *reference_joint_pos = featureVectorOrNull(feature_context, source_name);
+              requireFeatureAvailable(term, source_name, reference_joint_pos);
+              const int max_count = std::min(term.count, static_cast<int>(obs_index_map.size()));
+              for (int i = 0; i < term.count; ++i)
+              {
+                  if (i < max_count)
+                  {
+                      const int robot_idx = obs_index_map[static_cast<size_t>(i)];
+                      const bool valid = robot_idx >= 0 &&
+                                         static_cast<size_t>(robot_idx) < reference_joint_pos->size() &&
+                                         static_cast<size_t>(robot_idx) < robot.joint_q.size();
+                      out->push_back(valid ? ((*reference_joint_pos)[static_cast<size_t>(robot_idx)] -
+                                              robot.joint_q[static_cast<size_t>(robot_idx)])
+                                           : 0.0f);
+                  }
+                  else
+                  {
+                      out->push_back(0.0f);
+                  }
+              }
+          },
+          29,
+          true,
+          false}},
+        {"opentrack_dif_joint_vel",
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &obs_index_map, const std::vector<int> &, const ObservationFeatureContext &feature_context, std::vector<float> *out) {
+              const std::string source_name = term.source.empty() ? "reference_joint_vel" : term.source;
+              const std::vector<float> *reference_joint_vel = featureVectorOrNull(feature_context, source_name);
+              requireFeatureAvailable(term, source_name, reference_joint_vel);
+              const int max_count = std::min(term.count, static_cast<int>(obs_index_map.size()));
+              for (int i = 0; i < term.count; ++i)
+              {
+                  if (i < max_count)
+                  {
+                      const int robot_idx = obs_index_map[static_cast<size_t>(i)];
+                      const bool valid = robot_idx >= 0 &&
+                                         static_cast<size_t>(robot_idx) < reference_joint_vel->size() &&
+                                         static_cast<size_t>(robot_idx) < robot.joint_dq.size();
+                      out->push_back(valid ? ((*reference_joint_vel)[static_cast<size_t>(robot_idx)] -
+                                              robot.joint_dq[static_cast<size_t>(robot_idx)]) *
+                                                 cfg.scales.dof_vel
+                                           : 0.0f);
+                  }
+                  else
+                  {
+                      out->push_back(0.0f);
+                  }
+              }
+          },
+          29,
+          true,
+          false}},
+        {"opentrack_last_motor_targets",
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &obs_index_map, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const int max_count = std::min(term.count, static_cast<int>(obs_index_map.size()));
+              for (int i = 0; i < term.count; ++i)
+              {
+                  if (i < max_count)
+                  {
+                      const int robot_idx = obs_index_map[static_cast<size_t>(i)];
+                      const bool valid = robot_idx >= 0 &&
+                                         static_cast<size_t>(robot_idx) < robot.joint_target_q.size();
+                      out->push_back(valid ? robot.joint_target_q[static_cast<size_t>(robot_idx)] : 0.0f);
+                  }
+                  else
+                  {
+                      out->push_back(0.0f);
+                  }
+              }
+          },
+          29,
+          true,
+          false}},
         {"joint_pos",
          {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &obs_index_map, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               const int max_count = std::min(term.count, static_cast<int>(obs_index_map.size()));
@@ -1073,6 +1216,23 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
             term.count > 2)
         {
             throw std::runtime_error(term.name + " term count cannot exceed 2");
+        }
+        if ((term.name == "opentrack_loco_command" ||
+             term.name == "opentrack_loco_gait_phase") &&
+            term.count > 4)
+        {
+            throw std::runtime_error(term.name + " term count cannot exceed 4");
+        }
+        if ((term.name == "opentrack_dif_joint_pos" ||
+             term.name == "opentrack_dif_joint_vel" ||
+             term.name == "opentrack_last_motor_targets") &&
+            term.count <= 0)
+        {
+            throw std::runtime_error(term.name + " term requires count > 0");
+        }
+        if (term.name == "opentrack_loco_foot_height" && term.count > 1)
+        {
+            throw std::runtime_error("opentrack_loco_foot_height term count cannot exceed 1");
         }
         if (term.name == "command")
         {

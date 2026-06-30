@@ -8,7 +8,7 @@ beyondmimic_g1_walk_full_body_wo_state_estimation:
   policy_name: g1_beyondmimic_walk1_1
   policy_family: beyondmimic
   policy_adapter: onnx
-  policy_file: policies/beyondmimic_g1_kick11_wo_state_estimation.onnx.onnx
+  policy_file: policies/beyondmimic_g1_kick11_wo_state_estimation.onnx
   inference_strategy: sync_step
   obs_stack_N: 1
   cycle_time: 1.0
@@ -72,8 +72,66 @@ beyondmimic_g1_walk_full_body_wo_state_estimation:
     right_wrist_roll_joint: 0.907223
     right_wrist_pitch_joint: 1.068141
     right_wrist_yaw_joint: 1.068141
-  zeroing_kps: *running_kps
-  zeroing_kds: *running_kds
+  zeroing_kps:
+    left_hip_pitch_joint: 500.0
+    left_hip_roll_joint: 500.0
+    left_hip_yaw_joint: 500.0
+    left_knee_joint: 500.0
+    left_ankle_pitch_joint: 500.0
+    left_ankle_roll_joint: 500.0
+    right_hip_pitch_joint: 500.0
+    right_hip_roll_joint: 500.0
+    right_hip_yaw_joint: 500.0
+    right_knee_joint: 500.0
+    right_ankle_pitch_joint: 500.0
+    right_ankle_roll_joint: 500.0
+    waist_yaw_joint: 500.0
+    waist_roll_joint: 500.0
+    waist_pitch_joint: 500.0
+    left_shoulder_pitch_joint: 14.250623
+    left_shoulder_roll_joint: 14.250623
+    left_shoulder_yaw_joint: 14.250623
+    left_elbow_joint: 14.250623
+    left_wrist_roll_joint: 14.250623
+    left_wrist_pitch_joint: 16.778328
+    left_wrist_yaw_joint: 16.778328
+    right_shoulder_pitch_joint: 14.250623
+    right_shoulder_roll_joint: 14.250623
+    right_shoulder_yaw_joint: 14.250623
+    right_elbow_joint: 14.250623
+    right_wrist_roll_joint: 14.250623
+    right_wrist_pitch_joint: 16.778328
+    right_wrist_yaw_joint: 16.778328
+  zeroing_kds:
+    left_hip_pitch_joint: 10.0
+    left_hip_roll_joint: 10.0
+    left_hip_yaw_joint: 10.0
+    left_knee_joint: 10.0
+    left_ankle_pitch_joint: 10.0
+    left_ankle_roll_joint: 10.0
+    right_hip_pitch_joint: 10.0
+    right_hip_roll_joint: 10.0
+    right_hip_yaw_joint: 10.0
+    right_knee_joint: 10.0
+    right_ankle_pitch_joint: 10.0
+    right_ankle_roll_joint: 10.0
+    waist_yaw_joint: 10.0
+    waist_roll_joint: 10.0
+    waist_pitch_joint: 10.0
+    left_shoulder_pitch_joint: 0.907223
+    left_shoulder_roll_joint: 0.907223
+    left_shoulder_yaw_joint: 0.907223
+    left_elbow_joint: 0.907223
+    left_wrist_roll_joint: 0.907223
+    left_wrist_pitch_joint: 1.068141
+    left_wrist_yaw_joint: 1.068141
+    right_shoulder_pitch_joint: 0.907223
+    right_shoulder_roll_joint: 0.907223
+    right_shoulder_yaw_joint: 0.907223
+    right_elbow_joint: 0.907223
+    right_wrist_roll_joint: 0.907223
+    right_wrist_pitch_joint: 1.068141
+    right_wrist_yaw_joint: 1.068141
   tau_limit:
     left_hip_pitch_joint: 88.0
     left_hip_roll_joint: 88.0
@@ -376,6 +434,15 @@ beyondmimic_g1_walk_full_body_wo_state_estimation:
       body_orientation_representation: rot6
   onnx_intra_threads: 1
   onnx_inter_threads: 1
+  onnx_execution_providers: [cpu]
+  onnx_fail_on_provider_error: true
+  onnx_cuda_arena_extend_strategy: 1
+  onnx_cuda_do_copy_in_default_stream: true
+  onnx_tensorrt_fp16_enable: true
+  onnx_tensorrt_int8_enable: false
+  onnx_tensorrt_engine_cache_enable: true
+  onnx_tensorrt_engine_cache_path: /tmp/beyondmimic_g1_ort_trt_cache
+  onnx_tensorrt_max_workspace_size: 2147483648
   policy_io:
     obs_input_name: obs
     action_output_name: actions

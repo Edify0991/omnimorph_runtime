@@ -759,6 +759,7 @@ struct GaitConfig
     float gait_air_ratio_r = 0.0f;
     float gait_phase_offset_l = 0.0f;
     float gait_phase_offset_r = 0.0f;
+    float foot_height = 0.0f;
     double gait_cycle = 1.0;
 };
 
@@ -1058,6 +1059,7 @@ public:
     float clip_observations = 100.0f;
     float clip_actions = 100.0f;
     float action_scale = 1.0f;
+    std::string action_target_anchor = "default_angle"; // default_angle / reference_joint_pos
     std::string action_clip_stage = "raw_action"; // raw_action / target_delta / target_q
     float target_delta_clip = 0.0f;
     float target_q_clip = 0.0f;
@@ -1608,6 +1610,17 @@ public:
             clip_actions = cfg["clip_actions"].as<float>();
             const bool has_scalar_action_scale = static_cast<bool>(cfg["action_scale"]);
             action_scale = yamlReadOr<float>(cfg, "action_scale", 1.0f);
+            action_target_anchor = yamlReadOr<std::string>(cfg, "action_target_anchor", "default_angle");
+            std::transform(
+                action_target_anchor.begin(),
+                action_target_anchor.end(),
+                action_target_anchor.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (action_target_anchor != "default_angle" &&
+                action_target_anchor != "reference_joint_pos")
+            {
+                throw std::runtime_error("action_target_anchor must be one of: default_angle, reference_joint_pos");
+            }
             action_clip_stage = yamlReadOr<std::string>(cfg, "action_clip_stage", "raw_action");
             std::transform(
                 action_clip_stage.begin(),
@@ -3049,6 +3062,7 @@ public:
             gait.gait_air_ratio_r = yamlReadOr<float>(gait_cfg, "gait_air_ratio_r", gait.gait_air_ratio_r);
             gait.gait_phase_offset_l = yamlReadOr<float>(gait_cfg, "gait_phase_offset_l", gait.gait_phase_offset_l);
             gait.gait_phase_offset_r = yamlReadOr<float>(gait_cfg, "gait_phase_offset_r", gait.gait_phase_offset_r);
+            gait.foot_height = yamlReadOr<float>(gait_cfg, "foot_height", gait.foot_height);
             gait.gait_cycle = yamlReadOr<double>(gait_cfg, "gait_cycle", gait.gait_cycle);
 
             return true;

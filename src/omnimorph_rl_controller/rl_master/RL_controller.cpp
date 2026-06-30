@@ -3428,6 +3428,22 @@ std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &p
     {
         target_q.assign(joint_order_.size(), 0.0f);
     }
+    std::vector<float> action_anchor = robot->default_angle;
+    if (action_anchor.size() != joint_order_.size())
+    {
+        action_anchor.assign(joint_order_.size(), 0.0f);
+    }
+    if (active_cfg.action_target_anchor == "reference_joint_pos")
+    {
+        const auto reference_joint_pos_it =
+            latest_observation_feature_context_.named_features.find("reference_joint_pos");
+        if (reference_joint_pos_it == latest_observation_feature_context_.named_features.end())
+        {
+            throw std::runtime_error(
+                "action_target_anchor=reference_joint_pos but reference_joint_pos is missing from observation feature context");
+        }
+        action_anchor = fitDim(reference_joint_pos_it->second, joint_order_.size());
+    }
     const size_t action_count = std::min(
         policy_action.size(),
         std::min(action_robot_indices.size(), static_cast<size_t>(std::max(0, active_cfg.action_dim))));
@@ -3449,7 +3465,7 @@ std::vector<float> RL_controller::get_joint_target_q(const std::vector<float> &p
                 active_cfg.target_delta_clip);
         }
         float target_position =
-            robot->default_angle[static_cast<size_t>(robot_idx)] +
+            action_anchor[static_cast<size_t>(robot_idx)] +
             target_delta;
         if (active_cfg.action_clip_stage == "target_q" && active_cfg.target_q_clip > 0.0f)
         {

@@ -1,0 +1,31 @@
+observation_manifest:
+  schema_version: 3
+  profile: "opentrack_g1_walk"
+  # Matches OpenTrack deploy/state_machine/fsm_loco_controller.cpp:
+  #   gyro(3) + projected gravity(3) + q-default(23) + dq(23) + last_action(12)
+  #   + loco command(4) + foot_height(1) + gait phase cos/sin(4) = 73.
+  terms:
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+    - name: projected_gravity
+      enabled: true
+      count: 3
+    - name: joint_pos
+      enabled: true
+      count: 23
+    - name: joint_vel
+      enabled: true
+      count: 23
+    - name: last_action
+      enabled: true
+      count: 12
+    - name: opentrack_loco_command
+      enabled: true
+      count: 4
+    - name: opentrack_loco_foot_height
+      enabled: true
+      count: 1
+    - name: opentrack_loco_gait_phase
+      enabled: true
+      count: 4

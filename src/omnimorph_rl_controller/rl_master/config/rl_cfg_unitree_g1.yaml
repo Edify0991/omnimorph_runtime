@@ -117,15 +117,25 @@ deploy_mode_profiles:
   - mode_id: 2
     config_section: omnixtreme_g1_full_body
     tag: g1_omnixtreme
+  - mode_id: 3
+    config_section: opentrack_g1_walk
+    tag: g1_opentrack_walk
+  - mode_id: 4
+    config_section: opentrack_g1_generalist_tracker
+    tag: g1_opentrack_generalist_tracker
 
 config_files:
   beyondmimic_g1_walk_full_body_w_state_estimation: profiles/beyondmimic_g1_walk_full_body_w_state_estimation.yaml
   beyondmimic_g1_walk_full_body_wo_state_estimation: profiles/beyondmimic_g1_walk_full_body_wo_state_estimation.yaml
   omnixtreme_g1_full_body: profiles/omnixtreme_g1_full_body.yaml
+  opentrack_g1_walk: profiles/opentrack_g1_walk.yaml
+  opentrack_g1_generalist_tracker: profiles/opentrack_g1_generalist_tracker.yaml
 path_variables:
   robot_assets_dir: ${ROBOT_ASSETS_DIR}
   g1_pinocchio_urdf: ${G1_PINOCCHIO_URDF}
   g1_scene_xml: ${G1_SCENE_XML}
+  opentrack_deploy_dir: /home/edify/Code/OpenTrack/deploy
+  opentrack_generalist_dir: /home/edify/Code/OpenTrack/storage/logs/dagger/general_tracker_lafan1_v2
 
 runtime_process:
   controller:

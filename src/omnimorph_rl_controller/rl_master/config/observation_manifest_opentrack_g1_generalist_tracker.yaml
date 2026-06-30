@@ -1,0 +1,52 @@
+observation_manifest:
+  schema_version: 3
+  profile: "opentrack_g1_generalist_tracker"
+  # Matches OpenTrack Any2Track general_tracker_lafan1_v2/config.json:
+  #   dif_joint_pos(29) + dif_joint_vel(29) + gvec_pelvis(3) + gyro_pelvis(3)
+  #   + joint_pos(29) + joint_vel(29) + last_motor_targets(29)
+  #   + ref_feet_height(4) + ref_root_height(1) = 156.
+  computed_features:
+    - name: opentrack_ref_feet_height
+      op: concat
+      parts:
+        - source: feature
+          feature_name: reference_motion
+          indices: [0, 1, 2, 3]
+          dim: 4
+    - name: opentrack_ref_root_height
+      op: concat
+      parts:
+        - source: feature
+          feature_name: reference_motion
+          indices: [4]
+          dim: 1
+  terms:
+    - name: opentrack_dif_joint_pos
+      enabled: true
+      count: 29
+    - name: opentrack_dif_joint_vel
+      enabled: true
+      count: 29
+    - name: projected_gravity
+      enabled: true
+      count: 3
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+    - name: joint_pos
+      enabled: true
+      count: 29
+    - name: joint_vel
+      enabled: true
+      count: 29
+    - name: opentrack_last_motor_targets
+      enabled: true
+      count: 29
+    - name: feature
+      enabled: true
+      source: opentrack_ref_feet_height
+      count: 4
+    - name: feature
+      enabled: true
+      source: opentrack_ref_root_height
+      count: 1

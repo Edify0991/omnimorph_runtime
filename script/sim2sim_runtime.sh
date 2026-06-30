@@ -12,6 +12,7 @@ Usage:
 
 Options:
   --model-path <path>             MuJoCo XML/MJB model path (required)
+  --rl-cfg <path>                 root RL config path (default: package build default)
   --mode-id <int>                 startup deploy mode_id (default: 0)
   --control-hz <float>            control_hz launch arg (default: 500.0)
   --fixed-base <true|false>       fixed_base launch arg (default: false)
@@ -40,6 +41,7 @@ USAGE
 }
 
 MODEL_PATH=""
+RL_CFG_PATH=""
 MODE_ID=0
 CONTROL_HZ="500.0"
 FIXED_BASE="false"
@@ -64,6 +66,14 @@ while [[ $# -gt 0 ]]; do
     --model-path)
       MODEL_PATH="${2:-}"
       shift 2
+      ;;
+    --rl-cfg|--config)
+      RL_CFG_PATH="${2:-}"
+      shift 2
+      ;;
+    --rl-cfg=*|--config=*)
+      RL_CFG_PATH="${1#*=}"
+      shift
       ;;
     --mode-id)
       MODE_ID="${2:-}"
@@ -149,6 +159,9 @@ done
 
 [[ -n "${MODEL_PATH}" ]] || { usage; die "--model-path is required"; }
 [[ "${MODE_ID}" =~ ^[0-9]+$ ]] || die "--mode-id must be a non-negative integer"
+if [[ -n "${RL_CFG_PATH}" && ! -f "${RL_CFG_PATH}" ]]; then
+  die "rl config not found: ${RL_CFG_PATH}"
+fi
 [[ -f "${MODEL_PATH}" ]] || log_warn "model file not found yet: ${MODEL_PATH} (launch may fail if path is wrong)"
 
 print_banner "Morph Runtime Sim2Sim (Single-Process Fused Runtime)"
@@ -173,6 +186,9 @@ if [[ "${SKIP_PRECHECK}" != "true" ]]; then
   VALIDATOR="${WORKSPACE_DIR}/src/omnimorph_rl_controller/rl_master/tools/analysis/validate_deploy_config.py"
   [[ -f "${VALIDATOR}" ]] || die "validator not found: ${VALIDATOR}"
   CHECK_CMD=("${PRECHECK_PYTHON}" "${VALIDATOR}" --mode-id "${MODE_ID}")
+  if [[ -n "${RL_CFG_PATH}" ]]; then
+    CHECK_CMD+=(--rl-cfg "${RL_CFG_PATH}")
+  fi
   if [[ "${PRECHECK_SKIP_ONNX}" == "true" ]]; then
     CHECK_CMD+=(--skip-onnx)
   fi
@@ -211,6 +227,9 @@ LAUNCH_CMD=(
   "no_command_behavior:=${NO_COMMAND_BEHAVIOR}"
   "actuator_control_mode:=${ACTUATOR_CONTROL_MODE}"
 )
+if [[ -n "${RL_CFG_PATH}" ]]; then
+  LAUNCH_CMD+=("rl_cfg_path:=${RL_CFG_PATH}")
+fi
 if [[ -n "${BRIDGE_CONFIG}" ]]; then
   LAUNCH_CMD+=("bridge_config:=${BRIDGE_CONFIG}")
 fi
