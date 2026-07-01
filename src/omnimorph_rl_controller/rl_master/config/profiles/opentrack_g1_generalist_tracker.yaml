@@ -12,7 +12,7 @@ opentrack_g1_generalist_tracker:
   policy_name: general_tracker_lafan1_v2
   policy_family: opentrack_tracker
   policy_adapter: onnx
-  policy_file: ${opentrack_generalist_dir}/model.onnx
+  policy_file: policies/opentrack_g1_generalist.onnx
   inference_strategy: sync_step
   obs_stack_N: 1
   cycle_time: 1.0
@@ -197,7 +197,7 @@ opentrack_g1_generalist_tracker:
   reference_motion_dim: 5
   reference_motion_sampling: step
   reference_motion_source: file
-  reference_motion_path: ${omnimorph_root_dir}/data/reference_motion/opentrack/dance2_subject5_runtime.npz
+  reference_motion_path: ${omnimorph_root_dir}/data/reference_motion/opentrack/111_40_poses_120_runtime.npz
 
   source_contract:
     reference_file:

@@ -252,6 +252,60 @@ uint64_t readLe64(const unsigned char *ptr)
     return value;
 }
 
+bool parseZip64LocalExtraSizes(
+    const std::vector<unsigned char> &bytes,
+    size_t extra_offset,
+    size_t extra_len,
+    bool need_uncompressed_size,
+    bool need_compressed_size,
+    uint64_t *uncompressed_size,
+    uint64_t *compressed_size)
+{
+    size_t cursor = extra_offset;
+    const size_t extra_end = extra_offset + extra_len;
+    while (cursor + 4 <= extra_end && cursor + 4 <= bytes.size())
+    {
+        const uint16_t header_id = readLe16(bytes, cursor);
+        const uint16_t data_size = readLe16(bytes, cursor + 2);
+        cursor += 4;
+        if (cursor + data_size > extra_end || cursor + data_size > bytes.size())
+        {
+            return false;
+        }
+        if (header_id == 0x0001U)
+        {
+            size_t field_offset = cursor;
+            if (need_uncompressed_size)
+            {
+                if (field_offset + 8 > cursor + data_size)
+                {
+                    return false;
+                }
+                if (uncompressed_size)
+                {
+                    *uncompressed_size = readLe64(bytes.data() + field_offset);
+                }
+                field_offset += 8;
+            }
+            if (need_compressed_size)
+            {
+                if (field_offset + 8 > cursor + data_size)
+                {
+                    return false;
+                }
+                if (compressed_size)
+                {
+                    *compressed_size = readLe64(bytes.data() + field_offset);
+                }
+                field_offset += 8;
+            }
+            return true;
+        }
+        cursor += data_size;
+    }
+    return !need_uncompressed_size && !need_compressed_size;
+}
+
 std::string trim(std::string text)
 {
     const auto first = text.find_first_not_of(" \t\r\n");
@@ -520,12 +574,33 @@ bool loadUncompressedNpz(
         }
         const uint16_t flags = readLe16(bytes, offset + 6);
         const uint16_t compression = readLe16(bytes, offset + 8);
-        const uint32_t compressed_size = readLe32(bytes, offset + 18);
-        const uint32_t uncompressed_size = readLe32(bytes, offset + 22);
+        uint64_t compressed_size = readLe32(bytes, offset + 18);
+        uint64_t uncompressed_size = readLe32(bytes, offset + 22);
         const uint16_t name_len = readLe16(bytes, offset + 26);
         const uint16_t extra_len = readLe16(bytes, offset + 28);
         const size_t name_offset = offset + 30;
+        const size_t extra_offset = name_offset + name_len;
         const size_t data_offset = name_offset + name_len + extra_len;
+        const bool need_zip64_uncompressed = uncompressed_size == 0xFFFFFFFFULL;
+        const bool need_zip64_compressed = compressed_size == 0xFFFFFFFFULL;
+        if (need_zip64_uncompressed || need_zip64_compressed)
+        {
+            if (!parseZip64LocalExtraSizes(
+                    bytes,
+                    extra_offset,
+                    extra_len,
+                    need_zip64_uncompressed,
+                    need_zip64_compressed,
+                    &uncompressed_size,
+                    &compressed_size))
+            {
+                if (error)
+                {
+                    *error = "npz ZIP64 local extra field is invalid";
+                }
+                return false;
+            }
+        }
         if (data_offset > bytes.size() || data_offset + compressed_size > bytes.size())
         {
             if (error)
