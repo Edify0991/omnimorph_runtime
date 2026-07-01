@@ -373,6 +373,44 @@ def normalize_token(value: Any) -> str:
     return str(value).strip().lower()
 
 
+def resolve_onnxruntime_providers(model_cfg: Dict[str, Any]) -> List[str]:
+    requested = [normalize_token(x) for x in to_list(model_cfg.get("onnx_execution_providers"))]
+    if not requested:
+        requested = ["cpu"]
+
+    provider_aliases = {
+        "cpu": "CPUExecutionProvider",
+        "cpuexecutionprovider": "CPUExecutionProvider",
+        "cuda": "CUDAExecutionProvider",
+        "cudaexecutionprovider": "CUDAExecutionProvider",
+        "tensorrt": "TensorrtExecutionProvider",
+        "trt": "TensorrtExecutionProvider",
+        "tensorrtexecutionprovider": "TensorrtExecutionProvider",
+    }
+
+    resolved: List[str] = []
+    for token in requested:
+        provider_name = provider_aliases.get(token)
+        if provider_name and provider_name not in resolved:
+            resolved.append(provider_name)
+
+    if "CPUExecutionProvider" not in resolved:
+        resolved.append("CPUExecutionProvider")
+
+    if ort is None:
+        return resolved
+
+    try:
+        available = set(ort.get_available_providers())
+    except Exception:
+        return resolved
+
+    filtered = [name for name in resolved if name in available]
+    if filtered:
+        return filtered
+    return ["CPUExecutionProvider"]
+
+
 def collect_path_variable_placeholders(raw: str) -> List[str]:
     keys: List[str] = []
     search_pos = 0
@@ -2354,16 +2392,21 @@ def check_onnx_contract(
         session_options = ort.SessionOptions()
         session_options.intra_op_num_threads = max(1, as_int(model_cfg.get("onnx_intra_threads", 1), 1))
         session_options.inter_op_num_threads = max(1, as_int(model_cfg.get("onnx_inter_threads", 1), 1))
+        providers = resolve_onnxruntime_providers(model_cfg)
 
         try:
             session = ort.InferenceSession(
                 str(model_path),
                 sess_options=session_options,
-                providers=["CPUExecutionProvider"],
+                providers=providers,
             )
         except Exception:
             try:
-                session = ort.InferenceSession(str(model_path), sess_options=session_options)
+                session = ort.InferenceSession(
+                    str(model_path),
+                    sess_options=session_options,
+                    providers=["CPUExecutionProvider"],
+                )
             except Exception as exc:
                 issues.error(context, f"failed to load ONNX model: {exc}")
                 return
@@ -2885,6 +2928,7 @@ def validate_profile(
         "feature_dims": feature_dims,
         "onnx_intra_threads": as_int(section_cfg.get("onnx_intra_threads", 1), 1),
         "onnx_inter_threads": as_int(section_cfg.get("onnx_inter_threads", 1), 1),
+        "onnx_execution_providers": to_list(section_cfg.get("onnx_execution_providers")),
     }
     check_joint_order_mapping_fields(
         policy_io_cfg,
