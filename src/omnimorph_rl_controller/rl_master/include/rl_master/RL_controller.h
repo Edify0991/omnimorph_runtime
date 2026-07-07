@@ -102,6 +102,17 @@ private:
         std::array<float, 4> reference_yaw_transform_xyzw{0.0f, 0.0f, 0.0f, 1.0f};
     };
 
+    struct Jingchu01MassComWorkflowState
+    {
+        std::deque<std::vector<float>> estimator_history;
+        std::deque<std::vector<float>> estimate_window;
+        std::vector<float> frozen_estimate;
+        std::vector<float> frozen_std;
+        size_t valid_estimator_frames = 0;
+        bool b3_estimate_loaded = false;
+        bool b2_estimate_written = false;
+    };
+
     struct ModeProfile
     {
         int mode_id = rl_master::kModeCodeMin;
@@ -166,6 +177,17 @@ private:
     void buildStackedObservation(
         const std::deque<std::vector<float>> &observation_history,
         const char *context);
+    bool isJingchu01B2IdentificationMode() const;
+    bool isJingchu01B3EstimatedMode() const;
+    std::vector<float> jingchu01ProprioFrameWithoutMassCom(const std::vector<float> &frame) const;
+    std::vector<float> jingchu01FlattenEstimatorHistory() const;
+    void resetJingchu01MassComWorkflowState();
+    void prepareJingchu01MassComWorkflowBeforePolicyRun();
+    void updateJingchu01B2StaticEstimateAfterPolicyRun();
+    void injectJingchu01B3EstimateIntoStackedObservation();
+    void loadJingchu01B3EstimateForMode();
+    void writeJingchu01B2EstimateFile(const std::vector<float> &mean, const std::vector<float> &stddev) const;
+    std::string jingchu01MassComEstimatePath() const;
     bool canHotSwitch(int from_mode, int to_mode) const;
     const ModeProfile &modeProfileForModeId(int mode_id) const;
 
@@ -223,6 +245,7 @@ private:
     std::vector<float> obs;
     std::deque<std::vector<float>> obs_deque;
     std::vector<float> stacked_obs_buffer_;
+    Jingchu01MassComWorkflowState jingchu01_mass_com_workflow_;
 
     Cmd cmd;
     rl_master::logging::ControllerLogSnapshot latest_log_snapshot_;

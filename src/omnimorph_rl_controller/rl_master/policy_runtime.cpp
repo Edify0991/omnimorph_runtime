@@ -159,6 +159,7 @@ PolicyGroupExecutionResult SyncWeightedInferenceStrategy::execute(
         {
             output.extra_outputs[node.name + "/" + kv.first] = std::move(kv.second);
         }
+        output.extra_outputs[node.name + "/action"] = result.action;
 
         primary_done = true;
     }

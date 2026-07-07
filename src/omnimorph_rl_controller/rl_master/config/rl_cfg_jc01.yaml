@@ -136,6 +136,14 @@ deploy_mode_profiles:
 - mode_id: 8
   config_section: beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation
   tag: beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation
+- mode_id: 9
+  config_section: jingchu01_stage2_b2_mass_com_identification
+  tag: jc01_stage2_b2_mass_com_identification
+- mode_id: 10
+  config_section: jingchu01_stage2_b3_estimated_mass_com
+  tag: jc01_stage2_b3_estimated_mass_com
+# B1 robust policy is a comparison action policy; keep it as a commented
+# policy_file option in mode 5 unless a dedicated comparison mode is added.
 
 config_files:
   amp_mjlab_jc01_walkrun_full_body: profiles/amp_mjlab_jc01_walkrun_full_body.yaml
@@ -145,6 +153,8 @@ config_files:
   engineaigym_stand_lower_body: profiles/engineaigym_stand_lower_body.yaml
   jingchu01_dcmotor_formal: profiles/jingchu01_dcmotor_formal.yaml
   jingchu01_pacedcmotor_formal: profiles/jingchu01_pacedcmotor_formal.yaml
+  jingchu01_stage2_b2_mass_com_identification: profiles/jingchu01_stage2_b2_mass_com_identification.yaml
+  jingchu01_stage2_b3_estimated_mass_com: profiles/jingchu01_stage2_b3_estimated_mass_com.yaml
   amp_tienkunglab_jc01_walk_full_body: profiles/amp_tienkunglab_jc01_walk_full_body.yaml
   beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation: profiles/beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation.yaml
 

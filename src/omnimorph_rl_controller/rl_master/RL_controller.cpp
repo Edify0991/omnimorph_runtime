@@ -10,11 +10,16 @@ https://blog.csdn.net/m0_57254760/article/details/138304321
 #include <cstddef>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <map>
+#include <sstream>
 #include <string>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
+
+#include <yaml-cpp/yaml.h>
 
 #include "rl_master/pinocchio_motion_features.h"
 #include "rl_master/rl_protocol.h"
@@ -34,6 +39,17 @@ std::vector<float> fitDim(const std::vector<float> &values, size_t dim)
     std::copy(values.begin(), values.begin() + static_cast<std::ptrdiff_t>(copy_n), out.begin());
     return out;
 }
+
+constexpr int kJingchu01B2ModeId = 9;
+constexpr int kJingchu01B3ModeId = 10;
+constexpr size_t kJingchu01PolicyFrameDim = 51;
+constexpr size_t kJingchu01ProprioFrameDim = 47;
+constexpr size_t kJingchu01MassComDim = 4;
+constexpr size_t kJingchu01ActorHistory = 15;
+constexpr size_t kJingchu01EstimatorHistory = 50;
+constexpr size_t kJingchu01MassComOffset = 47;
+const char *kJingchu01EstimatorHistoryFeature = "jingchu01_estimator_proprio_history";
+const char *kJingchu01B2EstimatorActionSuffix = "b2_estimator/action";
 
 std::vector<std::string> jointOrderByAlias(
     const Sim2realCfg &cfg,
@@ -1043,6 +1059,11 @@ void RL_controller::handlePolicySwitch()
         base_velocity_filter_.reset();
         base_velocity_filter_time_initialized_ = false;
     }
+    resetJingchu01MassComWorkflowState();
+    if (isJingchu01B3EstimatedMode())
+    {
+        loadJingchu01B3EstimateForMode();
+    }
 
     if (cfg.reset_policy_on_mode_switch)
     {
@@ -1143,6 +1164,271 @@ void RL_controller::resetPolicyScheduler()
     next_policy_phase_t_ = 0.0;
     last_policy_sample_time_sec_ = 0.0;
     last_policy_sample_phase_t_ = 0.0;
+}
+
+bool RL_controller::isJingchu01B2IdentificationMode() const
+{
+    return active_mode_id_ == kJingchu01B2ModeId ||
+           activeModeProfile().config_section == "jingchu01_stage2_b2_mass_com_identification";
+}
+
+bool RL_controller::isJingchu01B3EstimatedMode() const
+{
+    return active_mode_id_ == kJingchu01B3ModeId ||
+           activeModeProfile().config_section == "jingchu01_stage2_b3_estimated_mass_com";
+}
+
+std::string RL_controller::jingchu01MassComEstimatePath() const
+{
+    return (std::filesystem::path(RL_MASTER_ROOT_DIR) /
+            "config" /
+            "runtime" /
+            "jingchu01_mass_com_estimate.yaml")
+        .string();
+}
+
+void RL_controller::resetJingchu01MassComWorkflowState()
+{
+    jingchu01_mass_com_workflow_ = Jingchu01MassComWorkflowState{};
+}
+
+std::vector<float> RL_controller::jingchu01ProprioFrameWithoutMassCom(const std::vector<float> &frame) const
+{
+    if (frame.size() != kJingchu01PolicyFrameDim)
+    {
+        throw std::runtime_error(
+            "Jingchu01 mass/CoM workflow expects 51-dim policy frame, got " +
+            std::to_string(frame.size()));
+    }
+    std::vector<float> out;
+    out.reserve(kJingchu01ProprioFrameDim);
+    out.insert(out.end(), frame.begin(), frame.begin() + static_cast<std::ptrdiff_t>(kJingchu01MassComOffset));
+    out.insert(
+        out.end(),
+        frame.begin() + static_cast<std::ptrdiff_t>(kJingchu01MassComOffset + kJingchu01MassComDim),
+        frame.end());
+    if (out.size() != kJingchu01ProprioFrameDim)
+    {
+        throw std::runtime_error("Jingchu01 proprio frame extraction produced invalid dim");
+    }
+    return out;
+}
+
+std::vector<float> RL_controller::jingchu01FlattenEstimatorHistory() const
+{
+    std::vector<float> flattened(
+        kJingchu01EstimatorHistory * kJingchu01ProprioFrameDim,
+        0.0f);
+    const auto &history = jingchu01_mass_com_workflow_.estimator_history;
+    const size_t copy_frames = std::min(history.size(), kJingchu01EstimatorHistory);
+    const size_t first_dst_frame = kJingchu01EstimatorHistory - copy_frames;
+    const size_t first_src_frame = history.size() - copy_frames;
+    for (size_t frame_i = 0; frame_i < copy_frames; ++frame_i)
+    {
+        const auto &frame = history[first_src_frame + frame_i];
+        if (frame.size() != kJingchu01ProprioFrameDim)
+        {
+            throw std::runtime_error("Jingchu01 estimator history frame dim mismatch");
+        }
+        std::copy(
+            frame.begin(),
+            frame.end(),
+            flattened.begin() + static_cast<std::ptrdiff_t>((first_dst_frame + frame_i) * kJingchu01ProprioFrameDim));
+    }
+    return flattened;
+}
+
+void RL_controller::prepareJingchu01MassComWorkflowBeforePolicyRun()
+{
+    if (isJingchu01B2IdentificationMode())
+    {
+        if (obs_deque.empty())
+        {
+            return;
+        }
+        auto &state = jingchu01_mass_com_workflow_;
+        state.estimator_history.push_back(jingchu01ProprioFrameWithoutMassCom(obs_deque.back()));
+        while (state.estimator_history.size() > kJingchu01EstimatorHistory)
+        {
+            state.estimator_history.pop_front();
+        }
+        ++state.valid_estimator_frames;
+        latest_observation_feature_context_.named_features[kJingchu01EstimatorHistoryFeature] =
+            jingchu01FlattenEstimatorHistory();
+        return;
+    }
+
+    if (isJingchu01B3EstimatedMode())
+    {
+        if (!jingchu01_mass_com_workflow_.b3_estimate_loaded)
+        {
+            loadJingchu01B3EstimateForMode();
+        }
+        latest_observation_feature_context_.named_features["jingchu01_b3_estimated_mass_com"] =
+            jingchu01_mass_com_workflow_.frozen_estimate;
+    }
+}
+
+void RL_controller::updateJingchu01B2StaticEstimateAfterPolicyRun()
+{
+    if (!isJingchu01B2IdentificationMode())
+    {
+        return;
+    }
+    const std::string key = activeModeProfile().tag + "/" + kJingchu01B2EstimatorActionSuffix;
+    const auto it = latest_policy_extra_outputs_.find(key);
+    if (it == latest_policy_extra_outputs_.end())
+    {
+        return;
+    }
+    if (it->second.size() != kJingchu01MassComDim)
+    {
+        throw std::runtime_error(
+            "B2 estimator output must be 4 values, got " +
+            std::to_string(it->second.size()));
+    }
+
+    auto &state = jingchu01_mass_com_workflow_;
+    state.estimate_window.push_back(it->second);
+    while (state.estimate_window.size() > kJingchu01EstimatorHistory)
+    {
+        state.estimate_window.pop_front();
+    }
+    if (state.estimate_window.size() < kJingchu01EstimatorHistory)
+    {
+        return;
+    }
+
+    std::vector<float> mean(kJingchu01MassComDim, 0.0f);
+    for (const auto &sample : state.estimate_window)
+    {
+        for (size_t i = 0; i < kJingchu01MassComDim; ++i)
+        {
+            mean[i] += sample[i];
+        }
+    }
+    for (float &value : mean)
+    {
+        value /= static_cast<float>(state.estimate_window.size());
+    }
+
+    std::vector<float> stddev(kJingchu01MassComDim, 0.0f);
+    for (const auto &sample : state.estimate_window)
+    {
+        for (size_t i = 0; i < kJingchu01MassComDim; ++i)
+        {
+            const float diff = sample[i] - mean[i];
+            stddev[i] += diff * diff;
+        }
+    }
+    for (float &value : stddev)
+    {
+        value = std::sqrt(value / static_cast<float>(state.estimate_window.size()));
+    }
+
+    state.frozen_estimate = mean;
+    state.frozen_std = stddev;
+    writeJingchu01B2EstimateFile(mean, stddev);
+    if (!state.b2_estimate_written)
+    {
+        std::cout << "[RL_controller][jingchu01] wrote B2 static mass/CoM estimate to "
+                  << jingchu01MassComEstimatePath() << std::endl;
+        state.b2_estimate_written = true;
+    }
+}
+
+void RL_controller::injectJingchu01B3EstimateIntoStackedObservation()
+{
+    if (!isJingchu01B3EstimatedMode())
+    {
+        return;
+    }
+    const auto &estimate = jingchu01_mass_com_workflow_.frozen_estimate;
+    if (estimate.size() != kJingchu01MassComDim)
+    {
+        throw std::runtime_error("B3 estimated mass/CoM is not loaded");
+    }
+    const auto &cfg = activePolicyCfg();
+    const size_t expected_dim = kJingchu01ActorHistory * kJingchu01PolicyFrameDim;
+    if (cfg.obs_dim != static_cast<int>(kJingchu01PolicyFrameDim) ||
+        cfg.obs_stack_N != static_cast<int>(kJingchu01ActorHistory) ||
+        stacked_obs_buffer_.size() != expected_dim ||
+        cfg.observation_stack_layout != "frame_major")
+    {
+        throw std::runtime_error("B3 mass/CoM injection expects frame-major 15x51 actor observation");
+    }
+    for (size_t frame_i = 0; frame_i < kJingchu01ActorHistory; ++frame_i)
+    {
+        const size_t offset = frame_i * kJingchu01PolicyFrameDim + kJingchu01MassComOffset;
+        std::copy(
+            estimate.begin(),
+            estimate.end(),
+            stacked_obs_buffer_.begin() + static_cast<std::ptrdiff_t>(offset));
+    }
+}
+
+void RL_controller::loadJingchu01B3EstimateForMode()
+{
+    const std::string path = jingchu01MassComEstimatePath();
+    if (!std::filesystem::exists(path))
+    {
+        throw std::runtime_error(
+            "mode10 requires B2 static mass/CoM estimate file: " + path);
+    }
+    const YAML::Node root = YAML::LoadFile(path);
+    const YAML::Node node = root["jingchu01_mass_com_estimate"] ? root["jingchu01_mass_com_estimate"] : root;
+    if (!node["estimated_mass_com"])
+    {
+        throw std::runtime_error("B2 estimate file missing estimated_mass_com: " + path);
+    }
+    std::vector<float> estimate = node["estimated_mass_com"].as<std::vector<float>>();
+    if (estimate.size() != kJingchu01MassComDim)
+    {
+        throw std::runtime_error("B2 estimate file estimated_mass_com must contain 4 values: " + path);
+    }
+    jingchu01_mass_com_workflow_.frozen_estimate = std::move(estimate);
+    if (node["estimate_window_std"])
+    {
+        jingchu01_mass_com_workflow_.frozen_std = node["estimate_window_std"].as<std::vector<float>>();
+    }
+    jingchu01_mass_com_workflow_.b3_estimate_loaded = true;
+    std::cout << "[RL_controller][jingchu01] loaded B2 static mass/CoM estimate from "
+              << path << std::endl;
+}
+
+void RL_controller::writeJingchu01B2EstimateFile(
+    const std::vector<float> &mean,
+    const std::vector<float> &stddev) const
+{
+    const std::filesystem::path path(jingchu01MassComEstimatePath());
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path);
+    if (!out)
+    {
+        throw std::runtime_error("failed to write B2 static mass/CoM estimate: " + path.string());
+    }
+    out << std::setprecision(9);
+    auto writeVector = [&](const std::string &name, const std::vector<float> &values) {
+        out << "  " << name << ": [";
+        for (size_t i = 0; i < values.size(); ++i)
+        {
+            if (i > 0)
+            {
+                out << ", ";
+            }
+            out << values[i];
+        }
+        out << "]\n";
+    };
+    out << "jingchu01_mass_com_estimate:\n";
+    out << "  schema_version: 1\n";
+    out << "  source_mode_id: " << kJingchu01B2ModeId << "\n";
+    out << "  source_config_section: " << activeModeProfile().config_section << "\n";
+    out << "  estimate_mode: static_window_mean\n";
+    out << "  estimate_window_steps: " << kJingchu01EstimatorHistory << "\n";
+    out << "  valid_estimator_frames: " << jingchu01_mass_com_workflow_.valid_estimator_frames << "\n";
+    writeVector("estimated_mass_com", mean);
+    writeVector("estimate_window_std", stddev);
 }
 
 const Sim2realCfg &RL_controller::runtimeCfg() const
@@ -3299,7 +3585,9 @@ std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs
     }
 
     const auto &active_cfg = activePolicyCfg();
+    prepareJingchu01MassComWorkflowBeforePolicyRun();
     buildStackedObservation(*obs_deque_ptr, "policy run");
+    injectJingchu01B3EstimateIntoStackedObservation();
 
     PolicyRunOutput policy_output = runPolicyGroup(
         &activePolicyGroup(),
@@ -3309,6 +3597,7 @@ std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs
         advance_time_step);
     std::vector<float> target_action = std::move(policy_output.action);
     latest_policy_extra_outputs_ = std::move(policy_output.extra_outputs);
+    updateJingchu01B2StaticEstimateAfterPolicyRun();
 
     if (active_cfg.action_clip_stage == "raw_action")
     {

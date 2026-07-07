@@ -1,6 +1,10 @@
 jingchu01_dcmotor_formal:
   policy_name: jingchu01_dcmotor_formal
-  policy_file: policies/jingchu01_dcmotor_dr_small_seed61_model3000.onnx
+  # Stage1 DCMotor policy switch:
+  # - active line is the model loaded by mode 4.
+  # - switch by commenting the active policy_file and uncommenting exactly one alternative.
+  policy_file: policies/jingchu01_stage1_dcmotor_no_dr_model10000.onnx
+  # policy_file: policies/jingchu01_stage1_dcmotor_dr_model10000.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 15
@@ -102,7 +106,7 @@ jingchu01_dcmotor_formal:
     vy: [-0.3, 0.3]
     dyaw: [-0.5, 0.5]
   device_id: 0
-  obs_dim: 47
+  obs_dim: 51
   action_dim: 12
   motor_N: 12
   RL_control_f: 50

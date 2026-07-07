@@ -1,8 +1,8 @@
 observation_manifest:
   schema_version: 3
   profile: "jingchu01_formal_locomotion"
-  # One frame: 47
-  # Stacked actor input: frame-major 15-frame history = 705
+  # One frame: 51
+  # Stacked actor input: frame-major 15-frame history = 765
   terms:
     - name: phase
       enabled: true
@@ -25,3 +25,10 @@ observation_manifest:
     - name: base_euler
       enabled: true
       components: [roll, pitch, yaw]
+    - name: constant
+      enabled: true
+      count: 4
+      # waist_yaw nominal inertial observation:
+      # mass / 10 = 11.09 / 10 = 1.109
+      # com = [-0.0016102, 0.0017974, 0.24748]
+      values: [1.109, -0.0016102, 0.0017974, 0.24748]

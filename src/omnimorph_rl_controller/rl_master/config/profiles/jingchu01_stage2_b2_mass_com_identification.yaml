@@ -1,13 +1,9 @@
-jingchu01_pacedcmotor_formal:
-  policy_name: jingchu01_pacedcmotor_formal
-  # Stage1/B1 Pace-family policy switch:
-  # - active line is the model loaded by mode 5.
-  # - switch by commenting the active policy_file and uncommenting exactly one alternative.
-  policy_file: policies/jingchu01_stage1_pacedcmotor_no_dr_model10000.onnx
-  # policy_file: policies/jingchu01_stage1_pacedcmotor_dr_model10000.onnx
-  # B1 comparison policy from hust_lab stage2/b1_pace_robust_collect model_20000.pt.
-  # Export/copy this ONNX before uncommenting.
-  # policy_file: policies/jingchu01_stage2_b1_pace_robust_no_dr_model20000.onnx
+jingchu01_stage2_b2_mass_com_identification:
+  policy_name: jingchu01_stage2_b2_mass_com_identification
+  # Stage2 B2 identification:
+  # - main policy keeps the robot moving with B1 robust action output.
+  # - b2_estimator sub_model outputs estimated_mass_com[4] from 50x47 proprio history.
+  policy_file: policies/jingchu01_stage2_b1_pace_robust_no_dr_model20000.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 15
@@ -255,6 +251,22 @@ jingchu01_pacedcmotor_formal:
     reset_policy_on_mode_switch: true
     extra_output_names: []
     onnx_inputs: []
+  sub_models:
+    - name: b2_estimator
+      enabled: true
+      weight: 0.0
+      action_dim: 4
+      policy_file: policies/jingchu01_stage2_b2_ac_mass_com_estimator_weighted_no_dr_model30000.onnx
+      policy_io:
+        obs_input_name: input
+        action_output_name: estimated_mass_com
+        enable_time_step_input: false
+        strict_model_io: true
+        onnx_inputs:
+          - name: input
+            source: feature
+            feature_name: jingchu01_estimator_proprio_history
+            shape: [1, 2350]
   enable_cmd_watchdog: true
   cmd_timeout_s: 0.12
   loop_overrun_warn_us: 2000

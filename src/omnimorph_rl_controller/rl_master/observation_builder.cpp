@@ -41,6 +41,15 @@ std::vector<std::string> getTargetOrderOrEmpty(const YAML::Node &node)
     return node["target_order"].as<std::vector<std::string>>();
 }
 
+std::vector<float> getValuesOrEmpty(const YAML::Node &node)
+{
+    if (!node["values"])
+    {
+        return {};
+    }
+    return node["values"].as<std::vector<float>>();
+}
+
 std::string getNameCompat(const YAML::Node &node)
 {
     if (node["name"])
@@ -545,6 +554,7 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
         term.target_order = getTargetOrderOrEmpty(term_node);
         term.target_representation = getStringOrEmpty(term_node, "target_representation");
         term.target_frame = getStringOrEmpty(term_node, "target_frame");
+        term.values = getValuesOrEmpty(term_node);
         if (!term.components.empty() && !term.target_order.empty() &&
             term.components != term.target_order)
         {
@@ -629,6 +639,18 @@ ObservationManifest ObservationManifest::loadFromYAML(const std::string &yaml_fi
                  term.name == "opentrack_last_motor_targets")
         {
             term.count = getCountOrDefault(term_node, 29);
+        }
+        else if (term.name == "constant")
+        {
+            term.count = getCountOrDefault(term_node, static_cast<int>(term.values.size()));
+            if (term.values.empty())
+            {
+                throw std::runtime_error("constant term requires non-empty values");
+            }
+            if (term.count != static_cast<int>(term.values.size()))
+            {
+                throw std::runtime_error("constant term count must equal values length");
+            }
         }
         else
         {
@@ -1156,6 +1178,13 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           0,
           true,
           false}},
+        {"constant",
+         {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              out->insert(out->end(), term.values.begin(), term.values.end());
+          },
+          0,
+          true,
+          false}},
     };
     return kRegistry;
 }
@@ -1336,6 +1365,11 @@ ObservationBuilder::ObservationBuilder(ObservationManifest manifest)
             term.count <= 0)
         {
             throw std::runtime_error(term.name + " term requires count > 0");
+        }
+        if (term.name == "constant" &&
+            (term.count <= 0 || term.count != static_cast<int>(term.values.size())))
+        {
+            throw std::runtime_error("constant term requires count > 0 and count == values length");
         }
 
         ResolvedObservationTerm resolved;

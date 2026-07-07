@@ -23,6 +23,7 @@ Makefile
 log/
 MUJOCO_LOG.TXT
 src/omnimorph_rl_controller/rl_master/data/runtime_logs/
+src/omnimorph_rl_controller/rl_master/config/runtime/
 analysis/
 artifacts/runtime_plots/
 

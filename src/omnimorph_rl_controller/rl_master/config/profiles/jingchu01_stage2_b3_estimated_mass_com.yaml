@@ -1,13 +1,9 @@
-jingchu01_pacedcmotor_formal:
-  policy_name: jingchu01_pacedcmotor_formal
-  # Stage1/B1 Pace-family policy switch:
-  # - active line is the model loaded by mode 5.
-  # - switch by commenting the active policy_file and uncommenting exactly one alternative.
-  policy_file: policies/jingchu01_stage1_pacedcmotor_no_dr_model10000.onnx
-  # policy_file: policies/jingchu01_stage1_pacedcmotor_dr_model10000.onnx
-  # B1 comparison policy from hust_lab stage2/b1_pace_robust_collect model_20000.pt.
-  # Export/copy this ONNX before uncommenting.
-  # policy_file: policies/jingchu01_stage2_b1_pace_robust_no_dr_model20000.onnx
+jingchu01_stage2_b3_estimated_mass_com:
+  policy_name: jingchu01_stage2_b3_estimated_mass_com
+  # Stage2 B3 estimated-mass/CoM tracking:
+  # - mode 10 loads config/runtime/jingchu01_mass_com_estimate.yaml.
+  # - the loaded 4D value overwrites every actor-history frame at indices 47:51.
+  policy_file: policies/jingchu01_stage2_b3_oracle_from_b1_no_dr_model30000.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 15
