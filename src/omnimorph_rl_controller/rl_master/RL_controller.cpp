@@ -1025,6 +1025,11 @@ void RL_controller::handlePolicySwitch()
     action.assign(static_cast<size_t>(cfg.action_dim), 0.0f);
     joint_target_q.assign(joint_order_.size(), 0.0f);
     joint_target_torque.assign(joint_order_.size(), 0.0f);
+    if (cfg.policy_family == "opentrack_tracker" && robot)
+    {
+        robot->joint_target_q.assign(joint_order_.size(), 0.0f);
+        robot->joint_target_tau.assign(joint_order_.size(), 0.0f);
+    }
     observation_history_prefill_pending_ = true;
     prefetched_policy_extra_outputs_.clear();
     latest_policy_extra_outputs_.clear();
@@ -1244,6 +1249,41 @@ void RL_controller::buildStackedObservation(
 {
     const auto &active_cfg = activePolicyCfg();
     const size_t frame_dim = static_cast<size_t>(active_cfg.obs_dim);
+
+    if (active_cfg.policy_family == "gmt_tracker")
+    {
+        constexpr size_t kGmtMimicDim = 600;
+        if (frame_dim <= kGmtMimicDim || obs.size() != frame_dim)
+        {
+            throw std::runtime_error(
+                "GMT observation must contain 600 mimic values followed by current proprioception");
+        }
+        if (observation_history.size() != static_cast<size_t>(active_cfg.obs_stack_N))
+        {
+            throw std::runtime_error("GMT proprioception history length mismatch");
+        }
+
+        const size_t proprio_dim = frame_dim - kGmtMimicDim;
+        const size_t expected_obs_size = frame_dim + proprio_dim * observation_history.size();
+        stacked_obs_buffer_.clear();
+        stacked_obs_buffer_.reserve(expected_obs_size);
+        stacked_obs_buffer_.insert(stacked_obs_buffer_.end(), obs.begin(), obs.end());
+        for (const auto &history_frame : observation_history)
+        {
+            if (history_frame.size() != frame_dim)
+            {
+                throw std::runtime_error(
+                    std::string("GMT history frame dim mismatch") +
+                    (context ? std::string(" during ") + context : std::string()));
+            }
+            stacked_obs_buffer_.insert(
+                stacked_obs_buffer_.end(),
+                history_frame.begin() + static_cast<std::ptrdiff_t>(kGmtMimicDim),
+                history_frame.end());
+        }
+        return;
+    }
+
     const size_t expected_obs_size = frame_dim * observation_history.size();
     if (stacked_obs_buffer_.size() != expected_obs_size)
     {
@@ -2969,6 +3009,7 @@ rl_master::RobotCommandData RL_controller::step(
             const bool should_prefill_observation_history =
                 activePolicyCfg().prefill_observation_history_on_running_start &&
                 (entered_running || observation_history_prefill_pending_);
+            const bool gmt_tracker = activePolicyCfg().policy_family == "gmt_tracker";
             if (should_prefill_observation_history)
             {
                 obs_deque.clear();
@@ -2978,12 +3019,18 @@ rl_master::RobotCommandData RL_controller::step(
                 }
                 observation_history_prefill_pending_ = false;
             }
-            else
+            else if (!gmt_tracker)
             {
                 update_obs_deque(current_obs);
             }
 
             const std::vector<float> policy_action = run_policy();
+            if (gmt_tracker)
+            {
+                // Official GMT inference consumes the previous 20 proprio frames,
+                // then appends the current frame for the next control step.
+                update_obs_deque(current_obs);
+            }
             robot->joint_target_q = get_joint_target_q(policy_action);
             robot->joint_target_tau = get_joint_target_torque(robot->joint_target_q);
             last_policy_sample_time_sec_ = now_s;

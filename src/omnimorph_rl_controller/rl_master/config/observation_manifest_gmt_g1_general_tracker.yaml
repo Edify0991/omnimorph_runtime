@@ -1,0 +1,29 @@
+observation_manifest:
+  schema_version: 3
+  profile: "gmt_g1_general_tracker"
+  # Official GMT input before its internal normalizer:
+  #   future mimic targets: 20 * 30 = 600
+  #   current proprioception: 3 + 2 + 23 + 23 + 23 = 74
+  # The controller appends 20 previous 74D proprioception frames, producing
+  # the final 2154D ONNX input.
+  terms:
+    - name: reference_motion
+      enabled: true
+      count: 600
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+      components: [x, y, z]
+    - name: base_euler
+      enabled: true
+      count: 2
+      components: [roll, pitch]
+    - name: joint_pos
+      enabled: true
+      count: 23
+    - name: gmt_joint_vel
+      enabled: true
+      count: 23
+    - name: last_action
+      enabled: true
+      count: 23

@@ -275,6 +275,31 @@ def _build_qpos_from_root_and_dofs(
     return _map_source_motion_to_target(qpos, source_joint_names)
 
 
+def _reorder_joint_matrix(
+    values: np.ndarray,
+    source_joint_names: Sequence[str],
+) -> tuple[np.ndarray, list[str]]:
+    values = np.asarray(values, dtype=np.float32)
+    if values.ndim != 2:
+        raise ValueError(f"joint matrix must be rank-2, got shape {values.shape}")
+    if values.shape[1] != len(source_joint_names):
+        raise ValueError(
+            f"joint matrix dimension mismatch: matrix has {values.shape[1]} cols, "
+            f"source_joint_names has {len(source_joint_names)} items"
+        )
+
+    name_to_source_index = {name: i for i, name in enumerate(source_joint_names)}
+    reordered = np.zeros((values.shape[0], len(TARGET_JOINT_ORDER)), dtype=np.float32)
+    missing: list[str] = []
+    for target_idx, joint_name in enumerate(TARGET_JOINT_ORDER):
+        source_idx = name_to_source_index.get(joint_name)
+        if source_idx is None:
+            missing.append(joint_name)
+            continue
+        reordered[:, target_idx] = values[:, source_idx]
+    return reordered, missing
+
+
 def _score_root_quat_order(
     root_pos_w: np.ndarray,
     root_quat_raw: np.ndarray,
@@ -528,6 +553,7 @@ def main() -> None:
         source_joint_names = _as_name_list(arrays["joint_names"])
         source_qpos = np.asarray(arrays["qpos"], dtype=np.float32)
         target_qpos, unmapped = _map_source_motion_to_target(source_qpos, source_joint_names)
+        target_joint_vel = None
         input_summary = "qpos+joint_names"
     elif "dof_positions" in arrays and "dof_names" in arrays and "body_positions" in arrays and "body_rotations" in arrays:
         source_joint_names = _as_name_list(arrays["dof_names"])
@@ -568,17 +594,74 @@ def main() -> None:
         root_quat_wxyz = _quat_to_wxyz(body_rot[:, root_body_index, :], quat_order)
         source_qpos = np.concatenate([root_pos_w, root_quat_wxyz, dof_pos], axis=1).astype(np.float32)
         target_qpos, unmapped = _map_source_motion_to_target(source_qpos, source_joint_names)
+        target_joint_vel = None
         input_summary = f"dof_positions+body_pose(root={args.root_body_name}, quat_order={quat_order})"
+    elif "joint_pos" in arrays and "joint_names" in arrays and "body_pos_w" in arrays and "body_quat_w" in arrays:
+        source_joint_names = _as_name_list(arrays["joint_names"])
+        source_joint_pos = np.asarray(arrays["joint_pos"], dtype=np.float32)
+        body_pos_w = np.asarray(arrays["body_pos_w"], dtype=np.float32)
+        body_quat_w = np.asarray(arrays["body_quat_w"], dtype=np.float32)
+        body_names = _as_name_list(arrays["body_names"]) if "body_names" in arrays else []
+        if source_joint_pos.ndim != 2:
+            raise SystemExit(f"{args.input} key 'joint_pos' must have shape [T,J], got {source_joint_pos.shape}")
+        if body_pos_w.ndim != 3 or body_pos_w.shape[2] != 3:
+            raise SystemExit(f"{args.input} key 'body_pos_w' must have shape [T,B,3], got {body_pos_w.shape}")
+        if body_quat_w.ndim != 3 or body_quat_w.shape[2] != 4:
+            raise SystemExit(f"{args.input} key 'body_quat_w' must have shape [T,B,4], got {body_quat_w.shape}")
+        if body_pos_w.shape[:2] != body_quat_w.shape[:2]:
+            raise SystemExit(
+                f"{args.input} body_pos_w/body_quat_w shape mismatch: {body_pos_w.shape} vs {body_quat_w.shape}"
+            )
+        if body_names and len(body_names) != body_pos_w.shape[1]:
+            raise SystemExit(
+                f"{args.input} body_names count mismatch: {len(body_names)} vs body_pos_w second dim {body_pos_w.shape[1]}"
+            )
+        try:
+            root_body_index = body_names.index(args.root_body_name) if body_names else 0
+        except ValueError as exc:
+            raise SystemExit(
+                f"{args.input} missing root body '{args.root_body_name}' in body_names={body_names}"
+            ) from exc
+
+        root_pos_w = body_pos_w[:, root_body_index, :]
+        root_quat_wxyz = _normalize_quat_wxyz(body_quat_w[:, root_body_index, :].astype(np.float32))
+        source_qpos = np.concatenate([root_pos_w, root_quat_wxyz, source_joint_pos], axis=1).astype(np.float32)
+        target_qpos, unmapped = _map_source_motion_to_target(source_qpos, source_joint_names)
+
+        target_joint_vel = None
+        if "joint_vel" in arrays:
+            source_joint_vel = np.asarray(arrays["joint_vel"], dtype=np.float32)
+            target_joint_vel, missing_vel = _reorder_joint_matrix(source_joint_vel, source_joint_names)
+            if missing_vel:
+                print("missing source joint_vel columns padded with zero:")
+                for name in missing_vel:
+                    print(f"  - {name}")
+        input_summary = f"joint_pos+body_pose(root={args.root_body_name}, quat_order=wxyz)"
     else:
         raise SystemExit(
             f"{args.input} unsupported schema. Need either "
             "'qpos'+'joint_names' or "
-            "'dof_positions'+'dof_names'+'body_positions'+'body_rotations'."
+            "'dof_positions'+'dof_names'+'body_positions'+'body_rotations' or "
+            "'joint_pos'+'joint_names'+'body_pos_w'+'body_quat_w'."
         )
 
     target_qpos = _resample_qpos(target_qpos, source_fps, args.target_fps)
     target_qpos = _add_transition_frames(target_qpos, args.transition_frames)
     target_qvel = _recalculate_qvel_from_qpos(target_qpos, args.target_fps)
+    if target_joint_vel is not None:
+        target_joint_vel = _resample_linear(
+            target_joint_vel,
+            np.arange(target_joint_vel.shape[0], dtype=np.float64) / source_fps,
+            np.arange(target_qpos.shape[0] - args.transition_frames * 2, dtype=np.float64) / args.target_fps
+            if target_qpos.shape[0] > args.transition_frames * 2
+            else np.arange(target_joint_vel.shape[0], dtype=np.float64) / source_fps,
+        )
+        if args.transition_frames > 0:
+            padded_joint_vel = np.zeros((target_qpos.shape[0], len(TARGET_JOINT_ORDER)), dtype=np.float32)
+            padded_joint_vel[args.transition_frames : args.transition_frames + target_joint_vel.shape[0]] = target_joint_vel
+            target_qvel[:, 6:] = padded_joint_vel
+        else:
+            target_qvel[:, 6:] = target_joint_vel
     feet_height, root_height, body_pos_w, body_quat_w = _compute_reference_features(
         target_qpos,
         target_qvel,

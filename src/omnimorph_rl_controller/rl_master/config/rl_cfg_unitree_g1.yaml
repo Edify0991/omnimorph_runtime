@@ -123,6 +123,9 @@ deploy_mode_profiles:
   - mode_id: 4
     config_section: opentrack_g1_generalist_tracker
     tag: g1_opentrack_generalist_tracker
+  - mode_id: 5
+    config_section: gmt_g1_general_tracker
+    tag: g1_gmt_general_tracker
 
 config_files:
   beyondmimic_g1_walk_full_body_w_state_estimation: profiles/beyondmimic_g1_walk_full_body_w_state_estimation.yaml
@@ -130,6 +133,7 @@ config_files:
   omnixtreme_g1_full_body: profiles/omnixtreme_g1_full_body.yaml
   opentrack_g1_walk: profiles/opentrack_g1_walk.yaml
   opentrack_g1_generalist_tracker: profiles/opentrack_g1_generalist_tracker.yaml
+  gmt_g1_general_tracker: profiles/gmt_g1_general_tracker.yaml
 path_variables:
   robot_assets_dir: ${ROBOT_ASSETS_DIR}
   g1_pinocchio_urdf: ${G1_PINOCCHIO_URDF}

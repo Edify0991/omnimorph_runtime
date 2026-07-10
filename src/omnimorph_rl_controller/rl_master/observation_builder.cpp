@@ -935,6 +935,29 @@ const std::unordered_map<std::string, ObservationBuilder::ObservationProvider> &
           12,
           true,
           false}},
+        {"gmt_joint_vel",
+         {[](const ObservationTermConfig &term, const RobotState &robot, const Cmd &, const std::vector<float> &, double, const Sim2realCfg &cfg, const std::vector<int> &obs_index_map, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
+              const int max_count = std::min(term.count, static_cast<int>(obs_index_map.size()));
+              for (int i = 0; i < term.count; ++i)
+              {
+                  if (i >= max_count)
+                  {
+                      out->push_back(0.0f);
+                      continue;
+                  }
+
+                  // GMT masks both ankle pitch/roll velocities before policy inference.
+                  const bool masked_ankle_velocity = (i == 4 || i == 5 || i == 10 || i == 11);
+                  const int robot_idx = obs_index_map[static_cast<size_t>(i)];
+                  const bool valid = robot_idx >= 0 && static_cast<size_t>(robot_idx) < robot.joint_dq.size();
+                  out->push_back((valid && !masked_ankle_velocity)
+                                     ? robot.joint_dq[static_cast<size_t>(robot_idx)] * cfg.scales.dof_vel
+                                     : 0.0f);
+              }
+          },
+          23,
+          true,
+          false}},
         {"last_action",
          {[](const ObservationTermConfig &term, const RobotState &, const Cmd &, const std::vector<float> &last_action, double, const Sim2realCfg &, const std::vector<int> &, const std::vector<int> &, const ObservationFeatureContext &, std::vector<float> *out) {
               const int max_count = std::min(term.count, static_cast<int>(last_action.size()));

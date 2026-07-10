@@ -27,7 +27,7 @@ It is already being used for:
 - `Unitree G1` humanoid policies
 - MuJoCo `sim2sim` validation
 - real-robot `sim2real` execution
-- RL / AMP / BeyondMimic style policies
+- RL / AMP / BeyondMimic / OpenTrack / GMT style policies
 - future diffusion or flow-matching style generative policies
 
 ## Required Environment Variables
@@ -188,6 +188,44 @@ Start policy manually:
 
 ```bash
 ./script/publish_mode_control.sh start --mode-id 0
+```
+
+### GMT on Unitree G1
+
+GMT is registered as Unitree G1 `mode_id=5`. The checked-in default motion is
+the official `walk_stand.pkl`, converted to the runtime's 600D future-reference
+format. Convert another official GMT motion with:
+
+```bash
+python3 src/omnimorph_rl_controller/rl_master/tools/convert_gmt_motion_pkl_to_npz.py \
+  --input /path/to/gmt/assets/motions/dance.pkl \
+  --output src/omnimorph_rl_controller/rl_master/data/reference_motion/gmt/dance_runtime.npz
+```
+
+Then set `reference_motion_path` in
+`src/omnimorph_rl_controller/rl_master/config/profiles/gmt_g1_general_tracker.yaml`.
+Run sim2sim with:
+
+```bash
+ros2 run mujoco_sim2sim mujoco_sim_bridge --ros-args \
+  --params-file src/omnimorph_sim2sim/mujoco_sim2sim/config/unitree_g1_gmt_sim2sim.yaml \
+  -p rl_cfg_path:=src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml \
+  -p startup_mode_id:=5 \
+  -p enable_viewer:=true
+```
+
+In another terminal:
+
+```bash
+./script/publish_mode_control.sh start --mode-id 5
+```
+
+For sim2real, first verify the same motion in sim2sim, suspend the robot, and
+start the G1 runtime in hold state before issuing the start command:
+
+```bash
+sudo -E ./script/start_unitree_g1_policy.sh --mode-id 5
+./script/publish_mode_control.sh start --mode-id 5
 ```
 
 ## What Lives Here
