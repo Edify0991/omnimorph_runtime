@@ -1,13 +1,10 @@
 jingchu01_pacedcmotor_formal:
   policy_name: jingchu01_pacedcmotor_formal
-  # Stage1/B1 Pace-family policy switch:
+  # Stage1 gait-restored PaceDCMotor policy switch (model_5000.pt):
   # - active line is the model loaded by mode 5.
   # - switch by commenting the active policy_file and uncommenting exactly one alternative.
-  policy_file: policies/jingchu01_stage1_pacedcmotor_no_dr_model10000.onnx
-  # policy_file: policies/jingchu01_stage1_pacedcmotor_dr_model10000.onnx
-  # B1 comparison policy from hust_lab stage2/b1_pace_robust_collect model_20000.pt.
-  # Export/copy this ONNX before uncommenting.
-  # policy_file: policies/jingchu01_stage2_b1_pace_robust_no_dr_model20000.onnx
+  policy_file: policies/jingchu01_stage1_pacedcmotor_no_dr_gaitrestored_model5000.onnx
+  # policy_file: policies/jingchu01_stage1_pacedcmotor_dr_gaitrestored_model5000.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 15

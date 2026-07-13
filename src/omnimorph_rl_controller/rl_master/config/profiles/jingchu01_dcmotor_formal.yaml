@@ -1,10 +1,10 @@
 jingchu01_dcmotor_formal:
   policy_name: jingchu01_dcmotor_formal
-  # Stage1 DCMotor policy switch:
+  # Stage1 gait-restored DCMotor policy switch (model_5000.pt):
   # - active line is the model loaded by mode 4.
   # - switch by commenting the active policy_file and uncommenting exactly one alternative.
-  policy_file: policies/jingchu01_stage1_dcmotor_no_dr_model10000.onnx
-  # policy_file: policies/jingchu01_stage1_dcmotor_dr_model10000.onnx
+  policy_file: policies/jingchu01_stage1_dcmotor_no_dr_gaitrestored_model5000.onnx
+  # policy_file: policies/jingchu01_stage1_dcmotor_dr_gaitrestored_model5000.onnx
   policy_family: jingchu01_isaaclab_locomotion
   policy_adapter: onnx
   obs_stack_N: 15

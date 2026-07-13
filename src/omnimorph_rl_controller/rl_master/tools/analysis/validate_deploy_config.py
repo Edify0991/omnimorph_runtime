@@ -119,6 +119,7 @@ SUPPORTED_MANIFEST_TERMS = {
     "opentrack_dif_joint_pos",
     "opentrack_dif_joint_vel",
     "opentrack_last_motor_targets",
+    "constant",
 }
 
 DEFAULT_TERM_DIM = {
@@ -155,6 +156,7 @@ DEFAULT_TERM_DIM = {
     "opentrack_dif_joint_pos": 29,
     "opentrack_dif_joint_vel": 29,
     "opentrack_last_motor_targets": 29,
+    "constant": 0,
 }
 
 REQUIRES_POSITIVE_COUNT = {
@@ -250,6 +252,7 @@ ISAACLAB_LOCOMOTION_TERM_ORDER = [
     "last_action",
     "base_ang_vel",
     "base_euler",
+    "constant",
 ]
 ISAACLAB_FORMAL_PD_STIFFNESS = {
     "hip_roll": 200.0,
@@ -986,6 +989,7 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
 
         components = [str(x) for x in to_list(term.get("components"))]
         count_raw = term.get("count", None)
+        constant_values: List[float] = []
 
         if name not in SUPPORTED_MANIFEST_TERMS:
             issues.error(term_context, f"unsupported term name '{name}'")
@@ -1029,6 +1033,20 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
             default_count = 1
         elif name == "opentrack_loco_gait_phase":
             default_count = 4
+        elif name == "constant":
+            raw_values = to_list(term.get("values"))
+            if not raw_values:
+                issues.error(term_context, "constant requires a non-empty values list")
+                continue
+            try:
+                constant_values = [float(value) for value in raw_values]
+            except (TypeError, ValueError):
+                issues.error(term_context, "constant values must all be numeric")
+                continue
+            if any(not math.isfinite(value) for value in constant_values):
+                issues.error(term_context, "constant values must all be finite")
+                continue
+            default_count = len(constant_values)
         else:
             default_count = 0
 
@@ -1046,6 +1064,13 @@ def parse_manifest_dim(manifest_path: Path, issues: IssueCollector, context: str
         if name == "opentrack_loco_foot_height" and count > 1:
             issues.error(term_context, "opentrack_loco_foot_height count cannot exceed 1")
             continue
+        if name == "constant":
+            if count <= 0:
+                issues.error(term_context, "constant requires count > 0")
+                continue
+            if count != len(constant_values):
+                issues.error(term_context, "constant count must equal values length")
+                continue
         if name == "command":
             if components and count != len(components):
                 issues.error(term_context, "command count must equal components length")
@@ -1140,16 +1165,16 @@ def check_isaaclab_locomotion_profile(
             context,
             "Jingchu01 formal profiles must use observation_manifest_jingchu01_formal.yaml",
         )
-    if manifest_dim != 47:
-        issues.error(context, f"Jingchu01 formal manifest dim must be 47, got {manifest_dim}")
-    if obs_dim != 47:
-        issues.error(context, f"Jingchu01 formal obs_dim must be 47, got {obs_dim}")
+    if manifest_dim != 51:
+        issues.error(context, f"Jingchu01 formal manifest dim must be 51, got {manifest_dim}")
+    if obs_dim != 51:
+        issues.error(context, f"Jingchu01 formal obs_dim must be 51, got {obs_dim}")
     if obs_stack_n != 15:
         issues.error(context, f"Jingchu01 formal obs_stack_N must be 15, got {obs_stack_n}")
     if observation_stack_layout != "frame_major":
         issues.error(context, "Jingchu01 formal profiles must set observation_stack_layout: frame_major")
-    if actor_input_dim != 705:
-        issues.error(context, f"Jingchu01 formal stacked actor input must be 705, got {actor_input_dim}")
+    if actor_input_dim != 765:
+        issues.error(context, f"Jingchu01 formal stacked actor input must be 765, got {actor_input_dim}")
     if action_dim != 12:
         issues.error(context, f"Jingchu01 formal action_dim must be 12, got {action_dim}")
     if not math.isclose(action_scale, 0.5, rel_tol=0.0, abs_tol=1.0e-6):
