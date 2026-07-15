@@ -60,6 +60,8 @@ std::string sourceName(TrajectorySource src)
         return "file";
     case TrajectorySource::kSine:
         return "sine";
+    case TrajectorySource::kAcceptance:
+        return "acceptance";
     default:
         return "unknown";
     }
@@ -130,7 +132,12 @@ void JointMotorTestRunner::run()
     {
         rclcpp::spin_some(node_);
 
-        if (!has_state_)
+        bool state_available = false;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            state_available = has_state_;
+        }
+        if (!state_available)
         {
             const auto now = std::chrono::steady_clock::now();
             if (last_no_state_warn.time_since_epoch().count() == 0 ||
@@ -165,6 +172,10 @@ void JointMotorTestRunner::run()
         if (entered_running && config_.restart_trajectory_on_enter_running)
         {
             playback_index_ = 0;
+            if (config_.trajectory_source == TrajectorySource::kAcceptance)
+            {
+                resetAcceptance(now_sec);
+            }
         }
 
         const bool running_for_test_mode = deploy_output.enable_policy &&
@@ -173,7 +184,9 @@ void JointMotorTestRunner::run()
         rl_master::RobotCommandData command;
         if (running_for_test_mode)
         {
-            command = buildPlaybackCommand();
+            command = config_.trajectory_source == TrajectorySource::kAcceptance
+                          ? buildAcceptanceCommand(now_sec)
+                          : buildPlaybackCommand();
         }
         else if (deploy_output.enable_command_stream)
         {
@@ -365,6 +378,127 @@ void JointMotorTestRunner::loadConfig()
     config_.sine.sequential_joint_order = normalizeJointOrder(config_.sine.sequential_joint_order, joint_count_);
     config_.sine.duration_sec = std::max(0.2, config_.sine.duration_sec);
     config_.sine.sequential_segment_sec = std::max(0.1, config_.sine.sequential_segment_sec);
+
+    const YAML::Node acceptance = cfg["acceptance"];
+    if (config_.trajectory_source == TrajectorySource::kAcceptance)
+    {
+        const auto registry =
+            rl_master::ModeProfileRegistry::loadFromYaml(config_.deploy_config_path, "engineai_walk");
+        if (!registry->hasMode(config_.test_mode_id))
+        {
+            throw std::runtime_error(
+                "acceptance test_mode_id is not registered: " + std::to_string(config_.test_mode_id));
+        }
+        if (joint_names_ != registry->jointOrder())
+        {
+            throw std::runtime_error(
+                "acceptance joint_names must exactly match robot_global_joint_order");
+        }
+        if (!registry->cfgForMode(config_.test_mode_id, false).external_command_only)
+        {
+            throw std::runtime_error(
+                "acceptance deploy profile must set external_command_only=true");
+        }
+        if (!acceptance || !acceptance["joints"] || !acceptance["joints"].IsSequence())
+        {
+            throw std::runtime_error("trajectory_source=acceptance requires acceptance.joints");
+        }
+        auto acceptanceDouble = [&acceptance](const char *key, double fallback) {
+            return acceptance[key] ? acceptance[key].as<double>() : fallback;
+        };
+        config_.acceptance.csp_hold_sec = std::max(0.1, acceptanceDouble("csp_hold_sec", 2.0));
+        config_.acceptance.dwell_sec = std::max(0.1, acceptanceDouble("dwell_sec", 2.0));
+        config_.acceptance.state_timeout_sec = std::max(0.01, acceptanceDouble("state_timeout_sec", 0.10));
+        config_.acceptance.speed_abort_ratio = std::max(1.0, acceptanceDouble("speed_abort_ratio", 1.15));
+        config_.acceptance.position_guard_margin = std::max(0.0, acceptanceDouble("position_guard_margin", 0.035));
+        config_.acceptance.pd_gain_scale = acceptanceDouble("pd_gain_scale", 1.0);
+        config_.acceptance.torque_limit_scale = acceptanceDouble("torque_limit_scale", 1.0);
+        if (!std::isfinite(config_.acceptance.pd_gain_scale) ||
+            !std::isfinite(config_.acceptance.torque_limit_scale) ||
+            config_.acceptance.pd_gain_scale <= 0.0 || config_.acceptance.pd_gain_scale > 1.0 ||
+            config_.acceptance.torque_limit_scale <= 0.0 || config_.acceptance.torque_limit_scale > 1.0)
+        {
+            throw std::runtime_error("acceptance PD/torque scales must be in (0, 1]");
+        }
+
+        config_.acceptance.joints.clear();
+        std::vector<std::string> configured_acceptance_joint_names;
+        for (const YAML::Node &joint_node : acceptance["joints"])
+        {
+            AcceptanceJointConfig joint;
+            joint.name = joint_node["name"].as<std::string>();
+            if (std::find(
+                    configured_acceptance_joint_names.begin(),
+                    configured_acceptance_joint_names.end(),
+                    joint.name) != configured_acceptance_joint_names.end())
+            {
+                throw std::runtime_error("duplicate acceptance joint: " + joint.name);
+            }
+            configured_acceptance_joint_names.push_back(joint.name);
+            const auto name_it = std::find(joint_names_.begin(), joint_names_.end(), joint.name);
+            if (name_it == joint_names_.end())
+            {
+                throw std::runtime_error("acceptance joint not in joint_names: " + joint.name);
+            }
+            joint.index = static_cast<size_t>(std::distance(joint_names_.begin(), name_it));
+            joint.q_min = joint_node["q_min"].as<double>();
+            joint.q_max = joint_node["q_max"].as<double>();
+            joint.kp = joint_node["kp"].as<double>();
+            joint.kd = joint_node["kd"].as<double>();
+            joint.tau_limit = joint_node["tau_limit"].as<double>();
+            joint.limits.max_velocity = joint_node["max_velocity"].as<double>();
+            joint.limits.max_acceleration = joint_node["max_acceleration"].as<double>();
+            joint.limits.max_jerk = joint_node["max_jerk"].as<double>();
+            joint.required_actual_velocity = joint_node["required_actual_velocity"].as<double>();
+            joint.required_actual_range = joint_node["required_actual_range"].as<double>();
+            joint.actuator_mass_kg = joint_node["actuator_mass_kg"]
+                                         ? joint_node["actuator_mass_kg"].as<double>()
+                                         : (joint_node["mass_kg"] ? joint_node["mass_kg"].as<double>() : 0.0);
+            if (joint_node["coupled_cst_joints"])
+            {
+                joint.coupled_cst_joints = joint_node["coupled_cst_joints"].as<std::vector<std::string>>();
+            }
+            if (!std::isfinite(joint.q_min) || !std::isfinite(joint.q_max) ||
+                !std::isfinite(joint.kp) || !std::isfinite(joint.kd) ||
+                !std::isfinite(joint.tau_limit) || !std::isfinite(joint.required_actual_velocity) ||
+                !std::isfinite(joint.required_actual_range) || !std::isfinite(joint.actuator_mass_kg) ||
+                !(joint.q_min < joint.q_max) || joint.kp <= 0.0 || joint.kd < 0.0 || joint.tau_limit <= 0.0 ||
+                joint.required_actual_velocity <= 0.0 || joint.required_actual_range <= 0.0 ||
+                joint.required_actual_range > (joint.q_max - joint.q_min) || joint.actuator_mass_kg < 0.0)
+            {
+                throw std::runtime_error("invalid acceptance range/gains for " + joint.name);
+            }
+            (void)septicDuration(joint.q_max - joint.q_min, joint.limits);
+            config_.acceptance.joints.push_back(joint);
+        }
+        if (config_.acceptance.joints.empty())
+        {
+            throw std::runtime_error("acceptance.joints must not be empty");
+        }
+
+        for (auto &joint : config_.acceptance.joints)
+        {
+            joint.coupled_cst_indices.clear();
+            for (const std::string &coupled_name : joint.coupled_cst_joints)
+            {
+                const auto name_it = std::find(joint_names_.begin(), joint_names_.end(), coupled_name);
+                if (name_it == joint_names_.end())
+                {
+                    throw std::runtime_error("coupled CST joint not in joint_names: " + coupled_name);
+                }
+                joint.coupled_cst_indices.push_back(static_cast<size_t>(std::distance(joint_names_.begin(), name_it)));
+            }
+            if (joint.coupled_cst_indices.empty())
+            {
+                joint.coupled_cst_indices.push_back(joint.index);
+            }
+            if (std::find(joint.coupled_cst_indices.begin(), joint.coupled_cst_indices.end(), joint.index) ==
+                joint.coupled_cst_indices.end())
+            {
+                throw std::runtime_error("coupled_cst_joints must include active joint " + joint.name);
+            }
+        }
+    }
 }
 
 void JointMotorTestRunner::resolveJointLayout()
@@ -397,6 +531,12 @@ void JointMotorTestRunner::loadTrajectory()
     trajectory_.clear();
     playback_index_ = 0;
 
+    if (config_.trajectory_source == TrajectorySource::kAcceptance)
+    {
+        trajectory_has_input_dq_ = false;
+        trajectory_has_input_tau_ = false;
+        return;
+    }
     if (config_.trajectory_source == TrajectorySource::kFile)
     {
         if (config_.trajectory_file.empty())
@@ -761,8 +901,12 @@ void JointMotorTestRunner::initializeStateMachineIfNeeded()
     cfg.zeroing_duration_s = config_.zeroing_duration_s;
 
     state_machine_.configure(cfg);
-    state_machine_.initialize(toStateQ(state), config_.zero_pose, config_.test_mode_id);
-    state_machine_.setZeroPose(config_.zero_pose);
+    const std::vector<float> startup_hold_pose =
+        config_.trajectory_source == TrajectorySource::kAcceptance
+            ? toStateQ(state)
+            : config_.zero_pose;
+    state_machine_.initialize(toStateQ(state), startup_hold_pose, config_.test_mode_id);
+    state_machine_.setZeroPose(startup_hold_pose);
     state_machine_initialized_ = true;
     last_lifecycle_state_ = state_machine_.state();
 }
@@ -871,6 +1015,418 @@ rl_master::RobotCommandData JointMotorTestRunner::buildPlaybackCommand()
     return command;
 }
 
+const char *JointMotorTestRunner::acceptancePhaseName(AcceptancePhase phase)
+{
+    switch (phase)
+    {
+    case AcceptancePhase::kCspHold:
+        return "csp_hold";
+    case AcceptancePhase::kMoveLower:
+        return "move_lower";
+    case AcceptancePhase::kHoldLower:
+        return "hold_lower";
+    case AcceptancePhase::kMoveUpper:
+        return "move_upper";
+    case AcceptancePhase::kHoldUpper:
+        return "hold_upper";
+    case AcceptancePhase::kMoveHome:
+        return "move_home";
+    case AcceptancePhase::kHoldHome:
+        return "hold_home";
+    case AcceptancePhase::kComplete:
+        return "complete";
+    case AcceptancePhase::kAborted:
+        return "aborted";
+    default:
+        return "unknown";
+    }
+}
+
+void JointMotorTestRunner::resetAcceptance(double now_sec)
+{
+    rl_master::RobotStateData state;
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        state = latest_state_;
+    }
+    acceptance_initialized_ = true;
+    acceptance_complete_ = false;
+    acceptance_aborted_ = false;
+    acceptance_abort_reason_.clear();
+    acceptance_joint_cursor_ = 0;
+    acceptance_phase_ = AcceptancePhase::kCspHold;
+    acceptance_phase_start_sec_ = now_sec;
+    acceptance_motion_duration_sec_ = 0.0;
+    acceptance_hold_q_ = state.joint_q;
+    acceptance_hold_q_.resize(joint_count_, 0.0f);
+    acceptance_target_velocity_.assign(joint_count_, 0.0f);
+    acceptance_target_acceleration_.assign(joint_count_, 0.0f);
+    acceptance_target_jerk_.assign(joint_count_, 0.0f);
+    if (logger_enabled_)
+    {
+        logger_.writeEvent(now_sec, "acceptance_reset", {{"phase", "csp_hold"}});
+    }
+}
+
+void JointMotorTestRunner::transitionAcceptance(AcceptancePhase phase, double now_sec)
+{
+    acceptance_phase_ = phase;
+    acceptance_phase_start_sec_ = now_sec;
+    if (logger_enabled_)
+    {
+        std::string joint_name = "none";
+        if (acceptance_joint_cursor_ < config_.acceptance.joints.size())
+        {
+            joint_name = config_.acceptance.joints[acceptance_joint_cursor_].name;
+        }
+        logger_.writeEvent(
+            now_sec,
+            "acceptance_phase",
+            {{"joint", joint_name}, {"phase", acceptancePhaseName(phase)}});
+    }
+}
+
+void JointMotorTestRunner::startAcceptanceMotion(
+    AcceptancePhase phase,
+    double q_start,
+    double q_end,
+    double now_sec)
+{
+    const auto &joint = config_.acceptance.joints.at(acceptance_joint_cursor_);
+    acceptance_motion_q_start_ = q_start;
+    acceptance_motion_q_end_ = q_end;
+    acceptance_motion_duration_sec_ = septicDuration(q_end - q_start, joint.limits);
+    transitionAcceptance(phase, now_sec);
+    if (logger_enabled_)
+    {
+        logger_.writeEvent(
+            now_sec,
+            "acceptance_motion_started",
+            {
+                {"joint", joint.name},
+                {"phase", acceptancePhaseName(phase)},
+                {"duration_sec", std::to_string(acceptance_motion_duration_sec_)},
+            });
+    }
+}
+
+void JointMotorTestRunner::abortAcceptance(
+    const std::string &reason,
+    double now_sec,
+    const rl_master::RobotStateData &state)
+{
+    if (acceptance_aborted_)
+    {
+        return;
+    }
+    acceptance_aborted_ = true;
+    acceptance_complete_ = false;
+    acceptance_abort_reason_ = reason;
+    acceptance_hold_q_ = state.joint_q;
+    acceptance_hold_q_.resize(joint_count_, 0.0f);
+    acceptance_phase_ = AcceptancePhase::kAborted;
+    acceptance_phase_start_sec_ = now_sec;
+    RCLCPP_ERROR(node_->get_logger(), "acceptance aborted; CSP hold: %s", reason.c_str());
+    if (logger_enabled_)
+    {
+        logger_.writeEvent(now_sec, "acceptance_aborted", {{"reason", reason}});
+        logger_.flush();
+    }
+}
+
+bool JointMotorTestRunner::checkAcceptanceSafety(
+    double now_sec,
+    const rl_master::RobotStateData &state,
+    std::string *reason)
+{
+    double state_receive_time = 0.0;
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        state_receive_time = latest_state_receive_time_sec_;
+    }
+    if ((now_sec - state_receive_time) > config_.acceptance.state_timeout_sec)
+    {
+        *reason = "robot state timeout: age=" + std::to_string(now_sec - state_receive_time) + " s";
+        return false;
+    }
+    if (state.joint_q.size() != joint_count_ || state.joint_dq.size() != joint_count_)
+    {
+        *reason = "robot state joint count mismatch";
+        return false;
+    }
+    for (size_t i = 0; i < joint_count_; ++i)
+    {
+        if (!std::isfinite(state.joint_q[i]) || !std::isfinite(state.joint_dq[i]))
+        {
+            *reason = "non-finite joint feedback at index=" + std::to_string(i);
+            return false;
+        }
+        if (std::abs(state.joint_q[i]) > config_.max_abs_q || std::abs(state.joint_dq[i]) > config_.max_abs_dq)
+        {
+            *reason = "global joint safety bound exceeded at index=" + std::to_string(i);
+            return false;
+        }
+    }
+
+    const bool cst_active = acceptance_initialized_ && !acceptance_complete_ && !acceptance_aborted_ &&
+                            acceptance_phase_ != AcceptancePhase::kCspHold;
+    if (!cst_active || acceptance_joint_cursor_ >= config_.acceptance.joints.size())
+    {
+        return true;
+    }
+
+    const auto &active = config_.acceptance.joints[acceptance_joint_cursor_];
+    for (size_t index : active.coupled_cst_indices)
+    {
+        const AcceptanceJointConfig *guard = &active;
+        for (const auto &candidate : config_.acceptance.joints)
+        {
+            if (candidate.index == index)
+            {
+                guard = &candidate;
+                break;
+            }
+        }
+        const double speed_limit = guard->limits.max_velocity * config_.acceptance.speed_abort_ratio;
+        if (std::abs(static_cast<double>(state.joint_dq[index])) > speed_limit)
+        {
+            *reason = guard->name + " actual speed exceeded abort threshold";
+            return false;
+        }
+        const double margin = config_.acceptance.position_guard_margin;
+        if (state.joint_q[index] < guard->q_min - margin || state.joint_q[index] > guard->q_max + margin)
+        {
+            *reason = guard->name + " position exceeded acceptance guard";
+            return false;
+        }
+    }
+    return true;
+}
+
+rl_master::RobotCommandData JointMotorTestRunner::buildCspHoldCommand(const std::vector<float> &hold_q) const
+{
+    rl_master::RobotCommandData command;
+    command.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
+    command.active_joint_count = static_cast<int>(joint_count_);
+    command.joint_target_q.assign(joint_count_, 0.0f);
+    command.joint_target_dq.assign(joint_count_, 0.0f);
+    command.joint_target_tau.assign(joint_count_, 0.0f);
+    command.open_rl = rl_master::kOpenRlTestCspStream;
+    const size_t copy_n = std::min(joint_count_, hold_q.size());
+    std::copy_n(hold_q.begin(), copy_n, command.joint_target_q.begin());
+    return command;
+}
+
+rl_master::RobotCommandData JointMotorTestRunner::buildAcceptanceCommand(double now_sec)
+{
+    rl_master::RobotStateData state;
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        state = latest_state_;
+    }
+    if (!acceptance_initialized_)
+    {
+        resetAcceptance(now_sec);
+    }
+
+    std::string safety_reason;
+    if (!acceptance_aborted_ && !checkAcceptanceSafety(now_sec, state, &safety_reason))
+    {
+        abortAcceptance(safety_reason, now_sec, state);
+    }
+    if (acceptance_aborted_ || acceptance_complete_)
+    {
+        return buildCspHoldCommand(acceptance_hold_q_);
+    }
+
+    // Advance through phase boundaries. The loop also handles a late control
+    // tick without introducing a discontinuous position step.
+    for (int transitions = 0; transitions < 3; ++transitions)
+    {
+        const auto &joint = config_.acceptance.joints.at(acceptance_joint_cursor_);
+        const double elapsed = std::max(0.0, now_sec - acceptance_phase_start_sec_);
+        bool advanced = false;
+        switch (acceptance_phase_)
+        {
+        case AcceptancePhase::kCspHold:
+            if (elapsed >= config_.acceptance.csp_hold_sec)
+            {
+                acceptance_hold_q_ = state.joint_q;
+                acceptance_hold_q_.resize(joint_count_, 0.0f);
+                acceptance_home_q_ = state.joint_q[joint.index];
+                const double margin = config_.acceptance.position_guard_margin;
+                bool start_pose_valid = true;
+                std::string invalid_joint;
+                for (size_t index : joint.coupled_cst_indices)
+                {
+                    const AcceptanceJointConfig *guard = &joint;
+                    for (const auto &candidate : config_.acceptance.joints)
+                    {
+                        if (candidate.index == index)
+                        {
+                            guard = &candidate;
+                            break;
+                        }
+                    }
+                    if (state.joint_q[index] < guard->q_min - margin ||
+                        state.joint_q[index] > guard->q_max + margin)
+                    {
+                        start_pose_valid = false;
+                        invalid_joint = guard->name;
+                        break;
+                    }
+                }
+                if (!start_pose_valid)
+                {
+                    abortAcceptance(invalid_joint + " start pose outside acceptance guard", now_sec, state);
+                    return buildCspHoldCommand(acceptance_hold_q_);
+                }
+                startAcceptanceMotion(AcceptancePhase::kMoveLower, acceptance_home_q_, joint.q_min, now_sec);
+                advanced = true;
+            }
+            break;
+        case AcceptancePhase::kMoveLower:
+            if (elapsed >= acceptance_motion_duration_sec_)
+            {
+                transitionAcceptance(AcceptancePhase::kHoldLower, now_sec);
+                advanced = true;
+            }
+            break;
+        case AcceptancePhase::kHoldLower:
+            if (elapsed >= config_.acceptance.dwell_sec)
+            {
+                startAcceptanceMotion(AcceptancePhase::kMoveUpper, joint.q_min, joint.q_max, now_sec);
+                advanced = true;
+            }
+            break;
+        case AcceptancePhase::kMoveUpper:
+            if (elapsed >= acceptance_motion_duration_sec_)
+            {
+                transitionAcceptance(AcceptancePhase::kHoldUpper, now_sec);
+                advanced = true;
+            }
+            break;
+        case AcceptancePhase::kHoldUpper:
+            if (elapsed >= config_.acceptance.dwell_sec)
+            {
+                startAcceptanceMotion(AcceptancePhase::kMoveHome, joint.q_max, acceptance_home_q_, now_sec);
+                advanced = true;
+            }
+            break;
+        case AcceptancePhase::kMoveHome:
+            if (elapsed >= acceptance_motion_duration_sec_)
+            {
+                transitionAcceptance(AcceptancePhase::kHoldHome, now_sec);
+                advanced = true;
+            }
+            break;
+        case AcceptancePhase::kHoldHome:
+            if (elapsed >= config_.acceptance.dwell_sec)
+            {
+                acceptance_hold_q_ = state.joint_q;
+                acceptance_hold_q_.resize(joint_count_, 0.0f);
+                ++acceptance_joint_cursor_;
+                if (acceptance_joint_cursor_ >= config_.acceptance.joints.size())
+                {
+                    acceptance_complete_ = true;
+                    transitionAcceptance(AcceptancePhase::kComplete, now_sec);
+                }
+                else
+                {
+                    transitionAcceptance(AcceptancePhase::kCspHold, now_sec);
+                }
+                advanced = true;
+            }
+            break;
+        default:
+            break;
+        }
+        if (!advanced || acceptance_complete_)
+        {
+            break;
+        }
+    }
+
+    if (acceptance_complete_ || acceptance_phase_ == AcceptancePhase::kCspHold)
+    {
+        return buildCspHoldCommand(acceptance_hold_q_);
+    }
+
+    const auto &joint = config_.acceptance.joints.at(acceptance_joint_cursor_);
+    SepticSample sample;
+    switch (acceptance_phase_)
+    {
+    case AcceptancePhase::kMoveLower:
+    case AcceptancePhase::kMoveUpper:
+    case AcceptancePhase::kMoveHome:
+        sample = sampleSeptic(
+            acceptance_motion_q_start_,
+            acceptance_motion_q_end_,
+            now_sec - acceptance_phase_start_sec_,
+            acceptance_motion_duration_sec_);
+        break;
+    case AcceptancePhase::kHoldLower:
+        sample = {joint.q_min, 0.0, 0.0, 0.0, 1.0};
+        break;
+    case AcceptancePhase::kHoldUpper:
+        sample = {joint.q_max, 0.0, 0.0, 0.0, 1.0};
+        break;
+    case AcceptancePhase::kHoldHome:
+        sample = {acceptance_home_q_, 0.0, 0.0, 0.0, 1.0};
+        break;
+    default:
+        sample = {state.joint_q[joint.index], 0.0, 0.0, 0.0, 0.0};
+        break;
+    }
+    acceptance_sample_ = sample;
+    acceptance_target_velocity_.assign(joint_count_, 0.0f);
+    acceptance_target_acceleration_.assign(joint_count_, 0.0f);
+    acceptance_target_jerk_.assign(joint_count_, 0.0f);
+    acceptance_target_velocity_[joint.index] = static_cast<float>(sample.velocity);
+    acceptance_target_acceleration_[joint.index] = static_cast<float>(sample.acceleration);
+    acceptance_target_jerk_[joint.index] = static_cast<float>(sample.jerk);
+
+    rl_master::RobotCommandData command;
+    command.protocol_version = rl_master::kProtocolVersionDynamicJointsV2;
+    command.active_joint_count = static_cast<int>(joint_count_);
+    command.joint_target_q = acceptance_hold_q_;
+    command.joint_target_q.resize(joint_count_, 0.0f);
+    command.joint_target_dq.assign(joint_count_, 0.0f); // host-PD semantics: desired dq is zero
+    command.joint_target_tau.assign(joint_count_, 0.0f);
+    command.joint_cst_mask.assign(joint_count_, 0U);
+    // Reuse the existing test-R1 stream. The optional per-joint CST selection
+    // makes the active axes CST and leaves all unselected axes in CSP; no new
+    // open_rl/runtime mode is introduced for acceptance testing.
+    command.open_rl = rl_master::kOpenRlTestR1Stream;
+    command.joint_target_q[joint.index] = static_cast<float>(sample.position);
+
+    for (size_t index : joint.coupled_cst_indices)
+    {
+        command.joint_cst_mask[index] = 1U;
+        const AcceptanceJointConfig *pd = &joint;
+        for (const auto &candidate : config_.acceptance.joints)
+        {
+            if (candidate.index == index)
+            {
+                pd = &candidate;
+                break;
+            }
+        }
+        const float desired_q = index == joint.index
+                                    ? static_cast<float>(sample.position)
+                                    : acceptance_hold_q_[index];
+        command.joint_target_q[index] = desired_q;
+        const float tau = static_cast<float>(
+            config_.acceptance.pd_gain_scale *
+            (pd->kp * (desired_q - state.joint_q[index]) - pd->kd * state.joint_dq[index]));
+        command.joint_target_tau[index] = clampTorque(
+            tau,
+            static_cast<float>(config_.acceptance.torque_limit_scale *
+                               std::min(pd->tau_limit, static_cast<double>(config_.max_abs_tau))));
+    }
+    return command;
+}
+
 rl_master::RobotCommandData JointMotorTestRunner::buildZeroingCommand(const std::vector<float> &target_q) const
 {
     rl_master::RobotCommandData command;
@@ -928,9 +1484,11 @@ void JointMotorTestRunner::logStep(
     }
 
     rl_master::RobotStateData state;
+    std::vector<float> state_acceleration;
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
         state = latest_state_;
+        state_acceleration = latest_state_acceleration_;
     }
 
     std::map<std::string, double> scalars;
@@ -940,6 +1498,14 @@ void JointMotorTestRunner::logStep(
     scalars["locomotion_mode"] = static_cast<double>(deploy_output.locomotion_mode);
     scalars["open_rl"] = static_cast<double>(command.open_rl);
     scalars["playback_index"] = static_cast<double>(playback_index_);
+    if (config_.trajectory_source == TrajectorySource::kAcceptance)
+    {
+        scalars["acceptance_joint_cursor"] = static_cast<double>(acceptance_joint_cursor_);
+        scalars["acceptance_phase"] = static_cast<double>(static_cast<int>(acceptance_phase_));
+        scalars["acceptance_progress"] = acceptance_sample_.progress;
+        scalars["acceptance_complete"] = acceptance_complete_ ? 1.0 : 0.0;
+        scalars["acceptance_aborted"] = acceptance_aborted_ ? 1.0 : 0.0;
+    }
 
     std::vector<float> q_err(joint_count_, 0.0f);
     double rmse = 0.0;
@@ -954,11 +1520,25 @@ void JointMotorTestRunner::logStep(
     std::map<std::string, std::vector<float>> vectors;
     vectors["state_q"] = state.joint_q;
     vectors["state_dq"] = state.joint_dq;
+    vectors["state_ddq_estimated"] = state_acceleration;
     vectors["state_tau"] = state.joint_tau;
     vectors["cmd_q"] = command.joint_target_q;
     vectors["cmd_dq"] = command.joint_target_dq;
     vectors["cmd_tau"] = command.joint_target_tau;
     vectors["q_error"] = q_err;
+    std::vector<float> cst_mask(command.joint_cst_mask.size(), 0.0f);
+    std::transform(
+        command.joint_cst_mask.begin(),
+        command.joint_cst_mask.end(),
+        cst_mask.begin(),
+        [](uint8_t value) { return value != 0U ? 1.0f : 0.0f; });
+    vectors["cst_mask"] = cst_mask;
+    if (config_.trajectory_source == TrajectorySource::kAcceptance)
+    {
+        vectors["target_velocity_reference"] = acceptance_target_velocity_;
+        vectors["target_acceleration_reference"] = acceptance_target_acceleration_;
+        vectors["target_jerk_reference"] = acceptance_target_jerk_;
+    }
 
     logger_.writeRecord(rl_master::monotonicTimeSec(), "joint_motor_test", scalars, vectors);
 }
@@ -989,6 +1569,13 @@ void JointMotorTestRunner::initLogger()
     metadata.numeric_fields["max_abs_q"] = static_cast<double>(config_.max_abs_q);
     metadata.numeric_fields["max_abs_dq"] = static_cast<double>(config_.max_abs_dq);
     metadata.numeric_fields["max_abs_tau"] = static_cast<double>(config_.max_abs_tau);
+    metadata.numeric_fields["acceptance_csp_hold_sec"] = config_.acceptance.csp_hold_sec;
+    metadata.numeric_fields["acceptance_dwell_sec"] = config_.acceptance.dwell_sec;
+    metadata.numeric_fields["acceptance_state_timeout_sec"] = config_.acceptance.state_timeout_sec;
+    metadata.numeric_fields["acceptance_speed_abort_ratio"] = config_.acceptance.speed_abort_ratio;
+    metadata.numeric_fields["acceptance_position_guard_margin"] = config_.acceptance.position_guard_margin;
+    metadata.numeric_fields["acceptance_pd_gain_scale"] = config_.acceptance.pd_gain_scale;
+    metadata.numeric_fields["acceptance_torque_limit_scale"] = config_.acceptance.torque_limit_scale;
 
     metadata.vector_fields["fallback_kp"] = std::vector<double>(config_.fallback_kp.begin(), config_.fallback_kp.end());
     metadata.vector_fields["fallback_kd"] = std::vector<double>(config_.fallback_kd.begin(), config_.fallback_kd.end());
@@ -1002,6 +1589,19 @@ void JointMotorTestRunner::initLogger()
     }
     metadata.string_list_fields["sine_sequential_joint_order"] = order;
     metadata.string_list_fields["joint_names"] = joint_names_;
+    std::vector<std::string> acceptance_joint_names;
+    for (const auto &joint : config_.acceptance.joints)
+    {
+        acceptance_joint_names.push_back(joint.name);
+    }
+    metadata.string_list_fields["acceptance_joint_names"] = acceptance_joint_names;
+    std::vector<double> acceptance_actuator_masses;
+    acceptance_actuator_masses.reserve(config_.acceptance.joints.size());
+    for (const auto &joint : config_.acceptance.joints)
+    {
+        acceptance_actuator_masses.push_back(joint.actuator_mass_kg);
+    }
+    metadata.vector_fields["acceptance_actuator_mass_kg"] = acceptance_actuator_masses;
 
     if (!logger_.open(config_.data_path, "joint_motor_test", metadata))
     {
@@ -1031,8 +1631,20 @@ void JointMotorTestRunner::onStateMsg(const std_msgs::msg::Float32MultiArray::Sh
         return;
     }
 
+    const double receive_time_sec = rl_master::monotonicTimeSec();
     std::lock_guard<std::mutex> lock(state_mutex_);
+    latest_state_acceleration_.assign(parsed.joint_dq.size(), 0.0f);
+    const double dt = receive_time_sec - latest_state_receive_time_sec_;
+    if (has_state_ && latest_state_.joint_dq.size() == parsed.joint_dq.size() && dt > 1e-6)
+    {
+        for (size_t i = 0; i < parsed.joint_dq.size(); ++i)
+        {
+            latest_state_acceleration_[i] = static_cast<float>(
+                (static_cast<double>(parsed.joint_dq[i]) - latest_state_.joint_dq[i]) / dt);
+        }
+    }
     latest_state_ = parsed;
+    latest_state_receive_time_sec_ = receive_time_sec;
     has_state_ = true;
 }
 
@@ -1216,6 +1828,10 @@ TrajectorySource JointMotorTestRunner::parseTrajectorySource(const std::string &
     if (lower == "sine")
     {
         return TrajectorySource::kSine;
+    }
+    if (lower == "acceptance")
+    {
+        return TrajectorySource::kAcceptance;
     }
     throw std::runtime_error("unsupported trajectory_source: " + raw);
 }

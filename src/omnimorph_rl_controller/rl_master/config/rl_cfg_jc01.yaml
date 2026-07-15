@@ -142,6 +142,9 @@ deploy_mode_profiles:
 - mode_id: 10
   config_section: jingchu01_stage2_b3_estimated_mass_com
   tag: jc01_stage2_b3_estimated_mass_com
+- mode_id: 11
+  config_section: jingchu01_right_leg_acceptance
+  tag: jc01_right_leg_acceptance
 # B1 robust policy is a comparison action policy; keep it as a commented
 # policy_file option in mode 5 unless a dedicated comparison mode is added.
 
@@ -153,6 +156,7 @@ config_files:
   engineaigym_stand_lower_body: profiles/engineaigym_stand_lower_body.yaml
   jingchu01_dcmotor_formal: profiles/jingchu01_dcmotor_formal.yaml
   jingchu01_pacedcmotor_formal: profiles/jingchu01_pacedcmotor_formal.yaml
+  jingchu01_right_leg_acceptance: profiles/jingchu01_right_leg_acceptance.yaml
   jingchu01_stage2_b2_mass_com_identification: profiles/jingchu01_stage2_b2_mass_com_identification.yaml
   jingchu01_stage2_b3_estimated_mass_com: profiles/jingchu01_stage2_b3_estimated_mass_com.yaml
   amp_tienkunglab_jc01_walk_full_body: profiles/amp_tienkunglab_jc01_walk_full_body.yaml

@@ -1148,20 +1148,59 @@ void RobotSolver::applyRuntimeCommand(
     }
     else if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1)
     {
-        // Mixed stream: forward target q/dq/tau with R1 run mode.
+        // Existing mixed stream. Legacy commands without a per-joint CST
+        // selection keep the original all-R1 behavior. The acceptance runner
+        // uses the optional selection to put only its active/coupled axes in
+        // CST while every other axis holds the commanded pose in CSP.
         const size_t installed_count = installedJointCount();
+        const bool has_cst_selection = !command.joint_cst_mask.empty();
+        const bool valid_cst_selection = command.joint_cst_mask.size() == installed_count;
+        if (has_cst_selection && !valid_cst_selection &&
+            (now_s - last_stale_warn_time_s_) > 1.0)
+        {
+            std::cerr << "[RL_solver] test-R1 CST selection size mismatch: got="
+                      << command.joint_cst_mask.size() << " expected=" << installed_count
+                      << ", fallback to all-CSP current-pose hold." << std::endl;
+            last_stale_warn_time_s_ = now_s;
+        }
+
         for (size_t i = 0; i < installed_count; ++i)
         {
-            const float tau_limit = tauLimitAt(i);
-            joint_cmd_[i].q = commandQAt(i);
-            joint_cmd_[i].dq = commandDqAt(i);
-            joint_cmd_[i].tau = commandTauAt(i);
-            if (tau_limit > 0.0f)
+            if (!has_cst_selection)
             {
-                joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
+                const float tau_limit = tauLimitAt(i);
+                joint_cmd_[i].q = commandQAt(i);
+                joint_cmd_[i].dq = commandDqAt(i);
+                joint_cmd_[i].tau = commandTauAt(i);
+                if (tau_limit > 0.0f)
+                {
+                    joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
+                }
+                joint_cmd_[i].mode = RUN_MODE_R1;
+                applyRunningGainsAt(i);
+                continue;
             }
-            joint_cmd_[i].mode = RUN_MODE_R1;
+
+            const bool use_cst = valid_cst_selection && command.joint_cst_mask[i] != 0U;
+            joint_cmd_[i].dq = 0.0f;
             applyRunningGainsAt(i);
+            if (use_cst)
+            {
+                const float tau_limit = tauLimitAt(i);
+                joint_cmd_[i].q = joint_state_[i].q;
+                joint_cmd_[i].tau = commandTauAt(i);
+                if (tau_limit > 0.0f)
+                {
+                    joint_cmd_[i].tau = std::clamp(joint_cmd_[i].tau, -tau_limit, tau_limit);
+                }
+                joint_cmd_[i].mode = RUN_MODE_CST;
+            }
+            else
+            {
+                joint_cmd_[i].q = valid_cst_selection ? commandQAt(i) : joint_state_[i].q;
+                joint_cmd_[i].tau = 0.0f;
+                joint_cmd_[i].mode = RUN_MODE_CSP;
+            }
         }
     }
 
@@ -1339,6 +1378,7 @@ std::string RobotSolver::buildRuntimeConfigSnapshotJson() const
         oss << "\"zeroing_run_mode\":";
         appendQuoted(oss, cfg.zeroing_run_mode);
         oss << ",";
+        oss << "\"external_command_only\":" << (cfg.external_command_only ? "true" : "false") << ",";
         oss << "\"installed_joint_run_modes\":";
         appendStringMap(oss, cfg.installed_joint_run_modes);
         oss << ",";
@@ -1635,7 +1675,9 @@ void RobotSolver::run()
                 controller_runtime_.step(io_state, teleop_sample, effective_mode_control_word);
             rl_master::RobotCommandData runtime_command = controller_command;
             bool runtime_command_fresh = true;
-            if (dds_bridge_.readLatestRuntimeCommand(&runtime_command, &runtime_command_fresh))
+            const bool has_external_runtime_command =
+                dds_bridge_.readLatestRuntimeCommand(&runtime_command, &runtime_command_fresh);
+            if (has_external_runtime_command)
             {
                 latest_cmd_fresh_ = runtime_command_fresh;
             }
@@ -1644,6 +1686,15 @@ void RobotSolver::run()
                 latest_cmd_fresh_ = true;
             }
             syncRuntimeCfgFromController();
+            if (sim2real_cfg_.external_command_only && !has_external_runtime_command)
+            {
+                // Dedicated external-command profiles must fail safe to the
+                // normal all-CSP hold path, never to their bootstrap policy.
+                runtime_command = rl_master::RobotCommandData{};
+                runtime_command.active_joint_count = static_cast<int>(installedJointCount());
+                runtime_command.open_rl = rl_master::kOpenRlDisabled;
+                latest_cmd_fresh_ = true;
+            }
             const long control_period_ns = resolveControlPeriodNs(sim2real_cfg_);
             const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();
             if (const auto rewritten_mode_command =

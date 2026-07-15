@@ -1,0 +1,133 @@
+joint_motor_test:
+  # Dedicated Jingchu01 right-leg acceptance deploy profile. Start with control
+  # word 1011 only after the robot is suspended/secured and the solver plus
+  # this runner are both healthy.
+  test_mode_id: 11
+  control_hz: 500.0
+  deploy_config_path: ""
+
+  # Must exactly match robot_global_joint_order because the optional test-R1
+  # per-joint CST selection is interpreted in installed-joint order.
+  joint_names:
+    - right_hip_roll
+    - right_hip_yaw
+    - right_hip_pitch
+    - right_knee_pitch
+    - right_ankle_pitch
+    - right_ankle_roll
+    - left_hip_roll
+    - left_hip_yaw
+    - left_hip_pitch
+    - left_knee_pitch
+    - left_ankle_pitch
+    - left_ankle_roll
+    - waist_roll
+    - waist_yaw
+    - right_shoulder_pitch
+    - right_shoulder_roll
+    - right_shoulder_yaw
+    - right_elbow_pitch
+    - right_elbow_yaw
+    - right_wrist_pitch
+    - right_wrist_roll
+    - left_shoulder_pitch
+    - left_shoulder_roll
+    - left_shoulder_yaw
+    - left_elbow_pitch
+    - left_elbow_yaw
+    - left_wrist_pitch
+    - left_wrist_roll
+
+  trajectory_source: acceptance
+  control_mode: csp  # lifecycle zeroing only; acceptance reuses test-R1
+  loop_trajectory: false
+  restart_trajectory_on_enter_running: true
+  startup_completion_action: hold
+  zeroing_duration_s: 5.0
+  zero_pose:
+    [0.0, 0.0, -0.24, 0.48, -0.24, 0.0,
+     0.0, 0.0, -0.24, 0.48, -0.24, 0.0,
+     0.0, 0.0,
+     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+  fallback_kp: [60.0]
+  fallback_kd: [2.0]
+  tau_limit: [300.0]
+  strict_safety_checks: true
+  max_abs_q: 3.5
+  max_abs_dq: 5.0
+  max_abs_tau: 300.0
+
+  save_data: true
+  data_path: ""
+
+  acceptance:
+    csp_hold_sec: 2.0
+    dwell_sec: 2.0
+    state_timeout_sec: 0.10
+    speed_abort_ratio: 1.15
+    position_guard_margin: 0.035
+    # Formal acceptance uses 1.0/1.0. For the first suspended real-robot check,
+    # temporarily use e.g. 0.25/0.35; values above 1.0 are rejected.
+    pd_gain_scale: 1.0
+    torque_limit_scale: 1.0
+
+    # SI units: rad, rad/s, rad/s^2, rad/s^3, Nm. actuator_mass_kg is the
+    # measured mass of the corresponding motor/linear actuator, not robot mass.
+    joints:
+      - name: right_hip_pitch
+        q_min: -1.1563
+        q_max: 0.6763
+        kp: 150.0
+        kd: 5.0
+        tau_limit: 300.0
+        max_velocity: 2.0943951024
+        max_acceleration: 5.2359877560
+        max_jerk: 34.9065850399
+        required_actual_velocity: 1.7453292520
+        required_actual_range: 1.7453292520
+        actuator_mass_kg: 0.0
+        coupled_cst_joints: [right_hip_pitch]
+
+      - name: right_knee_pitch
+        q_min: 0.0
+        q_max: 1.6581
+        kp: 200.0
+        kd: 10.0
+        tau_limit: 300.0
+        max_velocity: 1.9198621772
+        max_acceleration: 5.2359877560
+        max_jerk: 34.9065850399
+        required_actual_velocity: 1.5707963268
+        required_actual_range: 1.5707963268
+        actuator_mass_kg: 0.0
+        coupled_cst_joints: [right_knee_pitch]
+
+      - name: right_ankle_pitch
+        q_min: -0.4582
+        q_max: -0.0218
+        kp: 60.0
+        kd: 3.0
+        tau_limit: 90.0
+        max_velocity: 2.0943951024
+        max_acceleration: 15.7079632679
+        max_jerk: 279.2526803191
+        required_actual_velocity: 1.7453292520
+        required_actual_range: 0.3490658504
+        actuator_mass_kg: 0.0
+        coupled_cst_joints: [right_ankle_pitch, right_ankle_roll]
+
+      - name: right_ankle_roll
+        q_min: -0.1745
+        q_max: 0.1745
+        kp: 60.0
+        kd: 3.0
+        tau_limit: 90.0
+        max_velocity: 2.0943951024
+        max_acceleration: 15.7079632679
+        max_jerk: 279.2526803191
+        required_actual_velocity: 1.7453292520
+        required_actual_range: 0.2617993878
+        actuator_mass_kg: 0.0
+        coupled_cst_joints: [right_ankle_pitch, right_ankle_roll]

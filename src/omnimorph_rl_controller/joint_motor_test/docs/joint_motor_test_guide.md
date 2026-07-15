@@ -29,6 +29,10 @@ Supported motor command streams:
 - `cst`: torque mode stream (`open_rl=40`)
 - `r1`: mixed mode stream (`open_rl=50`)
 
+The acceptance state machine reuses the existing `r1` stream. Its optional
+per-joint CST selection keeps selected joints in CST and all others in CSP;
+ordinary `r1` commands without that selection retain the legacy all-R1 behavior.
+
 Existing RL deploy modes are unchanged:
 
 - policy: `open_rl=10`
@@ -87,6 +91,41 @@ Key params:
 Export generated sine reference file:
 
 - `sine.export_reference_path: /abs/path/to/generated_sine.csv`
+
+### 3.3 Jingchu01 single-joint acceptance trajectory
+
+Use `config/jingchu01_right_leg_acceptance.yaml`. The runner performs, in
+order, `right_hip_pitch -> right_knee_pitch -> right_ankle_pitch ->
+right_ankle_roll`; hip yaw is intentionally excluded. Every joint begins with
+a two-second all-CSP hold, then moves lower/upper/home with two-second dwell
+segments.
+
+The dedicated deploy profile is mode 11 (`jingchu01_right_leg_acceptance`). It
+sets `external_command_only: true`, so a missing, crashed, or stale test runner
+cannot fall back to the bootstrap walking policy. Before the first start
+command, the runner captures the current feedback pose as its CSP hold/zeroing
+target; it does not move to the configured nominal zero pose.
+
+Each move uses the C3 seventh-order profile:
+
+```text
+S(u) = 35u^4 - 84u^5 + 70u^6 - 20u^7
+T = max(2.1875*d/vmax, sqrt(7.5132*d/amax), cbrt(52.5*d/jmax))
+```
+
+The active joint uses host-side `Kp*(q_target-q)-Kd*dq`, clamped by its
+configured torque limit. Desired velocity is deliberately zero; the analytic
+trajectory derivatives are logged as reference data only. During an ankle
+test both coupled axes enter CST, with the orthogonal axis PD-held at its
+captured start angle.
+
+The runner aborts to an all-CSP current-pose hold on stale state, non-finite or
+dimension-invalid feedback, configured position violation, or actual speed
+above `speed_abort_ratio * max_velocity`.
+
+For the first suspended real-robot pass, reduce `acceptance.pd_gain_scale` and
+`acceptance.torque_limit_scale` (for example `0.25` and `0.35`). Both scales
+are constrained to `(0, 1]`; restore `1.0/1.0` only for formal acceptance.
 
 ## 4. State Machine Integration
 
@@ -209,9 +248,34 @@ Logged data includes:
 - mode/lifecycle/open_rl
 - joint tracking error and RMSE
 - resolved `joint_names` and `joint_count` in metadata
+- acceptance joint/phase, CST mask, theoretical target velocity,
+  acceleration and jerk
+
+The solver MCAP must keep `logging.tick.include_motor_io: true`. Its
+`motor_state_tau` is the pre-mapping actuator feedback: knee is linear force
+in N; rotating joints are torque in Nm. `joint_state_tau` is mapped equivalent
+joint torque in Nm.
+
+Generate the acceptance report after a run:
+
+```bash
+ros2 run joint_motor_test analyze_jingchu01_acceptance.py \
+  --joint-log /path/to/joint_motor_test.jsonl \
+  --solver-mcap /path/to/runtime.mcap \
+  --config /path/to/jingchu01_right_leg_acceptance.yaml \
+  --output-dir /path/to/report
+```
+
+The report uses actual `state_dq`, not the reference derivative. Set every
+`actuator_mass_kg` in the acceptance config to the measured mass of the
+corresponding rotary motor or knee linear actuator, not the whole-robot mass.
+Missing/zero mass produces `NOT_EVALUATED` rather than a false pass.
 
 ## 8. Safety Notes
 
 - Always validate `tau_limit` before `cst/r1` tests.
+- Suspend/secure the real robot and complete mathematical tests, fixed-base
+  sim2sim, and a reduced-gain real test before formal high-gain acceptance.
+- Stop with control word `11`; estop remains control word `13`.
 - For sim2sim trajectory checks, enable MuJoCo fixed base (`fixed_base=true`) for clean comparison.
 - Use `STOP_POLICY(11)` before stopping processes.

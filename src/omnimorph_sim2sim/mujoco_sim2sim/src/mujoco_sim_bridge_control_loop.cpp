@@ -230,15 +230,26 @@ void MujocoSimBridge::controlLoopTick()
     }
     emitDerivedRuntimeEvents(controller_snapshot);
     bool runtime_command_fresh = true;
+    bool has_external_runtime_command = false;
     {
         std::lock_guard<std::mutex> lock(runtime_command_mutex_);
         if (has_runtime_command_)
         {
+            has_external_runtime_command = true;
             latest_runtime_command_fresh_ =
                 (rl_master::monotonicTimeSec() - latest_runtime_command_stamp_sec_) <= kRuntimeCommandFreshnessSec;
             command = latest_runtime_command_;
             runtime_command_fresh = latest_runtime_command_fresh_;
         }
+    }
+    if (controller_runtime_.runtimeCfg().external_command_only && !has_external_runtime_command)
+    {
+        // Match the real solver: an external-command-only profile without a
+        // runner command is inactive and enters the bridge hold behavior.
+        command = rl_master::RobotCommandData{};
+        command.active_joint_count = static_cast<int>(joint_names_.size());
+        command.open_rl = rl_master::kOpenRlDisabled;
+        runtime_command_fresh = true;
     }
     const auto runtime_mode = rl_master::resolveCommandRuntimeMode(runtime_command_fresh, command.open_rl);
     const bool control_active = runtime_mode.open_rl_active;

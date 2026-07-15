@@ -1146,6 +1146,7 @@ public:
     GaitConfig gait;
 
     std::string startup_completion_action = "hold";
+    bool external_command_only = false;
     int policy_startup_warmup_steps = 0;
     bool prefill_observation_history_on_running_start = false;
     bool seed_running_start_observation_from_reference = false;
@@ -2878,6 +2879,7 @@ public:
                 throw std::runtime_error(
                     "startup_completion_action must be 'hold' or 'running'");
             }
+            external_command_only = yamlReadOr<bool>(cfg, "external_command_only", false);
             if (auto_switch_on_reference_end.enabled)
             {
                 constexpr int kSupportedModeCodeMin = 0;
@@ -3092,6 +3094,7 @@ public:
         std::cout << "Control Mode: " << control_mode << std::endl;
         std::cout << "Installed Joint Run Modes: " << installed_joint_run_modes.size() << std::endl;
         std::cout << "Startup Completion Action: " << startup_completion_action << std::endl;
+        std::cout << "External Command Only: " << (external_command_only ? "true" : "false") << std::endl;
         std::cout << "Zeroing Run Mode: " << zeroing_run_mode << std::endl;
         std::cout << "Policy Frequency: " << RL_control_f << std::endl;
         std::cout << "Solver Control Frequency: " << solver_control_hz << std::endl;

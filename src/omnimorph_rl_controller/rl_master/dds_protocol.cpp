@@ -109,7 +109,11 @@ std_msgs::msg::Float32MultiArray encodeRuntimeCommand(
     std_msgs::msg::Float32MultiArray msg;
 
     const size_t joint_count = resolveCommandJointCount(command);
-    msg.data.assign(kPolicyCmdV2HeaderCount + joint_count * 3, 0.0f);
+    const bool cst_selection_requested = !command.joint_cst_mask.empty() && joint_count > 0;
+    const bool cst_selection_valid = command.joint_cst_mask.size() == joint_count;
+    msg.data.assign(
+        kPolicyCmdV2HeaderCount + joint_count * 3 + (cst_selection_requested ? joint_count : 0),
+        0.0f);
     msg.data[0] = static_cast<float>(kProtocolV2Magic);
     msg.data[1] = static_cast<float>(kProtocolVersionDynamicJointsV2);
     msg.data[2] = static_cast<float>(kProtocolV2PayloadPolicyCommand);
@@ -124,6 +128,17 @@ std_msgs::msg::Float32MultiArray encodeRuntimeCommand(
         msg.data[cursor++] = readCommandQ(command, i);
         msg.data[cursor++] = readCommandDq(command, i);
         msg.data[cursor++] = readCommandTau(command, i);
+    }
+    if (cst_selection_requested)
+    {
+        for (size_t i = 0; i < joint_count; ++i)
+        {
+            // A malformed non-empty selection must fail safe to all-CSP, not
+            // silently fall back to the legacy all-R1 payload shape.
+            msg.data[cursor++] = (cst_selection_valid && command.joint_cst_mask[i] != 0U)
+                                     ? 1.0f
+                                     : 0.0f;
+        }
     }
     return msg;
 }
@@ -163,6 +178,7 @@ bool decodeRuntimeCommand(
         command->joint_target_q.assign(joint_count, 0.0f);
         command->joint_target_dq.assign(joint_count, 0.0f);
         command->joint_target_tau.assign(joint_count, 0.0f);
+        command->joint_cst_mask.clear();
 
         size_t cursor = kPolicyCmdV2HeaderCount;
         for (size_t i = 0; i < joint_count; ++i)
@@ -170,6 +186,24 @@ bool decodeRuntimeCommand(
             command->joint_target_q[i] = msg.data[cursor++];
             command->joint_target_dq[i] = msg.data[cursor++];
             command->joint_target_tau[i] = msg.data[cursor++];
+        }
+        const size_t extension_size = msg.data.size() - cursor;
+        if (extension_size != 0 && extension_size != joint_count)
+        {
+            return false;
+        }
+        if (extension_size == joint_count)
+        {
+            command->joint_cst_mask.assign(joint_count, 0U);
+            for (size_t i = 0; i < joint_count; ++i)
+            {
+                const float raw_mask = msg.data[cursor++];
+                if (!std::isfinite(raw_mask))
+                {
+                    return false;
+                }
+                command->joint_cst_mask[i] = raw_mask >= 0.5f ? 1U : 0U;
+            }
         }
         command->open_rl = msg.data[4];
 

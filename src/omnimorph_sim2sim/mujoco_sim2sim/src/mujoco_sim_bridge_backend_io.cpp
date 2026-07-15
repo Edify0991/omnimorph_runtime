@@ -384,7 +384,21 @@ void MujocoSimBridge::updateControlInput(
         }
         else
         {
-            joint_mode = streamModeToSimMode(runtime_mode.mode);
+            const bool has_cst_selection = !command.joint_cst_mask.empty();
+            const bool valid_cst_selection = command.joint_cst_mask.size() == joint_names_.size();
+            if (runtime_mode.mode == rl_master::CommandRuntimeMode::kTestR1 && has_cst_selection)
+            {
+                // Acceptance tests reuse the existing test-R1 stream. A valid
+                // optional selection chooses CST per joint; every unselected
+                // joint remains CSP. A malformed selection fails safe to CSP.
+                joint_mode = valid_cst_selection && command.joint_cst_mask[i] != 0U
+                                 ? SimJointRuntimeMode::kCst
+                                 : SimJointRuntimeMode::kCsp;
+            }
+            else
+            {
+                joint_mode = streamModeToSimMode(runtime_mode.mode);
+            }
             if (joint_mode != SimJointRuntimeMode::kCst)
             {
                 q_des = commandQAt(i);

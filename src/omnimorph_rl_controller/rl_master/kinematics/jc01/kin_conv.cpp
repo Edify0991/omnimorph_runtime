@@ -254,7 +254,7 @@ std::vector<JointData> KinConv::legMotorToJoint(const std::vector<JointData>& mo
             auto [dLineMotorLen, lineMotor_len] = knee_kinematics.Knee_Inverse_Kinematics(joint_state[i].q);     
             auto [J_joint2motor, J_motor2joint] = knee_kinematics.Knee_Velocity_Jacobi_Analytical(dLineMotorLen);
             joint_state[i].dq  = LEG_JOINT_DIR[i] * motor_state[i].dq * J_motor2joint; // rad/s
-            joint_state[i].tau = LEG_JOINT_DIR[i] * motor_state[i].tau / J_motor2joint / 1000; // N
+            joint_state[i].tau = LEG_JOINT_DIR[i] * motor_state[i].tau / J_motor2joint / 1000; // equivalent joint torque, Nm
         }
         else if (i == 4)
         {
