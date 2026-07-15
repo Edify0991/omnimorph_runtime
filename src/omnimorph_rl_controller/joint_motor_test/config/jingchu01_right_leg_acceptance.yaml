@@ -87,7 +87,8 @@ joint_motor_test:
         max_jerk: 34.9065850399
         required_actual_velocity: 1.7453292520
         required_actual_range: 1.7453292520
-        actuator_mass_kg: 0.0
+        # EC-A10020-P2-24
+        actuator_mass_kg: 2.18
         coupled_cst_joints: [right_hip_pitch]
 
       - name: right_knee_pitch
@@ -101,7 +102,8 @@ joint_motor_test:
         max_jerk: 34.9065850399
         required_actual_velocity: 1.5707963268
         required_actual_range: 1.5707963268
-        actuator_mass_kg: 0.0
+        # 18所 linear actuator
+        actuator_mass_kg: 1.70
         coupled_cst_joints: [right_knee_pitch]
 
       - name: right_ankle_pitch
@@ -115,7 +117,8 @@ joint_motor_test:
         max_jerk: 279.2526803191
         required_actual_velocity: 1.7453292520
         required_actual_range: 0.3490658504
-        actuator_mass_kg: 0.0
+        # EC-A8112-P1-18; both coupled ankle motors use this model/mass.
+        actuator_mass_kg: 0.83
         coupled_cst_joints: [right_ankle_pitch, right_ankle_roll]
 
       - name: right_ankle_roll
@@ -129,5 +132,6 @@ joint_motor_test:
         max_jerk: 279.2526803191
         required_actual_velocity: 1.7453292520
         required_actual_range: 0.2617993878
-        actuator_mass_kg: 0.0
+        # EC-A8112-P1-18; both coupled ankle motors use this model/mass.
+        actuator_mass_kg: 0.83
         coupled_cst_joints: [right_ankle_pitch, right_ankle_roll]
