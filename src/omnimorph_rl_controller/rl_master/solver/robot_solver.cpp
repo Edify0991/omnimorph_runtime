@@ -1686,13 +1686,28 @@ void RobotSolver::run()
                 latest_cmd_fresh_ = true;
             }
             syncRuntimeCfgFromController();
-            if (sim2real_cfg_.external_command_only && !has_external_runtime_command)
+            const bool has_fresh_external_runtime_command =
+                has_external_runtime_command && runtime_command_fresh;
+            if (sim2real_cfg_.external_command_only && !has_fresh_external_runtime_command)
             {
-                // Dedicated external-command profiles must fail safe to the
-                // normal all-CSP hold path, never to their bootstrap policy.
-                runtime_command = rl_master::RobotCommandData{};
-                runtime_command.active_joint_count = static_cast<int>(installedJointCount());
-                runtime_command.open_rl = rl_master::kOpenRlDisabled;
+                const auto controller_runtime_mode = rl_master::resolveCommandRuntimeMode(
+                    true,
+                    controller_command.open_rl);
+                if (controller_runtime_mode.mode == rl_master::CommandRuntimeMode::kCommandStream)
+                {
+                    // Keep solver-owned lifecycle commands (startup/explicit
+                    // zeroing) available even when the external runner is not
+                    // present yet or its last command has gone stale.
+                    runtime_command = controller_command;
+                }
+                else
+                {
+                    // Dedicated external-command profiles must fail safe to the
+                    // normal all-CSP hold path, never to their bootstrap policy.
+                    runtime_command = rl_master::RobotCommandData{};
+                    runtime_command.active_joint_count = static_cast<int>(installedJointCount());
+                    runtime_command.open_rl = rl_master::kOpenRlDisabled;
+                }
                 latest_cmd_fresh_ = true;
             }
             const long control_period_ns = resolveControlPeriodNs(sim2real_cfg_);

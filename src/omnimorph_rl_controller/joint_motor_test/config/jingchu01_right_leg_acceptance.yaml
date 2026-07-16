@@ -44,9 +44,10 @@ joint_motor_test:
   restart_trajectory_on_enter_running: true
   startup_completion_action: hold
   zeroing_duration_s: 5.0
+  # Deterministic startup condition: both legs go to joint position zero.
   zero_pose:
-    [0.0, 0.0, -0.24, 0.48, -0.24, 0.0,
-     0.0, 0.0, -0.24, 0.48, -0.24, 0.0,
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
      0.0, 0.0,
      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -76,36 +77,6 @@ joint_motor_test:
     # SI units: rad, rad/s, rad/s^2, rad/s^3, Nm. actuator_mass_kg is the
     # measured mass of the corresponding motor/linear actuator, not robot mass.
     joints:
-      - name: right_hip_pitch
-        q_min: -1.1563
-        q_max: 0.6763
-        kp: 150.0
-        kd: 5.0
-        tau_limit: 300.0
-        max_velocity: 2.0943951024
-        max_acceleration: 5.2359877560
-        max_jerk: 34.9065850399
-        required_actual_velocity: 1.7453292520
-        required_actual_range: 1.7453292520
-        # EC-A10020-P2-24
-        actuator_mass_kg: 2.18
-        coupled_cst_joints: [right_hip_pitch]
-
-      - name: right_knee_pitch
-        q_min: 0.0
-        q_max: 1.6581
-        kp: 200.0
-        kd: 10.0
-        tau_limit: 300.0
-        max_velocity: 1.9198621772
-        max_acceleration: 5.2359877560
-        max_jerk: 34.9065850399
-        required_actual_velocity: 1.5707963268
-        required_actual_range: 1.5707963268
-        # 18所 linear actuator
-        actuator_mass_kg: 1.70
-        coupled_cst_joints: [right_knee_pitch]
-
       - name: right_ankle_pitch
         q_min: -0.4582
         q_max: -0.0218
@@ -135,3 +106,33 @@ joint_motor_test:
         # EC-A8112-P1-18; both coupled ankle motors use this model/mass.
         actuator_mass_kg: 0.83
         coupled_cst_joints: [right_ankle_pitch, right_ankle_roll]
+
+      - name: right_knee_pitch
+        q_min: 0.0
+        q_max: 1.6581
+        kp: 200.0
+        kd: 10.0
+        tau_limit: 300.0
+        max_velocity: 1.9198621772
+        max_acceleration: 5.2359877560
+        max_jerk: 34.9065850399
+        required_actual_velocity: 1.5707963268
+        required_actual_range: 1.5707963268
+        # 18所 linear actuator
+        actuator_mass_kg: 1.70
+        coupled_cst_joints: [right_knee_pitch]
+
+      - name: right_hip_pitch
+        q_min: -1.1563
+        q_max: 0.6763
+        kp: 150.0
+        kd: 5.0
+        tau_limit: 300.0
+        max_velocity: 2.0943951024
+        max_acceleration: 5.2359877560
+        max_jerk: 34.9065850399
+        required_actual_velocity: 1.7453292520
+        required_actual_range: 1.7453292520
+        # EC-A10020-P2-24
+        actuator_mass_kg: 2.18
+        coupled_cst_joints: [right_hip_pitch]

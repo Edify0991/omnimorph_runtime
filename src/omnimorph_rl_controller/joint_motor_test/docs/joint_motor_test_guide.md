@@ -95,16 +95,18 @@ Export generated sine reference file:
 ### 3.3 Jingchu01 single-joint acceptance trajectory
 
 Use `config/jingchu01_right_leg_acceptance.yaml`. The runner performs, in
-order, `right_hip_pitch -> right_knee_pitch -> right_ankle_pitch ->
-right_ankle_roll`; hip yaw is intentionally excluded. Every joint begins with
+order, `right_ankle_pitch -> right_ankle_roll -> right_knee_pitch ->
+right_hip_pitch`; hip yaw is intentionally excluded. Every joint begins with
 a two-second all-CSP hold, then moves lower/upper/home with two-second dwell
 segments.
 
 The dedicated deploy profile is mode 11 (`jingchu01_right_leg_acceptance`). It
 sets `external_command_only: true`, so a missing, crashed, or stale test runner
-cannot fall back to the bootstrap walking policy. Before the first start
-command, the runner captures the current feedback pose as its CSP hold/zeroing
-target; it does not move to the configured nominal zero pose.
+cannot fall back to the bootstrap walking policy. Solver-owned startup and
+explicit zeroing commands remain available: all 12 lower-body joints move to
+the configured zero position over five seconds and then hold. The acceptance
+runner uses that same configured zero pose instead of capturing the startup
+feedback pose.
 
 Each move uses the C3 seventh-order profile:
 

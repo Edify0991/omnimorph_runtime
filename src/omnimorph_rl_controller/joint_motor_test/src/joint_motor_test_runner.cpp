@@ -901,12 +901,8 @@ void JointMotorTestRunner::initializeStateMachineIfNeeded()
     cfg.zeroing_duration_s = config_.zeroing_duration_s;
 
     state_machine_.configure(cfg);
-    const std::vector<float> startup_hold_pose =
-        config_.trajectory_source == TrajectorySource::kAcceptance
-            ? toStateQ(state)
-            : config_.zero_pose;
-    state_machine_.initialize(toStateQ(state), startup_hold_pose, config_.test_mode_id);
-    state_machine_.setZeroPose(startup_hold_pose);
+    state_machine_.initialize(toStateQ(state), config_.zero_pose, config_.test_mode_id);
+    state_machine_.setZeroPose(config_.zero_pose);
     state_machine_initialized_ = true;
     last_lifecycle_state_ = state_machine_.state();
 }

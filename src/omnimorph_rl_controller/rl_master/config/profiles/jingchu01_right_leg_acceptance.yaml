@@ -259,7 +259,8 @@ jingchu01_right_leg_acceptance:
   state_telemetry_hz: 50.0
   startup_completion_action: hold
   # Never fall back to the bootstrapping walking policy when the test runner is
-  # absent, crashes, or its DDS command becomes stale.
+  # absent, crashes, or its DDS command becomes stale. Solver-owned lifecycle
+  # zeroing remains available before the external acceptance stream starts.
   external_command_only: true
   zeroing_run_mode: csp
   prefill_observation_history_on_running_start: true
@@ -359,15 +360,15 @@ jingchu01_right_leg_acceptance:
     zero_joint_angles:
       right_hip_roll: 0.0
       right_hip_yaw: 0.0
-      right_hip_pitch: -0.24
-      right_knee_pitch: 0.48
-      right_ankle_pitch: -0.24
+      right_hip_pitch: 0.0
+      right_knee_pitch: 0.0
+      right_ankle_pitch: 0.0
       right_ankle_roll: 0.0
       left_hip_roll: 0.0
       left_hip_yaw: 0.0
-      left_hip_pitch: -0.24
-      left_knee_pitch: 0.48
-      left_ankle_pitch: -0.24
+      left_hip_pitch: 0.0
+      left_knee_pitch: 0.0
+      left_ankle_pitch: 0.0
       left_ankle_roll: 0.0
       waist_roll: 0.0
       waist_yaw: 0.0
