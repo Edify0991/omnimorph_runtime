@@ -131,8 +131,8 @@ static constexpr std::array<float, ARM_MOTOR_COUNT> ARM_MOTOR_TORQUE_LIMIT = {
 };
 
 static constexpr std::array<MotorLimitRange, LEG_MOTOR_COUNT> LEG_MOTOR_POS_LIMIT = {{
-    {-0.5233f, 0.1396f}, {-0.5233f, 0.5233f}, {-0.7850f, 1.256f}, {5.0f, 50.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}, // right leg motors
-    {-0.1396f, 0.5233f}, {-0.5233f, 0.5233f}, {-1.256f, 0.7850f}, {5.0f, 50.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}  // left leg motors
+    {-0.5233f, 0.1396f}, {-0.5233f, 0.5233f}, {-0.7850f, 1.256f}, {0.0f, 67.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}, // right leg motors
+    {-0.1396f, 0.5233f}, {-0.5233f, 0.5233f}, {-1.256f, 0.7850f}, {0.0f, 67.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}  // left leg motors
 }};
 
 static constexpr std::array<MotorLimitRange, WAIST_MOTOR_COUNT> WAIST_MOTOR_POS_LIMIT = {{
@@ -145,8 +145,8 @@ static constexpr std::array<MotorLimitRange, ARM_MOTOR_COUNT> ARM_MOTOR_POS_LIMI
 }};
 
 static constexpr std::array<MotorLimitRange, LEG_MOTOR_COUNT> LEG_MOTOR_MIXED_LIMIT = {{
-    {-0.5233f, 0.1396f}, {-0.5233f, 0.5233f}, {-0.7850f, 1.256f}, {5.0f, 50.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}, // right leg motors
-    {-0.1396f, 0.5233f}, {-0.5233f, 0.5233f}, {-1.256f, 0.7850f}, {5.0f, 50.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}  // left leg motors
+    {-0.5233f, 0.1396f}, {-0.5233f, 0.5233f}, {-0.7850f, 1.256f}, {0.0f, 67.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}, // right leg motors
+    {-0.1396f, 0.5233f}, {-0.5233f, 0.5233f}, {-1.256f, 0.7850f}, {0.0f, 67.0f}, {-0.64f, 0.64f}, {-0.64f, 0.64f}  // left leg motors
 }};
 
 static constexpr std::array<MotorLimitRange, WAIST_MOTOR_COUNT> WAIST_MOTOR_MIXED_LIMIT = {{

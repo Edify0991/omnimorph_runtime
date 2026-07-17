@@ -67,7 +67,7 @@ joint_motor_test:
     csp_hold_sec: 2.0
     dwell_sec: 2.0
     state_timeout_sec: 0.10
-    speed_abort_ratio: 1.15
+    speed_abort_ratio: 1.50
     position_guard_margin: 0.035
     # Formal acceptance uses 1.0/1.0. For the first suspended real-robot check,
     # temporarily use e.g. 0.25/0.35; values above 1.0 are rejected.
@@ -78,8 +78,8 @@ joint_motor_test:
     # measured mass of the corresponding motor/linear actuator, not robot mass.
     joints:
       - name: right_ankle_pitch
-        q_min: -0.4582
-        q_max: -0.0218
+        q_min: -0.58
+        q_max: 0.58
         kp: 60.0
         kd: 3.0
         tau_limit: 90.0
@@ -123,7 +123,7 @@ joint_motor_test:
         coupled_cst_joints: [right_knee_pitch]
 
       - name: right_hip_pitch
-        q_min: -1.1563
+        q_min: -1.3349
         q_max: 0.6763
         kp: 150.0
         kd: 5.0

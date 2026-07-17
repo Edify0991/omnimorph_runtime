@@ -827,7 +827,7 @@ void RobotSolver::getMotorState()
         if (jointNameInSet(installed_motor_names_[i], {"right_knee_pitch", "left_knee_pitch"}))
         {
             constexpr float kQMinMm = -0.1f;
-            constexpr float kQMaxMm = 60.0f;
+            constexpr float kQMaxMm = 67.0f;
             const float q_mm = motor_state_q_[i];
             if (q_mm < kQMinMm || q_mm > kQMaxMm)
             {
