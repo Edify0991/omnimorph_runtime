@@ -126,6 +126,9 @@ deploy_mode_profiles:
   - mode_id: 5
     config_section: gmt_g1_general_tracker
     tag: g1_gmt_general_tracker
+  - mode_id: 6
+    config_section: sonic_g1_release
+    tag: g1_sonic_release
 
 config_files:
   beyondmimic_g1_walk_full_body_w_state_estimation: profiles/beyondmimic_g1_walk_full_body_w_state_estimation.yaml
@@ -134,12 +137,14 @@ config_files:
   opentrack_g1_walk: profiles/opentrack_g1_walk.yaml
   opentrack_g1_generalist_tracker: profiles/opentrack_g1_generalist_tracker.yaml
   gmt_g1_general_tracker: profiles/gmt_g1_general_tracker.yaml
+  sonic_g1_release: profiles/sonic_g1_release.yaml
 path_variables:
   robot_assets_dir: ${ROBOT_ASSETS_DIR}
   g1_pinocchio_urdf: ${G1_PINOCCHIO_URDF}
   g1_scene_xml: ${G1_SCENE_XML}
   opentrack_deploy_dir: /home/edify/Code/OpenTrack/deploy
   opentrack_generalist_dir: /home/edify/Code/OpenTrack/storage/logs/dagger/general_tracker_lafan1_v2
+  gr00t_wholebodycontrol_dir: /home/edify/Code/GR00T-WholeBodyControl
 
 runtime_process:
   controller:

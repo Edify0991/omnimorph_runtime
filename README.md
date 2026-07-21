@@ -28,6 +28,7 @@ It is already being used for:
 - MuJoCo `sim2sim` validation
 - real-robot `sim2real` execution
 - RL / AMP / BeyondMimic / OpenTrack / GMT style policies
+- RL / AMP / BeyondMimic / OpenTrack / GMT / SONIC style policies
 - future diffusion or flow-matching style generative policies
 
 ## Required Environment Variables
@@ -226,6 +227,56 @@ start the G1 runtime in hold state before issuing the start command:
 ```bash
 sudo -E ./script/start_unitree_g1_policy.sh --mode-id 5
 ./script/publish_mode_control.sh start --mode-id 5
+```
+
+### SONIC on Unitree G1
+
+SONIC is registered as Unitree G1 `mode_id=6`. This integration follows the
+official `GR00T-WholeBodyControl/gear_sonic_deploy` release split:
+
+- decoder: `policies/sonic_g1_model_decoder.onnx`
+- encoder: `policies/sonic_g1_model_encoder.onnx`
+- profile: `src/omnimorph_rl_controller/rl_master/config/profiles/sonic_g1_release.yaml`
+
+The checked-in profile expects a runtime motion `npz` containing:
+`joint_pos`, `joint_vel`, `body_pos_w`, `body_quat_w`.
+
+You can convert an official SONIC motion directory or pickle with:
+
+```bash
+python3 src/omnimorph_rl_controller/rl_master/tools/convert_sonic_motion_to_npz.py \
+  --input /home/edify/Code/GR00T-WholeBodyControl/gear_sonic_deploy/reference/example/macarena_001__A545 \
+  --output src/omnimorph_rl_controller/rl_master/data/reference_motion/sonic/macarena_runtime.npz
+```
+
+If the official `reference/example` files are still Git LFS pointers, run
+`git lfs pull` inside `GR00T-WholeBodyControl` first.
+
+If the input is a multi-motion pickle, also pass `--motion-name <name>`.
+Then set `reference_motion_path` in
+`src/omnimorph_rl_controller/rl_master/config/profiles/sonic_g1_release.yaml`.
+
+Run sim2sim with:
+
+```bash
+ros2 run mujoco_sim2sim mujoco_sim_bridge --ros-args \
+  --params-file src/omnimorph_sim2sim/mujoco_sim2sim/config/unitree_g1_sonic_sim2sim.yaml \
+  -p rl_cfg_path:=src/omnimorph_rl_controller/rl_master/config/rl_cfg_unitree_g1.yaml \
+  -p startup_mode_id:=6 \
+  -p enable_viewer:=true
+```
+
+In another terminal:
+
+```bash
+./script/publish_mode_control.sh start --mode-id 6
+```
+
+For sim2real, first verify the exact same motion in sim2sim:
+
+```bash
+sudo -E ./script/start_unitree_g1_policy.sh --mode-id 6
+./script/publish_mode_control.sh start --mode-id 6
 ```
 
 ## What Lives Here

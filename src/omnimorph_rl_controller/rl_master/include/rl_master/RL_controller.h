@@ -166,6 +166,15 @@ private:
     void buildStackedObservation(
         const std::deque<std::vector<float>> &observation_history,
         const char *context);
+    void injectSonicReferenceFeatures(
+        const Sim2realCfg &cfg,
+        ObservationFeatureContext *feature_context) const;
+    PolicyRunnerNode *findPolicyRunnerBySuffix(
+        PolicyRuntimeGroup *group,
+        const std::string &suffix);
+    bool runSonicEncoder(
+        ObservationFeatureContext *feature_context,
+        bool advance_time_step);
     bool canHotSwitch(int from_mode, int to_mode) const;
     const ModeProfile &modeProfileForModeId(int mode_id) const;
 

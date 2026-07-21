@@ -539,6 +539,60 @@ std::vector<ComputedFeatureCfg> mergedComputedFeatures(
     return features;
 }
 
+constexpr size_t kSonicJointDim = 29;
+constexpr size_t kSonicTokenDim = 64;
+constexpr size_t kSonicHistoryFrameDim = 93;
+constexpr int kSonicHistoryFrames = 10;
+constexpr int kSonicFutureFrames = 10;
+constexpr int kSonicFutureStep = 5;
+
+const std::array<int, 12> kSonicLowerBodyIsaaclabIndices = {
+    0, 1, 3, 4, 6, 7, 9, 10, 13, 14, 17, 18};
+const std::array<int, 6> kSonicWristIsaaclabIndices = {
+    23, 24, 25, 26, 27, 28};
+
+void augmentRequiredReferenceFeaturesForPolicy(
+    const Sim2realCfg &cfg,
+    ReferenceFeatureRequirements *requirements)
+{
+    if (!requirements)
+    {
+        return;
+    }
+    if (toLowerCopy(cfg.policy_family) == "sonic_tracker")
+    {
+        requirements->reference_joint_pos = true;
+        requirements->reference_joint_vel = true;
+        requirements->reference_body_pos_w = true;
+        requirements->reference_body_quat_w = true;
+    }
+}
+
+std::vector<float> selectIndices(
+    const std::vector<float> &values,
+    const std::vector<int> &indices)
+{
+    if (values.empty() || indices.empty())
+    {
+        return {};
+    }
+
+    std::vector<float> out;
+    out.reserve(indices.size());
+    for (const int idx : indices)
+    {
+        if (idx >= 0 && static_cast<size_t>(idx) < values.size())
+        {
+            out.push_back(values[static_cast<size_t>(idx)]);
+        }
+        else
+        {
+            out.push_back(0.0f);
+        }
+    }
+    return out;
+}
+
 void requireNonEmptyReferenceKey(
     const std::string &key_value,
     const std::string &tag,
@@ -1250,6 +1304,44 @@ void RL_controller::buildStackedObservation(
     const auto &active_cfg = activePolicyCfg();
     const size_t frame_dim = static_cast<size_t>(active_cfg.obs_dim);
 
+    if (active_cfg.policy_family == "sonic_tracker")
+    {
+        if (frame_dim != kSonicHistoryFrameDim || obs.size() != frame_dim)
+        {
+            throw std::runtime_error(
+                "SONIC observation must contain one 93D proprioception frame");
+        }
+        if (observation_history.size() != static_cast<size_t>(active_cfg.obs_stack_N))
+        {
+            throw std::runtime_error("SONIC proprioception history length mismatch");
+        }
+
+        const auto token_it = latest_observation_feature_context_.named_features.find("token_state");
+        if (token_it == latest_observation_feature_context_.named_features.end())
+        {
+            throw std::runtime_error("SONIC token_state is missing before decoder inference");
+        }
+        const std::vector<float> token_state = fitDim(token_it->second, kSonicTokenDim);
+        const size_t expected_obs_size = token_state.size() + frame_dim * observation_history.size();
+        stacked_obs_buffer_.clear();
+        stacked_obs_buffer_.reserve(expected_obs_size);
+        stacked_obs_buffer_.insert(stacked_obs_buffer_.end(), token_state.begin(), token_state.end());
+        for (const auto &history_frame : observation_history)
+        {
+            if (history_frame.size() != frame_dim)
+            {
+                throw std::runtime_error(
+                    std::string("SONIC history frame dim mismatch") +
+                    (context ? std::string(" during ") + context : std::string()));
+            }
+            stacked_obs_buffer_.insert(
+                stacked_obs_buffer_.end(),
+                history_frame.begin(),
+                history_frame.end());
+        }
+        return;
+    }
+
     if (active_cfg.policy_family == "gmt_tracker")
     {
         constexpr size_t kGmtMimicDim = 600;
@@ -1497,6 +1589,7 @@ void RL_controller::initModeProfiles()
         collectRequiredReferenceFeatures(
             mergedComputedFeatures(profile.observation_manifest, profile.cfg),
             &profile.required_reference_features);
+        augmentRequiredReferenceFeaturesForPolicy(profile.cfg, &profile.required_reference_features);
         validateRequiredReferenceSourceContract(profile.cfg, profile.required_reference_features, profile.tag);
         profile.observation_builder = std::make_unique<ObservationBuilder>(profile.observation_manifest);
         if (profile.observation_builder->expectedDim() != static_cast<size_t>(profile.cfg.obs_dim))
@@ -2539,6 +2632,8 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
         }
     }
 
+    injectSonicReferenceFeatures(cfg, &feature_context);
+
     const std::vector<ComputedFeatureCfg> computed_features =
         mergedComputedFeatures(profile.observation_manifest, cfg);
     if (!computed_features.empty())
@@ -2862,6 +2957,202 @@ ObservationFeatureContext RL_controller::buildObservationFeatureContext(const Si
     }
 
     return feature_context;
+}
+
+void RL_controller::injectSonicReferenceFeatures(
+    const Sim2realCfg &cfg,
+    ObservationFeatureContext *feature_context) const
+{
+    if (!feature_context || toLowerCopy(cfg.policy_family) != "sonic_tracker")
+    {
+        return;
+    }
+    if (!cfg.enable_reference_motion || !activeReferenceMotionProvider().available())
+    {
+        return;
+    }
+    if (!robot)
+    {
+        return;
+    }
+
+    const std::vector<int> lower_body_indices(
+        kSonicLowerBodyIsaaclabIndices.begin(),
+        kSonicLowerBodyIsaaclabIndices.end());
+    const std::vector<int> wrist_indices(
+        kSonicWristIsaaclabIndices.begin(),
+        kSonicWristIsaaclabIndices.end());
+
+    std::vector<float> motion_joint_positions_10frame_step5;
+    std::vector<float> motion_joint_velocities_10frame_step5;
+    std::vector<float> motion_anchor_orientation_10frame_step5;
+    std::vector<float> motion_joint_positions_lowerbody_10frame_step5;
+    std::vector<float> motion_joint_velocities_lowerbody_10frame_step5;
+    std::vector<float> motion_root_z_position_10frame_step5;
+
+    motion_joint_positions_10frame_step5.reserve(static_cast<size_t>(kSonicFutureFrames) * kSonicJointDim);
+    motion_joint_velocities_10frame_step5.reserve(static_cast<size_t>(kSonicFutureFrames) * kSonicJointDim);
+    motion_anchor_orientation_10frame_step5.reserve(static_cast<size_t>(kSonicFutureFrames) * 6);
+    motion_joint_positions_lowerbody_10frame_step5.reserve(static_cast<size_t>(kSonicFutureFrames) * lower_body_indices.size());
+    motion_joint_velocities_lowerbody_10frame_step5.reserve(static_cast<size_t>(kSonicFutureFrames) * lower_body_indices.size());
+    motion_root_z_position_10frame_step5.reserve(static_cast<size_t>(kSonicFutureFrames));
+
+    for (int frame_idx = 0; frame_idx < kSonicFutureFrames; ++frame_idx)
+    {
+        const size_t step_index =
+            policy_step_counter_ +
+            static_cast<size_t>(std::max(0, cfg.reference_motion_step_offset)) +
+            static_cast<size_t>(frame_idx * kSonicFutureStep);
+        const ReferenceMotionFrame sampled =
+            activeReferenceMotionProvider().sampleFrameByStep(step_index, cfg.reference_motion_dim);
+
+        const std::vector<float> joint_pos = fitDim(sampled.joint_pos, kSonicJointDim);
+        const std::vector<float> joint_vel = fitDim(sampled.joint_vel, kSonicJointDim);
+        motion_joint_positions_10frame_step5.insert(
+            motion_joint_positions_10frame_step5.end(),
+            joint_pos.begin(),
+            joint_pos.end());
+        motion_joint_velocities_10frame_step5.insert(
+            motion_joint_velocities_10frame_step5.end(),
+            joint_vel.begin(),
+            joint_vel.end());
+
+        const std::vector<float> lower_joint_pos = selectIndices(joint_pos, lower_body_indices);
+        const std::vector<float> lower_joint_vel = selectIndices(joint_vel, lower_body_indices);
+        motion_joint_positions_lowerbody_10frame_step5.insert(
+            motion_joint_positions_lowerbody_10frame_step5.end(),
+            lower_joint_pos.begin(),
+            lower_joint_pos.end());
+        motion_joint_velocities_lowerbody_10frame_step5.insert(
+            motion_joint_velocities_lowerbody_10frame_step5.end(),
+            lower_joint_vel.begin(),
+            lower_joint_vel.end());
+
+        const std::vector<float> anchor_ori =
+            referenceAnchorOri6dFromBodyQuat(sampled.body_quat_w, robot->base_quat, 0);
+        motion_anchor_orientation_10frame_step5.insert(
+            motion_anchor_orientation_10frame_step5.end(),
+            anchor_ori.begin(),
+            anchor_ori.end());
+
+        const float root_z =
+            sampled.body_pos_w.size() >= 3 ? sampled.body_pos_w[2] : 0.0f;
+        motion_root_z_position_10frame_step5.push_back(root_z);
+    }
+
+    const ReferenceMotionFrame current_sampled =
+        activeReferenceMotionProvider().sampleFrameByStep(
+            policy_step_counter_ + static_cast<size_t>(std::max(0, cfg.reference_motion_step_offset)),
+            cfg.reference_motion_dim);
+    const std::vector<float> current_joint_pos = fitDim(current_sampled.joint_pos, kSonicJointDim);
+    const std::vector<float> current_joint_vel = fitDim(current_sampled.joint_vel, kSonicJointDim);
+
+    feature_context->named_features["motion_joint_positions_10frame_step5"] = std::move(motion_joint_positions_10frame_step5);
+    feature_context->named_features["motion_joint_velocities_10frame_step5"] = std::move(motion_joint_velocities_10frame_step5);
+    feature_context->named_features["motion_anchor_orientation_10frame_step5"] = std::move(motion_anchor_orientation_10frame_step5);
+    feature_context->named_features["motion_joint_positions_lowerbody_10frame_step5"] = std::move(motion_joint_positions_lowerbody_10frame_step5);
+    feature_context->named_features["motion_joint_velocities_lowerbody_10frame_step5"] = std::move(motion_joint_velocities_lowerbody_10frame_step5);
+    feature_context->named_features["motion_root_z_position_10frame_step5"] = std::move(motion_root_z_position_10frame_step5);
+    feature_context->named_features["motion_root_z_position"] = {
+        current_sampled.body_pos_w.size() >= 3 ? current_sampled.body_pos_w[2] : 0.0f};
+    feature_context->named_features["motion_anchor_orientation"] =
+        referenceAnchorOri6dFromBodyQuat(current_sampled.body_quat_w, robot->base_quat, 0);
+    feature_context->named_features["motion_joint_positions_wrists_10frame_step1"] =
+        std::vector<float>(static_cast<size_t>(kSonicFutureFrames) * wrist_indices.size(), 0.0f);
+
+    for (int frame_idx = 0; frame_idx < kSonicFutureFrames; ++frame_idx)
+    {
+        const size_t step_index =
+            policy_step_counter_ +
+            static_cast<size_t>(std::max(0, cfg.reference_motion_step_offset)) +
+            static_cast<size_t>(frame_idx);
+        const ReferenceMotionFrame sampled =
+            activeReferenceMotionProvider().sampleFrameByStep(step_index, cfg.reference_motion_dim);
+        const std::vector<float> joint_pos = fitDim(sampled.joint_pos, kSonicJointDim);
+        const std::vector<float> wrist_joint_pos = selectIndices(joint_pos, wrist_indices);
+        const size_t offset = static_cast<size_t>(frame_idx) * wrist_indices.size();
+        std::copy(
+            wrist_joint_pos.begin(),
+            wrist_joint_pos.end(),
+            feature_context->named_features["motion_joint_positions_wrists_10frame_step1"].begin() +
+                static_cast<std::ptrdiff_t>(offset));
+    }
+
+    feature_context->named_features["encoder_mode_4"] = {0.0f, 0.0f, 0.0f, 0.0f};
+    feature_context->named_features["vr_3point_local_target"] = std::vector<float>(9, 0.0f);
+    feature_context->named_features["vr_3point_local_orn_target"] = std::vector<float>(12, 0.0f);
+    feature_context->named_features["smpl_joints_10frame_step1"] = std::vector<float>(720, 0.0f);
+    feature_context->named_features["smpl_anchor_orientation_10frame_step1"] = std::vector<float>(60, 0.0f);
+}
+
+RL_controller::PolicyRunnerNode *RL_controller::findPolicyRunnerBySuffix(
+    PolicyRuntimeGroup *group,
+    const std::string &suffix)
+{
+    if (!group || suffix.empty())
+    {
+        return nullptr;
+    }
+    for (auto &node : group->runners)
+    {
+        if (!node.runner)
+        {
+            continue;
+        }
+        if (node.name == suffix)
+        {
+            return &node;
+        }
+        if (node.name.size() >= suffix.size() &&
+            node.name.compare(node.name.size() - suffix.size(), suffix.size(), suffix) == 0)
+        {
+            return &node;
+        }
+    }
+    return nullptr;
+}
+
+bool RL_controller::runSonicEncoder(
+    ObservationFeatureContext *feature_context,
+    bool advance_time_step)
+{
+    if (!feature_context)
+    {
+        return false;
+    }
+
+    auto &group = activePolicyGroup();
+    PolicyRunnerNode *encoder_runner = findPolicyRunnerBySuffix(&group, "/encoder");
+    if (!encoder_runner || !encoder_runner->runner)
+    {
+        return false;
+    }
+
+    const PolicyExecutionRequest request{
+        &stacked_obs_buffer_,
+        &obs,
+        &action,
+        &feature_context->named_features,
+        advance_time_step,
+        static_cast<uint64_t>(policy_step_counter_)};
+    PolicyInferenceResult encoder_result = encoder_runner->runner->infer(request);
+    if (encoder_result.action.size() != kSonicTokenDim)
+    {
+        throw std::runtime_error(
+            "SONIC encoder output dim mismatch: expected " +
+            std::to_string(kSonicTokenDim) +
+            ", got " + std::to_string(encoder_result.action.size()));
+    }
+    feature_context->named_features["token_state"] =
+        fitDim(encoder_result.action, kSonicTokenDim);
+
+    latest_policy_extra_outputs_.clear();
+    latest_policy_extra_outputs_[encoder_runner->name + "/action"] = encoder_result.action;
+    for (auto &kv : encoder_result.extra_outputs)
+    {
+        latest_policy_extra_outputs_[encoder_runner->name + "/" + kv.first] = std::move(kv.second);
+    }
+    return true;
 }
 
 void RL_controller::RL_controller_Init(int startup_mode_id)
@@ -3346,14 +3637,53 @@ std::vector<float> RL_controller::run_policy(std::deque<std::vector<float>> *obs
     }
 
     const auto &active_cfg = activePolicyCfg();
-    buildStackedObservation(*obs_deque_ptr, "policy run");
+    PolicyRunOutput policy_output;
+    if (active_cfg.policy_family == "sonic_tracker")
+    {
+        ObservationFeatureContext sonic_feature_context = latest_observation_feature_context_;
+        if (!runSonicEncoder(&sonic_feature_context, advance_time_step))
+        {
+            throw std::runtime_error("SONIC encoder sub-model is missing or failed to initialize");
+        }
+        latest_observation_feature_context_ = sonic_feature_context;
+        buildStackedObservation(*obs_deque_ptr, "policy run");
 
-    PolicyRunOutput policy_output = runPolicyGroup(
-        &activePolicyGroup(),
-        stacked_obs_buffer_,
-        obs,
-        latest_observation_feature_context_,
-        advance_time_step);
+        auto &group = activePolicyGroup();
+        if (group.runners.empty() || !group.runners.front().runner)
+        {
+            throw std::runtime_error("SONIC decoder runner is missing");
+        }
+
+        const PolicyExecutionRequest request{
+            &stacked_obs_buffer_,
+            &obs,
+            &action,
+            &latest_observation_feature_context_.named_features,
+            advance_time_step,
+            static_cast<uint64_t>(policy_step_counter_)};
+        PolicyInferenceResult decoder_result = group.runners.front().runner->infer(request);
+        policy_output.action = std::move(decoder_result.action);
+        policy_output.extra_outputs[group.runners.front().name + "/action"] = policy_output.action;
+        for (auto &kv : decoder_result.extra_outputs)
+        {
+            policy_output.extra_outputs[group.runners.front().name + "/" + kv.first] = std::move(kv.second);
+        }
+        for (const auto &kv : latest_policy_extra_outputs_)
+        {
+            policy_output.extra_outputs.emplace(kv.first, kv.second);
+        }
+    }
+    else
+    {
+        buildStackedObservation(*obs_deque_ptr, "policy run");
+
+        policy_output = runPolicyGroup(
+            &activePolicyGroup(),
+            stacked_obs_buffer_,
+            obs,
+            latest_observation_feature_context_,
+            advance_time_step);
+    }
     std::vector<float> target_action = std::move(policy_output.action);
     latest_policy_extra_outputs_ = std::move(policy_output.extra_outputs);
 

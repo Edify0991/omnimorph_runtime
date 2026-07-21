@@ -1,0 +1,26 @@
+observation_manifest:
+  schema_version: 3
+  profile: "sonic_g1_release"
+  # SONIC decoder proprioception frame matches the official release config:
+  #   base_ang_vel(3) + joint_pos(29) + joint_vel(29) + last_action(29)
+  #   + projected_gravity(3) = 93.
+  #
+  # The controller stacks 10 such frames and prepends a 64D token_state from
+  # the encoder, yielding the decoder's final 994D input.
+  terms:
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+      components: [x, y, z]
+    - name: joint_pos
+      enabled: true
+      count: 29
+    - name: joint_vel
+      enabled: true
+      count: 29
+    - name: last_action
+      enabled: true
+      count: 29
+    - name: projected_gravity
+      enabled: true
+      count: 3

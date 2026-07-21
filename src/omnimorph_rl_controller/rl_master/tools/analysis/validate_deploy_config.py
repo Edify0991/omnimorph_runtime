@@ -1388,6 +1388,18 @@ def mark_computed_feature_reference_requirements(
                 mark_required_reference_feature(requirements, str(part.get("feature_name", "")).strip())
 
 
+def augment_required_reference_features_for_policy_family(
+    policy_family: str,
+    requirements: Dict[str, bool],
+) -> None:
+    family = normalize_token(policy_family)
+    if family == "sonic_tracker":
+        requirements["reference_joint_pos"] = True
+        requirements["reference_joint_vel"] = True
+        requirements["reference_body_pos_w"] = True
+        requirements["reference_body_quat_w"] = True
+
+
 def check_computed_features(
     computed_features: Sequence[Dict[str, Any]],
     issues: IssueCollector,
@@ -1716,6 +1728,7 @@ def build_feature_dim_map(
     computed_features: Sequence[Dict[str, Any]],
 ) -> Dict[str, int]:
     feature_dims: Dict[str, int] = {}
+    policy_family = normalize_token(section_cfg.get("policy_family", ""))
     motor_n = as_int(section_cfg.get("motor_N"), 0)
     reference_dim = len(reference_order) if reference_order else motor_n
 
@@ -1766,6 +1779,27 @@ def build_feature_dim_map(
             total_dim += dim
         if complete and total_dim > 0:
             feature_dims[name] = total_dim
+
+    if policy_family == "sonic_tracker":
+        feature_dims.update(
+            {
+                "token_state": 64,
+                "encoder_mode_4": 4,
+                "motion_joint_positions_10frame_step5": 290,
+                "motion_joint_velocities_10frame_step5": 290,
+                "motion_root_z_position_10frame_step5": 10,
+                "motion_root_z_position": 1,
+                "motion_anchor_orientation": 6,
+                "motion_anchor_orientation_10frame_step5": 60,
+                "motion_joint_positions_lowerbody_10frame_step5": 120,
+                "motion_joint_velocities_lowerbody_10frame_step5": 120,
+                "vr_3point_local_target": 9,
+                "vr_3point_local_orn_target": 12,
+                "smpl_joints_10frame_step1": 720,
+                "smpl_anchor_orientation_10frame_step1": 60,
+                "motion_joint_positions_wrists_10frame_step1": 60,
+            }
+        )
 
     return feature_dims
 
@@ -2374,6 +2408,7 @@ def check_onnx_contract(
     action_dim = as_int(model_cfg.get("action_dim"), 0)
     obs_dim = as_int(model_cfg.get("obs_dim"), 0)
     obs_stack_n = as_int(model_cfg.get("obs_stack_N"), 0)
+    stacked_observation_dim = as_int(model_cfg.get("stacked_observation_dim"), 0)
     feature_dims = to_dict(model_cfg.get("feature_dims"))
     configured_inputs = [to_dict(x) for x in to_list(model_cfg.get("onnx_inputs"))]
 
@@ -2498,7 +2533,9 @@ def check_onnx_contract(
             target_count = element_count_from_shape(resolved_shape)
             expected_source_count: Optional[int] = None
             if source == "stacked_observation":
-                if obs_dim > 0 and obs_stack_n > 0:
+                if stacked_observation_dim > 0:
+                    expected_source_count = stacked_observation_dim
+                elif obs_dim > 0 and obs_stack_n > 0:
                     expected_source_count = obs_dim * obs_stack_n
             elif source == "observation":
                 if obs_dim > 0:
@@ -2751,6 +2788,7 @@ def validate_profile(
     policy_family = str(section_cfg.get("policy_family", "")).strip()
     if not policy_family:
         issues.error(context, "policy_family is required")
+    normalized_policy_family = normalize_token(policy_family)
 
     startup_completion_action = normalize_token(
         section_cfg.get("startup_completion_action", "hold")
@@ -2870,6 +2908,7 @@ def validate_profile(
     check_computed_features(computed_features, issues, context, joint_order_aliases)
     required_reference_features = collect_required_reference_features(manifest_path, issues, context)
     mark_computed_feature_reference_requirements(required_reference_features, computed_features)
+    augment_required_reference_features_for_policy_family(policy_family, required_reference_features)
     check_source_contract(section_cfg, required_reference_features, issues, context)
     check_reference_contract(
         section_cfg,
@@ -2927,6 +2966,7 @@ def validate_profile(
         "obs_dim": obs_dim,
         "action_dim": action_dim,
         "obs_stack_N": obs_stack_n,
+        "stacked_observation_dim": (64 + obs_dim * obs_stack_n) if normalize_token(policy_family) == "sonic_tracker" else 0,
         "feature_dims": feature_dims,
         "onnx_intra_threads": as_int(section_cfg.get("onnx_intra_threads", 1), 1),
         "onnx_inter_threads": as_int(section_cfg.get("onnx_inter_threads", 1), 1),
@@ -2942,6 +2982,29 @@ def validate_profile(
 
     policy_path = get_policy_file_path(section_cfg, root_dir, path_variables)
     check_onnx_contract(policy_path, main_model_cfg, issues, context + " main_model", skip_onnx)
+
+    enabled_sub_models = [
+        to_dict(node)
+        for node in to_list(section_cfg.get("sub_models"))
+        if as_bool(to_dict(node).get("enabled", True), True)
+    ]
+    if normalized_policy_family == "sonic_tracker":
+        encoder_nodes = [
+            node
+            for node in enabled_sub_models
+            if normalize_token(node.get("name", "")) == "encoder"
+        ]
+        if not encoder_nodes:
+            issues.error(context, "sonic_tracker requires one enabled sub_model named 'encoder'")
+        elif len(encoder_nodes) > 1:
+            issues.error(context, "sonic_tracker expects exactly one enabled sub_model named 'encoder'")
+        else:
+            encoder_action_dim = as_int(encoder_nodes[0].get("action_dim", -1), -1)
+            if encoder_action_dim != 64:
+                issues.error(
+                    context,
+                    f"sonic_tracker encoder sub_model action_dim must be 64, got {encoder_action_dim}",
+                )
 
     for spec in to_list(section_cfg.get("external_observations")):
         node = to_dict(spec)

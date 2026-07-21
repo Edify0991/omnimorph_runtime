@@ -2,7 +2,7 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
   policy_name: beyondmimic_jc01_dance_wo_state_estimation
   policy_family: beyondmimic
   policy_adapter: onnx
-  policy_file: policies/walk2_subject2.onnx
+  policy_file: policies/beyondmimic_jc01_taichi_modify_wo_state_estimation.onnx
   inference_strategy: sync_step
   # For chunked/generative policies, switch to:
   # inference_strategy: chunked_receding
@@ -349,7 +349,8 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
     action_output_name: actions
     enable_time_step_input: true
     time_step_input_name: time_step
-    time_step_start: 0
+    # Start imitation from reference frame 3550.
+    time_step_start: 3550
     advance_time_step_on_reference_prefetch: false
     strict_model_io: true
     enable_metadata_check: true
@@ -421,34 +422,35 @@ beyondmimic_jc01_dance_full_body_wo_state_estimation:
       left_wrist_pitch: 0.0
       left_wrist_roll: 0.0
     zero_joint_angles:
-      right_hip_roll: 0.0
-      right_hip_yaw: 0.0
-      right_hip_pitch: -0.24
-      right_knee_pitch: 0.48
-      right_ankle_pitch: -0.24
-      right_ankle_roll: 0.0
-      left_hip_roll: 0.0
-      left_hip_yaw: 0.0
-      left_hip_pitch: -0.24
-      left_knee_pitch: 0.48
-      left_ankle_pitch: -0.24
-      left_ankle_roll: 0.0
-      waist_roll: 0.0
-      waist_yaw: 0.0
-      right_shoulder_pitch: 0.0
-      right_shoulder_roll: 0.0
-      right_shoulder_yaw: 0.0
-      right_elbow_pitch: 0.0
-      right_elbow_yaw: 0.0
-      right_wrist_pitch: 0.0
-      right_wrist_roll: 0.0
-      left_shoulder_pitch: 0.0
-      left_shoulder_roll: 0.0
-      left_shoulder_yaw: 0.0
-      left_elbow_pitch: 0.0
-      left_elbow_yaw: 0.0
-      left_wrist_pitch: 0.0
-      left_wrist_roll: 0.0
+      # Reference joint positions sampled from policy output joint_pos at frame 3550.
+      right_hip_roll: 0.223887801
+      right_hip_yaw: 0.522822678
+      right_hip_pitch: -0.381036431
+      right_knee_pitch: 0.474166989
+      right_ankle_pitch: 0.014470123
+      right_ankle_roll: -0.233966783
+      left_hip_roll: 0.029564653
+      left_hip_yaw: -0.025965996
+      left_hip_pitch: -0.720634818
+      left_knee_pitch: 0.971367717
+      left_ankle_pitch: -0.358207285
+      left_ankle_roll: 0.128017217
+      waist_roll: 0.261225909
+      waist_yaw: -0.692339361
+      right_shoulder_pitch: 0.930757046
+      right_shoulder_roll: 0.328460455
+      right_shoulder_yaw: 0.623800933
+      right_elbow_pitch: 1.523380637
+      right_elbow_yaw: 0.394735694
+      right_wrist_pitch: 0.005455866
+      right_wrist_roll: 0.085290283
+      left_shoulder_pitch: 1.027788639
+      left_shoulder_roll: 0.347369641
+      left_shoulder_yaw: -0.648109376
+      left_elbow_pitch: 1.585387349
+      left_elbow_yaw: -0.567603350
+      left_wrist_pitch: 0.021332724
+      left_wrist_roll: 0.275501281
     joint_limit_range:
       right_hip_roll: [-0.1396, 0.5236]
       right_hip_yaw: [-0.5236, 0.5236]
