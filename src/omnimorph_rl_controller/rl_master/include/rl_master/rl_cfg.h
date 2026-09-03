@@ -932,6 +932,11 @@ struct RuntimeLogSourceSamplesConfig
 {
     bool enabled = true;
     bool include_base_imu = true;
+    // Sim2sim-only base pose/velocity sample. Kept separate from base_imu so
+    // existing consumers of runtime/source/base_imu remain schema-compatible.
+    bool include_base_state = true;
+    // Sim2sim-only MuJoCo site force sensors, configured by the bridge.
+    bool include_foot_force_sensors = true;
     bool include_external_observations = false;
 };
 
@@ -1354,6 +1359,9 @@ public:
             const YAML::Node logging_sources_cfg = logging_cfg["source_samples"];
             logging.source_samples.enabled = yamlReadOr<bool>(logging_sources_cfg, "enabled", true);
             logging.source_samples.include_base_imu = yamlReadOr<bool>(logging_sources_cfg, "include_base_imu", true);
+            logging.source_samples.include_base_state = yamlReadOr<bool>(logging_sources_cfg, "include_base_state", true);
+            logging.source_samples.include_foot_force_sensors =
+                yamlReadOr<bool>(logging_sources_cfg, "include_foot_force_sensors", true);
             logging.source_samples.include_external_observations = yamlReadOr<bool>(logging_sources_cfg, "include_external_observations", false);
 
             const YAML::Node logging_export_cfg = logging_cfg["export"];

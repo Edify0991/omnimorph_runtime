@@ -17,6 +17,7 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<std::string>("model_path", "");
     this->declare_parameter<std::string>("base_body_name", "base_link");
     this->declare_parameter<std::string>("base_free_joint_name", "");
+    this->declare_parameter<std::vector<std::string>>("foot_force_sensor_names", std::vector<std::string>{});
     this->declare_parameter<std::vector<std::string>>("joint_names", canonical_names);
     this->declare_parameter<std::vector<std::string>>("actuator_names", std::vector<std::string>{});
     this->declare_parameter<int>("startup_mode_id", rl_master::kModeCodeMin);
@@ -82,6 +83,7 @@ void MujocoSimBridge::loadParameters()
     model_path_ = this->get_parameter("model_path").as_string();
     base_body_name_ = this->get_parameter("base_body_name").as_string();
     base_free_joint_name_ = this->get_parameter("base_free_joint_name").as_string();
+    foot_force_sensor_names_ = this->get_parameter("foot_force_sensor_names").as_string_array();
     startup_mode_id_ = static_cast<int>(this->get_parameter("startup_mode_id").as_int());
     control_hz_ = std::max(1.0, this->get_parameter("control_hz").as_double());
     sim_dt_ = std::max(1e-5, this->get_parameter("sim_dt").as_double());

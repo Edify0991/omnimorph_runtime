@@ -141,6 +141,89 @@ void MujocoSimBridge::emitBaseImuSourceSample(const rl_master::RobotStateData &s
     runtime_recorder_.recordSourceSample(sample);
 }
 
+void MujocoSimBridge::emitBaseStateSourceSample(const rl_master::RobotStateData &state, double monotonic_time_sec)
+{
+    const Sim2realCfg &runtime_cfg = controller_runtime_.runtimeCfg();
+    if (!runtime_logging_enabled_ ||
+        !runtime_recorder_.isOpen() ||
+        !runtime_cfg.logging.source_samples.enabled ||
+        !runtime_cfg.logging.source_samples.include_base_state)
+    {
+        return;
+    }
+
+    rl_master::logging::RuntimeSourceSampleRecord sample;
+    sample.monotonic_time_sec = monotonic_time_sec;
+    sample.topic = "runtime/source/base_state";
+    sample.sample_name = "base_state";
+    sample.tags["backend"] = "sim2sim";
+    sample.tags["position_frame"] = "world";
+    sample.tags["velocity_source"] = runtime_cfg.source_contract.sim_base.velocity_source;
+    sample.values["pos_w"] = {
+        state.base_pos_w[0],
+        state.base_pos_w[1],
+        state.base_pos_w[2]};
+    sample.values["quat_xyzw"] = {
+        state.base_quat[0],
+        state.base_quat[1],
+        state.base_quat[2],
+        state.base_quat[3]};
+    sample.values["rpy"] = {
+        state.base_rpy[0],
+        state.base_rpy[1],
+        state.base_rpy[2]};
+    sample.values["lin_vel"] = {
+        state.base_lin_vel[0],
+        state.base_lin_vel[1],
+        state.base_lin_vel[2]};
+    sample.values["ang_vel"] = {
+        state.base_ang_vel[0],
+        state.base_ang_vel[1],
+        state.base_ang_vel[2]};
+    runtime_recorder_.recordSourceSample(sample);
+}
+
+void MujocoSimBridge::emitFootForceSourceSample(double monotonic_time_sec)
+{
+    const Sim2realCfg &runtime_cfg = controller_runtime_.runtimeCfg();
+    if (!runtime_logging_enabled_ ||
+        !runtime_recorder_.isOpen() ||
+        !runtime_cfg.logging.source_samples.enabled ||
+        !runtime_cfg.logging.source_samples.include_foot_force_sensors ||
+        !model_ ||
+        !data_ ||
+        foot_force_sensor_ids_.empty())
+    {
+        return;
+    }
+
+    rl_master::logging::RuntimeSourceSampleRecord sample;
+    sample.monotonic_time_sec = monotonic_time_sec;
+    sample.topic = "runtime/source/foot_force_sensors";
+    sample.sample_name = "foot_force_sensors";
+    sample.tags["backend"] = "sim2sim";
+    sample.tags["unit"] = "N";
+    sample.tags["frame"] = "sensor_local";
+
+    for (const int sensor_id : foot_force_sensor_ids_)
+    {
+        const int sensor_adr = model_->sensor_adr[sensor_id];
+        const char *sensor_name = mj_id2name(model_, mjOBJ_SENSOR, sensor_id);
+        if (sensor_adr < 0 || (sensor_adr + 2) >= model_->nsensordata || !sensor_name)
+        {
+            continue;
+        }
+        sample.values[sensor_name] = {
+            static_cast<float>(data_->sensordata[sensor_adr]),
+            static_cast<float>(data_->sensordata[sensor_adr + 1]),
+            static_cast<float>(data_->sensordata[sensor_adr + 2])};
+    }
+    if (!sample.values.empty())
+    {
+        runtime_recorder_.recordSourceSample(sample);
+    }
+}
+
 void MujocoSimBridge::logLoopData(
     const rl_master::RobotStateData &state,
     const rl_master::RobotStateData &post_state,

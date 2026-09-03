@@ -54,6 +54,7 @@ void MujocoSimBridge::resolveModelMappings()
     applied_position_actuator_kp_.clear();
     applied_position_actuator_kv_.clear();
     applied_position_actuator_forcerange_.clear();
+    foot_force_sensor_ids_.clear();
 
     for (size_t i = 0; i < joint_names_.size(); ++i)
     {
@@ -168,6 +169,37 @@ void MujocoSimBridge::resolveModelMappings()
     {
         base_free_qpos_adr_ = model_->jnt_qposadr[base_free_joint_id_];
         base_free_qvel_adr_ = model_->jnt_dofadr[base_free_joint_id_];
+    }
+
+    for (const std::string &sensor_name : foot_force_sensor_names_)
+    {
+        const int sensor_id = mj_name2id(model_, mjOBJ_SENSOR, sensor_name.c_str());
+        if (sensor_id < 0)
+        {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Configured foot force sensor '%s' was not found in the MuJoCo model; it will not be logged.",
+                sensor_name.c_str());
+            continue;
+        }
+        if (model_->sensor_type[sensor_id] != mjSENS_FORCE || model_->sensor_dim[sensor_id] != 3)
+        {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Configured foot force sensor '%s' must be a 3-axis MuJoCo force sensor (type=%d, dim=%d); it will not be logged.",
+                sensor_name.c_str(),
+                model_->sensor_type[sensor_id],
+                model_->sensor_dim[sensor_id]);
+            continue;
+        }
+        foot_force_sensor_ids_.push_back(sensor_id);
+    }
+    if (!foot_force_sensor_ids_.empty())
+    {
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Resolved %zu MuJoCo foot force sensor(s) for MCAP logging.",
+            foot_force_sensor_ids_.size());
     }
 
     const bool requires_free_joint =

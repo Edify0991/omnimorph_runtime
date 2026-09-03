@@ -24,6 +24,9 @@ log/
 MUJOCO_LOG.TXT
 src/omnimorph_rl_controller/rl_master/data/runtime_logs/
 analysis/
+# Keep maintained runtime-analysis utilities under version control.
+!src/omnimorph_rl_controller/rl_master/tools/analysis/
+!src/omnimorph_rl_controller/rl_master/tools/analysis/*.py
 artifacts/runtime_plots/
 
 # 临时文件

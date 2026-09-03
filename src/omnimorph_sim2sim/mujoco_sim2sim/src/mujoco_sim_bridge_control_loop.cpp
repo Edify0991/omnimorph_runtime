@@ -422,7 +422,10 @@ void MujocoSimBridge::controlLoopTick()
 
     const rl_master::RobotStateData post_state = buildRobotState();
     updateMirroredState(post_state);
-    emitBaseImuSourceSample(post_state, rl_master::monotonicTimeSec());
+    const double log_time_sec = rl_master::monotonicTimeSec();
+    emitBaseImuSourceSample(post_state, log_time_sec);
+    emitBaseStateSourceSample(post_state, log_time_sec);
+    emitFootForceSourceSample(log_time_sec);
     logLoopData(state, post_state, command, controller_snapshot, runtime_mode, control_active);
     updateViewerFrameMirror();
     updateViewerInspectorMirror(post_state, command, runtime_mode);

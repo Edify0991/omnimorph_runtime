@@ -41,6 +41,8 @@ Current active channels are:
 - `runtime/event`
 - `runtime/tick`
 - `runtime/source/base_imu` when base IMU source-sample logging is enabled
+- `runtime/source/base_state` for sim2sim base position, pose, and velocity
+- `runtime/source/foot_force_sensors` for configured sim2sim MuJoCo foot force sensors
 - `runtime/source/policy_observation`
 - `runtime/source/policy_action`
 - `runtime/source/external/<name>` when external observation source-sample logging is enabled
@@ -129,12 +131,19 @@ logging:
   source_samples:
     enabled: true
     include_base_imu: true
+    include_base_state: true
+    include_foot_force_sensors: true
     include_external_observations: false
   export:
     default_format: none
 ```
 
 `save_data_flag` has been removed. Runtime logging is controlled only by top-level `logging.enabled`.
+
+For JC01 sim2sim presets, `foot_force_sensor_names` is set to
+`left_foot_sensor` and `right_foot_sensor`. Each
+`runtime/source/foot_force_sensors` message stores a three-element force vector
+under each sensor name, in newtons and in that sensor site's local frame.
 
 ## 6. Analysis Workflow
 
@@ -169,6 +178,25 @@ python3 src/omnimorph_rl_controller/rl_master/tools/analysis/export_runtime_log.
 ```
 
 Parquet export is supported when `pyarrow` is installed.
+
+### Extract one finite sim2sim policy clip
+
+For a 500 Hz control log whose policy runs at a lower rate, keep every control
+frame from the first RUNNING inference through the final frame that advances
+`policy_step_index`:
+
+```bash
+python3 src/omnimorph_rl_controller/rl_master/tools/analysis/extract_policy_running_frames.py \
+  --mcap /abs/path/to/session.mcap \
+  --contact-force-threshold 20
+```
+
+It writes `<session>_policy_running_frames.mcap` with one
+`runtime/processed/policy_running_frame` record per retained control frame and
+a sibling summary JSON. The frame contains the full original tick payload,
+nearest timestamped base IMU/base state/foot-force source samples, their
+alignment offsets, and `left/right.in_contact` labels. The contact rule is the
+local-frame foot-force norm in N meeting the configured threshold.
 
 ## 7. Different-Rate Sensors
 

@@ -202,14 +202,25 @@ rl_master::RobotStateData MujocoSimBridge::buildRobotState() const
         const float qz = static_cast<float>(data_->qpos[base_free_qpos_adr_ + 6]);
         base_quat_xyzw = {qx, qy, qz, qw};
     }
-    else if (base_body_id_ >= 0 && base_body_id_ < model_->nbody && data_->xquat)
+    else if (base_body_id_ >= 0 && base_body_id_ < model_->nbody)
     {
-        const mjtNum *q = data_->xquat + 4 * base_body_id_;
-        const float qw = static_cast<float>(q[0]);
-        const float qx = static_cast<float>(q[1]);
-        const float qy = static_cast<float>(q[2]);
-        const float qz = static_cast<float>(q[3]);
-        base_quat_xyzw = {qx, qy, qz, qw};
+        if (data_->xpos)
+        {
+            const mjtNum *p = data_->xpos + 3 * base_body_id_;
+            state.base_pos_w = {
+                static_cast<float>(p[0]),
+                static_cast<float>(p[1]),
+                static_cast<float>(p[2])};
+        }
+        if (data_->xquat)
+        {
+            const mjtNum *q = data_->xquat + 4 * base_body_id_;
+            const float qw = static_cast<float>(q[0]);
+            const float qx = static_cast<float>(q[1]);
+            const float qy = static_cast<float>(q[2]);
+            const float qz = static_cast<float>(q[3]);
+            base_quat_xyzw = {qx, qy, qz, qw};
+        }
     }
 
     state.base_quat = base_quat_xyzw;

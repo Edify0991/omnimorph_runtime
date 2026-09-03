@@ -6,6 +6,8 @@ mujoco_sim_bridge:
 
     base_body_name: "Body"
     base_free_joint_name: ""
+    # 3-axis MuJoCo site force sensors, recorded to runtime/source/foot_force_sensors.
+    foot_force_sensor_names: ["left_foot_sensor", "right_foot_sensor"]
 
     # Must match rl_cfg_amp_mjlab_jc01_full_body.yaml robot_global_joint_order.
     joint_names:

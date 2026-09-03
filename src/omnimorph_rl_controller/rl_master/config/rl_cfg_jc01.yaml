@@ -194,6 +194,8 @@ logging:
   source_samples:
     enabled: true
     include_base_imu: true
+    include_base_state: true
+    include_foot_force_sensors: true
     include_external_observations: false
   export:
     default_format: none

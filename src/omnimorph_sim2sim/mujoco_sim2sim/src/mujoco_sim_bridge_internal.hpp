@@ -170,6 +170,8 @@ private:
         const rl_master::CommandRuntimeDecision &runtime_mode,
         bool control_active);
     void emitBaseImuSourceSample(const rl_master::RobotStateData &state, double monotonic_time_sec);
+    void emitBaseStateSourceSample(const rl_master::RobotStateData &state, double monotonic_time_sec);
+    void emitFootForceSourceSample(double monotonic_time_sec);
     rl_master::TeleopCommand latestTeleopCommand() const;
 
     // Python viewer stream/inspector support.
@@ -216,6 +218,7 @@ private:
     std::string model_path_;
     std::string base_body_name_;
     std::string base_free_joint_name_;
+    std::vector<std::string> foot_force_sensor_names_;
     std::vector<std::string> joint_names_;
     std::vector<std::string> actuator_names_;
     std::vector<std::string> position_controlled_joint_names_;
@@ -289,6 +292,7 @@ private:
     std::vector<int> qpos_addrs_;
     std::vector<int> qvel_addrs_;
     std::vector<int> actuator_ids_;
+    std::vector<int> foot_force_sensor_ids_;
     std::vector<ActuatorBackend> joint_actuator_backends_;
     std::vector<double> default_dof_armature_;
     std::vector<double> default_dof_frictionloss_;

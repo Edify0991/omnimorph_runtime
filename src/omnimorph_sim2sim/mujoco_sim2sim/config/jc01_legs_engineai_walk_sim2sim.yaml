@@ -6,6 +6,8 @@ mujoco_sim_bridge:
     base_body_name: "Body"
     # Leave empty to auto-discover the base free joint attached to Body.
     base_free_joint_name: ""
+    # 3-axis MuJoCo site force sensors, recorded to runtime/source/foot_force_sensors.
+    foot_force_sensor_names: ["left_foot_sensor", "right_foot_sensor"]
 
     # C++ sim2sim no longer uses this field to override joint order.
     # The effective controlled joint order comes only from
