@@ -61,6 +61,48 @@ void MujocoSimBridge::startInputExecutor()
             this->runtimeCommandCallback(msg);
         });
 
+    external_observation_subs_.clear();
+    for (const auto &spec : controller_runtime_.runtimeCfg().external_observations)
+    {
+        if (spec.topic.empty())
+        {
+            continue;
+        }
+        if (spec.message_type != "float32_multi_array")
+        {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Ignore sim2sim external observation '%s': unsupported message_type '%s'.",
+                spec.name.c_str(),
+                spec.message_type.c_str());
+            continue;
+        }
+        external_observation_subs_.push_back(
+            input_node_->create_subscription<std_msgs::msg::Float32MultiArray>(
+                spec.topic,
+                rclcpp::QoS(rclcpp::KeepLast(2)).best_effort(),
+                [this, spec](const std_msgs::msg::Float32MultiArray::SharedPtr msg) {
+                    if (!msg)
+                    {
+                        return;
+                    }
+                    if (spec.dim > 0 && msg->data.size() != static_cast<size_t>(spec.dim))
+                    {
+                        RCLCPP_WARN_THROTTLE(
+                            this->get_logger(),
+                            *this->get_clock(),
+                            1000,
+                            "Ignore external observation '%s': received %zu values, expected %d.",
+                            spec.name.c_str(),
+                            msg->data.size(),
+                            spec.dim);
+                        return;
+                    }
+                    controller_runtime_.controller().setExternalObservationFeature(
+                        spec.name, msg->data, rl_master::monotonicTimeSec());
+                }));
+    }
+
     io_stop_requested_.store(false);
     input_executor_->add_node(input_node_);
     input_executor_thread_ = std::thread([this]() {
@@ -98,6 +140,7 @@ void MujocoSimBridge::stopInputExecutor()
     mode_control_sub_.reset();
     teleop_sub_.reset();
     runtime_command_sub_.reset();
+    external_observation_subs_.clear();
     input_executor_.reset();
     input_node_.reset();
 }

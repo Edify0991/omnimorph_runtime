@@ -193,6 +193,11 @@ def generate_launch_description():
         default_value="false",
         description="Record native C++ MuJoCo MP4 video using physical simulation time.",
     )
+    enable_instinct_depth_camera_arg = DeclareLaunchArgument(
+        "enable_instinct_depth_camera",
+        default_value="false",
+        description="Render and inject Instinct Parkour depth_history from MuJoCo; no physical camera is required.",
+    )
     video_output_dir_arg = DeclareLaunchArgument(
         "video_output_dir",
         default_value="/tmp/omnimorph_sim2sim_videos",
@@ -290,6 +295,9 @@ def generate_launch_description():
             ),
             "capture_gravity": ParameterValue(LaunchConfiguration("capture_gravity"), value_type=float),
             "enable_video_recording": ParameterValue(LaunchConfiguration("enable_video_recording"), value_type=bool),
+            "enable_instinct_depth_camera": ParameterValue(
+                LaunchConfiguration("enable_instinct_depth_camera"), value_type=bool
+            ),
             "video_output_dir": LaunchConfiguration("video_output_dir"),
             "video_output_name": LaunchConfiguration("video_output_name"),
             "video_fps": ParameterValue(LaunchConfiguration("video_fps"), value_type=float),
@@ -381,6 +389,7 @@ def generate_launch_description():
             capture_min_com_height_arg,
             capture_gravity_arg,
             enable_video_recording_arg,
+            enable_instinct_depth_camera_arg,
             video_output_dir_arg,
             video_output_name_arg,
             video_fps_arg,

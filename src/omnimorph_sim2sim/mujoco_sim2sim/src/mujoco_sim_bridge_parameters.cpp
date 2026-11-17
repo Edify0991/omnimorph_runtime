@@ -61,6 +61,22 @@ void MujocoSimBridge::loadParameters()
     this->declare_parameter<double>("video_follow_azimuth", 90.0);
     this->declare_parameter<double>("video_follow_elevation", -20.0);
     this->declare_parameter<std::vector<double>>("video_follow_lookat_offset", std::vector<double>{0.0, 0.0, 0.8});
+    this->declare_parameter<bool>("enable_instinct_depth_camera", false);
+    this->declare_parameter<std::string>("instinct_depth_camera_name", "instinct_parkour_depth");
+    this->declare_parameter<std::string>("instinct_depth_parent_body_name", "waist_yaw");
+    this->declare_parameter<std::string>("instinct_depth_feature_name", "depth_history");
+    this->declare_parameter<double>("instinct_depth_camera_hz", 50.0);
+    this->declare_parameter<int>("instinct_depth_width", 128);
+    this->declare_parameter<int>("instinct_depth_height", 72);
+    this->declare_parameter<std::vector<int64_t>>("instinct_depth_crop", std::vector<int64_t>{36, 0, 32, 32});
+    this->declare_parameter<int>("instinct_depth_history_frames", 8);
+    this->declare_parameter<int>("instinct_depth_history_skip", 5);
+    this->declare_parameter<std::vector<double>>("instinct_depth_offset_pos", std::vector<double>{0.11843, 0.0, 0.27508});
+    this->declare_parameter<std::vector<double>>("instinct_depth_offset_rot_wxyz", std::vector<double>{0.9794170213, 0.0, 0.2018472157, 0.0});
+    this->declare_parameter<double>("instinct_depth_vertical_fov_deg", 58.29);
+    this->declare_parameter<std::vector<double>>("instinct_depth_range", std::vector<double>{0.0, 2.5});
+    this->declare_parameter<int>("instinct_depth_blur_kernel", 3);
+    this->declare_parameter<double>("instinct_depth_blur_sigma", 1.0);
     this->declare_parameter<bool>("enable_com_support_visualization", false);
     this->declare_parameter<std::string>("com_support_pinocchio_urdf_path", "");
     this->declare_parameter<std::vector<std::string>>(
@@ -153,6 +169,51 @@ void MujocoSimBridge::loadParameters()
     if (video_lookat_offset.size() >= 3)
     {
         video_follow_lookat_offset_ = {video_lookat_offset[0], video_lookat_offset[1], video_lookat_offset[2]};
+    }
+    enable_instinct_depth_camera_ = this->get_parameter("enable_instinct_depth_camera").as_bool();
+    instinct_depth_camera_name_ = trimCopy(this->get_parameter("instinct_depth_camera_name").as_string());
+    instinct_depth_parent_body_name_ = trimCopy(this->get_parameter("instinct_depth_parent_body_name").as_string());
+    instinct_depth_feature_name_ = trimCopy(this->get_parameter("instinct_depth_feature_name").as_string());
+    instinct_depth_camera_hz_ = std::max(1.0, this->get_parameter("instinct_depth_camera_hz").as_double());
+    instinct_depth_width_ = std::max(1, static_cast<int>(this->get_parameter("instinct_depth_width").as_int()));
+    instinct_depth_height_ = std::max(1, static_cast<int>(this->get_parameter("instinct_depth_height").as_int()));
+    const auto instinct_crop = this->get_parameter("instinct_depth_crop").as_integer_array();
+    if (instinct_crop.size() != 4)
+    {
+        throw std::runtime_error("instinct_depth_crop must contain [top, bottom, left, right]");
+    }
+    for (size_t i = 0; i < instinct_crop.size(); ++i)
+    {
+        instinct_depth_crop_[i] = std::max(0, static_cast<int>(instinct_crop[i]));
+    }
+    instinct_depth_history_frames_ = std::max(1, static_cast<int>(this->get_parameter("instinct_depth_history_frames").as_int()));
+    instinct_depth_history_skip_ = std::max(1, static_cast<int>(this->get_parameter("instinct_depth_history_skip").as_int()));
+    const auto instinct_pos = this->get_parameter("instinct_depth_offset_pos").as_double_array();
+    const auto instinct_rot = this->get_parameter("instinct_depth_offset_rot_wxyz").as_double_array();
+    const auto instinct_range = this->get_parameter("instinct_depth_range").as_double_array();
+    if (instinct_pos.size() != 3 || instinct_rot.size() != 4 || instinct_range.size() != 2)
+    {
+        throw std::runtime_error("Instinct depth camera pose/range parameters have invalid dimensions");
+    }
+    std::copy_n(instinct_pos.begin(), 3, instinct_depth_offset_pos_.begin());
+    std::copy_n(instinct_rot.begin(), 4, instinct_depth_offset_rot_wxyz_.begin());
+    instinct_depth_vertical_fov_deg_ = std::clamp(this->get_parameter("instinct_depth_vertical_fov_deg").as_double(), 1.0, 179.0);
+    instinct_depth_range_min_ = instinct_range[0];
+    instinct_depth_range_max_ = instinct_range[1];
+    if (!(instinct_depth_range_max_ > instinct_depth_range_min_))
+    {
+        throw std::runtime_error("instinct_depth_range must satisfy max > min");
+    }
+    instinct_depth_blur_kernel_ = std::max(0, static_cast<int>(this->get_parameter("instinct_depth_blur_kernel").as_int()));
+    if ((instinct_depth_blur_kernel_ % 2) == 0)
+    {
+        ++instinct_depth_blur_kernel_;
+    }
+    instinct_depth_blur_sigma_ = std::max(0.0, this->get_parameter("instinct_depth_blur_sigma").as_double());
+    if (enable_instinct_depth_camera_ &&
+        (instinct_depth_camera_name_.empty() || instinct_depth_parent_body_name_.empty() || instinct_depth_feature_name_.empty()))
+    {
+        throw std::runtime_error("Instinct depth camera name, parent body, and feature name must not be empty");
     }
     enable_com_support_visualization_ = this->get_parameter("enable_com_support_visualization").as_bool();
     com_support_pinocchio_urdf_path_ =

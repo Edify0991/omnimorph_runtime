@@ -1,0 +1,13 @@
+{
+  "key": "amp",
+  "tag": "amp_trial",
+  "mode": 1,
+  "command": [
+    "/home/edify/Code/jc01_deploy/install/mujoco_sim2sim/lib/mujoco_sim2sim/mujoco_sim_bridge",
+    "--ros-args",
+    "--params-file",
+    "/home/edify/Code/jc01_deploy/artifacts/sim2sim_showcase_20261024/work/amp_trial_bridge.yaml"
+  ],
+  "duration_requested": 17.0,
+  "exit_code": -11
+}

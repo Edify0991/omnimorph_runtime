@@ -116,6 +116,124 @@ std::string OnnxPolicyAdapter::summary() const
     return runner_->summary();
 }
 
+InstinctParkourPolicyAdapter::InstinctParkourPolicyAdapter(
+    Ort::Env &env,
+    const Sim2realCfg &cfg,
+    std::string policy_tag)
+    : actor_cfg_(cfg),
+      encoder_cfg_(cfg),
+      policy_tag_(std::move(policy_tag))
+{
+    const auto &parkour = cfg.instinct_parkour;
+    encoder_cfg_.policy_path = parkour.depth_encoder_path;
+    encoder_cfg_.policy_name = cfg.policy_name + "_depth_encoder";
+    encoder_cfg_.action_dim = 0; // Preserve the complete latent tensor.
+    encoder_cfg_.action_output_name = parkour.depth_output_name;
+    encoder_cfg_.extra_output_names.clear();
+    encoder_cfg_.action_output_indices.clear();
+    encoder_cfg_.enable_metadata_check = false;
+    encoder_cfg_.onnx_inputs = {OnnxInputSpec{
+        parkour.depth_input_name,
+        "feature",
+        parkour.depth_feature_name,
+        {},
+        parkour.depth_input_shape,
+        {}}};
+    encoder_cfg_.strict_model_io = true;
+
+    // Instinct's actor has one input: term-major proprioception followed by
+    // the depth latent.  Do not rely on model-specific input names; the
+    // profile provides the actor input name through policy_io.obs_input_name.
+    actor_cfg_.onnx_inputs = {OnnxInputSpec{
+        cfg.obs_input_name,
+        "feature_concat",
+        {},
+        {parkour.proprioception_feature_name, parkour.depth_latent_feature_name},
+        {},
+        {}}};
+    actor_cfg_.strict_model_io = true;
+
+    depth_encoder_ = std::make_unique<OnnxPolicyRunner>(
+        env, encoder_cfg_.policy_path, encoder_cfg_, policy_tag_ + "/depth_encoder");
+    actor_ = std::make_unique<OnnxPolicyRunner>(
+        env, actor_cfg_.policy_path, actor_cfg_, policy_tag_ + "/actor");
+}
+
+void InstinctParkourPolicyAdapter::init()
+{
+    depth_encoder_->init();
+    actor_->init();
+}
+
+void InstinctParkourPolicyAdapter::reset()
+{
+    depth_encoder_->reset();
+    actor_->reset();
+}
+
+PolicyInferenceResult InstinctParkourPolicyAdapter::infer(const PolicyExecutionRequest &request)
+{
+    const auto &stacked = requireVector(request.stacked_observation, "stacked_observation");
+    const auto &current = requireVector(request.current_observation, "current_observation");
+    const auto &features = requireFeatures(request.features);
+    if (features.find(actor_cfg_.instinct_parkour.depth_feature_name) == features.end())
+    {
+        throw std::runtime_error(
+            "[" + policy_tag_ + "] missing required external depth feature '" +
+            actor_cfg_.instinct_parkour.depth_feature_name + "'");
+    }
+
+    const std::vector<float> empty_action;
+    const std::vector<float> &last_action = request.last_action ? *request.last_action : empty_action;
+    PolicyInferenceResult latent = depth_encoder_->forward(
+        stacked, current, last_action, features, request.advance_time_step);
+
+    auto actor_features = features;
+    actor_features[actor_cfg_.instinct_parkour.proprioception_feature_name] = stacked;
+    actor_features[actor_cfg_.instinct_parkour.depth_latent_feature_name] = std::move(latent.action);
+    PolicyInferenceResult output = actor_->forward(
+        stacked, current, last_action, actor_features, request.advance_time_step);
+    output.inference_time_ms += latent.inference_time_ms;
+    return output;
+}
+
+std::unordered_map<std::string, std::vector<float>> InstinctParkourPolicyAdapter::prefetchExtraOutputs(
+    const std::vector<std::string> &extra_output_names,
+    const PolicyExecutionRequest &request)
+{
+    if (extra_output_names.empty())
+    {
+        return {};
+    }
+    const auto &stacked = requireVector(request.stacked_observation, "stacked_observation");
+    const auto &current = requireVector(request.current_observation, "current_observation");
+    const auto &features = requireFeatures(request.features);
+    if (features.find(actor_cfg_.instinct_parkour.depth_feature_name) == features.end())
+    {
+        return {};
+    }
+    const std::vector<float> empty_action;
+    const std::vector<float> &last_action = request.last_action ? *request.last_action : empty_action;
+    PolicyInferenceResult latent = depth_encoder_->forward(stacked, current, last_action, features, false);
+    auto actor_features = features;
+    actor_features[actor_cfg_.instinct_parkour.proprioception_feature_name] = stacked;
+    actor_features[actor_cfg_.instinct_parkour.depth_latent_feature_name] = std::move(latent.action);
+    return actor_->prefetchExtraOutputs(
+        extra_output_names, stacked, current, last_action, actor_features, false);
+}
+
+std::vector<std::string> InstinctParkourPolicyAdapter::effectiveExecutionProviders() const
+{
+    return actor_ ? actor_->effectiveExecutionProviders() : std::vector<std::string>{};
+}
+
+std::string InstinctParkourPolicyAdapter::summary() const
+{
+    return "InstinctParkour(depth=" +
+           (depth_encoder_ ? depth_encoder_->summary() : std::string("uninitialized")) +
+           ", actor=" + (actor_ ? actor_->summary() : std::string("uninitialized")) + ")";
+}
+
 void SyncWeightedInferenceStrategy::configure(const PolicyInferenceConfig &config)
 {
     config_ = config;

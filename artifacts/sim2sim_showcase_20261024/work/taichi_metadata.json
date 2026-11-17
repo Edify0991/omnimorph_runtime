@@ -1,0 +1,32 @@
+{
+  "key": "taichi",
+  "tag": "taichi",
+  "mode": 8,
+  "command": [
+    "/home/edify/Code/jc01_deploy/install/mujoco_sim2sim/lib/mujoco_sim2sim/mujoco_sim_bridge",
+    "--ros-args",
+    "--params-file",
+    "/home/edify/Code/jc01_deploy/artifacts/sim2sim_showcase_20261024/work/taichi_bridge.yaml"
+  ],
+  "duration_requested": 17.0,
+  "running_sim_time": 4.989999771118164,
+  "ending_sim_time": 22.0,
+  "exit_code": 0,
+  "render": {
+    "path": "artifacts/sim2sim_showcase_20261024/02_JC01_BeyondMimic_taichi.mp4",
+    "duration": 15.0,
+    "fps": 30,
+    "size": [
+      1920,
+      1080
+    ],
+    "first_sim_time": 5.489999771118164,
+    "camera": {
+      "follow_robot": true,
+      "distance": 3.3,
+      "azimuth": 45.0,
+      "elevation": -12.0
+    },
+    "source": "actual fused sim2sim qpos/qvel/ctrl telemetry, interpolated to 30 fps"
+  }
+}

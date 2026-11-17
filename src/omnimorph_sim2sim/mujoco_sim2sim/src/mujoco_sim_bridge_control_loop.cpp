@@ -211,6 +211,9 @@ void MujocoSimBridge::controlLoopTick()
     const rl_master::RobotStateData state = buildRobotState();
     const rl_master::TeleopCommand teleop_command = latestTeleopCommand();
     const double sim_phase_t = data_ != nullptr ? data_->time : 0.0;
+    // Must happen before controller_runtime_.step(): the Parkour adapter reads
+    // depth_history as a required external feature during policy inference.
+    updateInstinctDepthCameraFeature();
     rl_master::RobotCommandData command =
         controller_runtime_.step(state, teleop_command, effective_mode_control_word, sim_phase_t);
     const auto &controller_snapshot = controller_runtime_.controller().latestLogSnapshot();

@@ -1,0 +1,46 @@
+[
+  {
+    "file": "01_JC01_AMP_walk_run.mp4",
+    "duration_s": 15,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "codec": "h264",
+    "frames": 450,
+    "bytes": 14093095,
+    "full_decode": "passed"
+  },
+  {
+    "file": "02_JC01_BeyondMimic_taichi.mp4",
+    "duration_s": 15,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "codec": "h264",
+    "frames": 450,
+    "bytes": 7262413,
+    "full_decode": "passed"
+  },
+  {
+    "file": "03_JC01_BeyondMimic_dance.mp4",
+    "duration_s": 15,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "codec": "h264",
+    "frames": 450,
+    "bytes": 11786300,
+    "full_decode": "passed"
+  },
+  {
+    "file": "04_G1_OmniXtreme_acrobatics.mp4",
+    "duration_s": 15,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "codec": "h264",
+    "frames": 450,
+    "bytes": 7565794,
+    "full_decode": "passed"
+  }
+]

@@ -76,6 +76,37 @@ private:
     std::unique_ptr<OnnxPolicyRunner> runner_;
 };
 
+// Adapter for Instinct Lab's onboard parkour export:
+//   depth_history -> depth_encoder.onnx -> latent
+//   [term-major proprio history, latent] -> actor.onnx -> action
+// The depth history deliberately remains an external feature.  In sim2sim it
+// is produced by the MuJoCo depth publisher; on hardware the camera pipeline
+// publishes the identically preprocessed Float32MultiArray.
+class InstinctParkourPolicyAdapter final : public PolicyAdapter
+{
+public:
+    InstinctParkourPolicyAdapter(
+        Ort::Env &env,
+        const Sim2realCfg &cfg,
+        std::string policy_tag);
+
+    void init() override;
+    void reset() override;
+    PolicyInferenceResult infer(const PolicyExecutionRequest &request) override;
+    std::unordered_map<std::string, std::vector<float>> prefetchExtraOutputs(
+        const std::vector<std::string> &extra_output_names,
+        const PolicyExecutionRequest &request) override;
+    std::vector<std::string> effectiveExecutionProviders() const override;
+    std::string summary() const override;
+
+private:
+    Sim2realCfg actor_cfg_;
+    Sim2realCfg encoder_cfg_;
+    std::string policy_tag_;
+    std::unique_ptr<OnnxPolicyRunner> actor_;
+    std::unique_ptr<OnnxPolicyRunner> depth_encoder_;
+};
+
 struct PolicyAdapterNodeView
 {
     std::string name;

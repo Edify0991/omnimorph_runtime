@@ -107,8 +107,59 @@ struct MujocoSimBridge::VideoRecorderState
         }
     }
 };
+
+struct MujocoSimBridge::InstinctDepthCameraState
+{
+    GLFWwindow *window = nullptr;
+    mjvCamera camera;
+    mjvOption option;
+    mjvScene scene;
+    mjrContext context;
+    int camera_id = -1;
+    int parent_body_id = -1;
+    bool owns_glfw = false;
+    bool scene_initialized = false;
+    bool context_initialized = false;
+    double next_frame_time = std::numeric_limits<double>::quiet_NaN();
+    std::deque<std::vector<float>> history;
+    std::vector<float> raw_depth;
+    std::vector<float> processed_depth;
+    std::vector<float> blur_scratch;
+
+    InstinctDepthCameraState()
+    {
+        mjv_defaultCamera(&camera);
+        mjv_defaultOption(&option);
+        mjv_defaultScene(&scene);
+        mjr_defaultContext(&context);
+    }
+
+    ~InstinctDepthCameraState()
+    {
+        if (context_initialized)
+        {
+            mjr_freeContext(&context);
+        }
+        if (scene_initialized)
+        {
+            mjv_freeScene(&scene);
+        }
+        if (window)
+        {
+            glfwDestroyWindow(window);
+            window = nullptr;
+        }
+        if (owns_glfw)
+        {
+            glfwTerminate();
+        }
+    }
+};
 #else
 struct MujocoSimBridge::VideoRecorderState
+{
+};
+struct MujocoSimBridge::InstinctDepthCameraState
 {
 };
 #endif

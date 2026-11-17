@@ -1,0 +1,33 @@
+{
+  "key": "omnixtreme",
+  "tag": "omnixtreme",
+  "mode": 2,
+  "command": [
+    "/home/edify/Code/jc01_deploy/install/mujoco_sim2sim/lib/mujoco_sim2sim/mujoco_sim_bridge",
+    "--ros-args",
+    "--params-file",
+    "/home/edify/Code/jc01_deploy/artifacts/sim2sim_showcase_20261024/work/omnixtreme_bridge.yaml"
+  ],
+  "duration_requested": 40.0,
+  "running_sim_time": 4.671999931335449,
+  "exit_code": 0,
+  "ending_sim_time": 36.709999084472656,
+  "capture_note": "Requested 40 s; wall clock limit reached after 32.038 s of RUNNING. Preserved all captured physical states; sufficient for 15 s clip.",
+  "render": {
+    "path": "artifacts/sim2sim_showcase_20261024/04_G1_OmniXtreme_acrobatics.mp4",
+    "duration": 15.0,
+    "fps": 30,
+    "size": [
+      1920,
+      1080
+    ],
+    "first_sim_time": 21.17199993133545,
+    "camera": {
+      "follow_robot": true,
+      "distance": 3.4,
+      "azimuth": 45.0,
+      "elevation": -12.0
+    },
+    "source": "actual fused sim2sim qpos/qvel/ctrl telemetry, interpolated to 30 fps"
+  }
+}

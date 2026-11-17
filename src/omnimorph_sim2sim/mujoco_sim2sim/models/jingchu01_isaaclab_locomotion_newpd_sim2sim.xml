@@ -52,6 +52,10 @@
     <light castshadow="false" directional="true" diffuse=".3 .3 .3" specular="0.3 0.3 0.3" pos="0 1 1" dir="0 -1 -1" />
     <body name="Body" pos="0 0 0.375">
       <camera name="track" pos="0 -3 1" zaxis="0 -1 0.5" mode="track" />
+      <!-- The sim2sim bridge positions this camera from the Instinct training
+           camera contract (waist_yaw, yaw-only).  It is a renderer handle,
+           not a physical sensor or collision object. -->
+      <camera name="instinct_parkour_depth" pos="0 0 0" quat="1 0 0 0" />
       <inertial pos="-0.099888 -2.994E-08 0.017904" quat="-0.013143  0.706985  0.706985  0.013143" mass="7.7872" diaginertia="0.094211 0.090281 0.038728" />
       <geom type="mesh" contype="0" conaffinity="1" group="1" density="0" rgba="0.75294 0.75294 0.75294 1" mesh="Robotbase" />
       <site name="imu" size="0.01" pos="0 0 0" />

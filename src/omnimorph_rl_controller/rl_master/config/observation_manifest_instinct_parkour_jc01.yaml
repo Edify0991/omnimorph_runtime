@@ -1,0 +1,26 @@
+observation_manifest:
+  schema_version: 3
+  profile: "instinct_parkour_jc01"
+  # Matches the policy group stored in instinct_jc/params/env.yaml:
+  # base_ang_vel(3), projected_gravity(3), velocity command(3),
+  # q-default(28), dq(28), last action(28).  Each term is history-stacked
+  # independently for eight actor frames (term_major => 744 values).
+  terms:
+    - name: base_ang_vel
+      enabled: true
+      count: 3
+    - name: projected_gravity
+      enabled: true
+      count: 3
+    - name: command
+      enabled: true
+      components: [vx, vy, dyaw]
+    - name: joint_pos
+      enabled: true
+      count: 28
+    - name: joint_vel
+      enabled: true
+      count: 28
+    - name: last_action
+      enabled: true
+      count: 28

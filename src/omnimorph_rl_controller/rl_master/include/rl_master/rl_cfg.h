@@ -714,6 +714,24 @@ struct OnnxInputSpec
     std::vector<float> constant;
 };
 
+// Instinct Lab parkour exports the visual policy as two ONNX graphs.  The
+// depth encoder consumes a depth-history tensor and its latent is concatenated
+// with the term-major proprioception history before invoking the actor.
+// Keeping this contract in the profile makes the same runner usable in
+// MuJoCo sim2sim and on the robot (where depth_history is supplied by the
+// camera pipeline through ExternalObservationProvider).
+struct InstinctParkourAdapterCfg
+{
+    std::string depth_encoder_file;
+    std::string depth_encoder_path;
+    std::string depth_input_name = "input";
+    std::string depth_output_name = "output";
+    std::string depth_feature_name = "depth_history";
+    std::string proprioception_feature_name = "instinct_proprioception";
+    std::string depth_latent_feature_name = "instinct_depth_latent";
+    std::vector<int64_t> depth_input_shape;
+};
+
 struct ComputedFeaturePartCfg
 {
     std::string source;
@@ -1107,6 +1125,7 @@ public:
     bool advance_time_step_on_reference_prefetch = false;
     std::vector<std::string> extra_output_names;
     std::vector<OnnxInputSpec> onnx_inputs;
+    InstinctParkourAdapterCfg instinct_parkour;
     std::vector<int> action_output_indices;
     std::string action_output_source_order;
     std::string action_output_target_order;
@@ -1712,9 +1731,10 @@ public:
             {
                 throw std::runtime_error("solver_control_hz must be > 0");
             }
-            if (policy_adapter != "onnx")
+            if (policy_adapter != "onnx" && policy_adapter != "instinct_parkour")
             {
-                throw std::runtime_error("policy_adapter currently only supports 'onnx'");
+                throw std::runtime_error(
+                    "policy_adapter must be one of: onnx, instinct_parkour");
             }
             if (inference_strategy != "sync_step" &&
                 inference_strategy != "chunked_receding" &&
@@ -2088,6 +2108,54 @@ public:
             if (policy_name.empty() && !policy_path.empty())
             {
                 policy_name = std::filesystem::path(policy_path).stem().string();
+            }
+
+            instinct_parkour = InstinctParkourAdapterCfg{};
+            if (policy_adapter == "instinct_parkour")
+            {
+                const YAML::Node parkour_cfg = cfg["instinct_parkour"];
+                if (!parkour_cfg || !parkour_cfg.IsMap())
+                {
+                    throw std::runtime_error(
+                        "instinct_parkour policy_adapter requires an instinct_parkour map");
+                }
+                instinct_parkour.depth_encoder_file =
+                    yamlReadOr<std::string>(parkour_cfg, "depth_encoder_file", "");
+                const std::string depth_encoder_path_raw =
+                    yamlReadOr<std::string>(parkour_cfg, "depth_encoder_path", "");
+                if (!depth_encoder_path_raw.empty())
+                {
+                    instinct_parkour.depth_encoder_path = resolvePath(depth_encoder_path_raw);
+                }
+                else if (!instinct_parkour.depth_encoder_file.empty())
+                {
+                    instinct_parkour.depth_encoder_path =
+                        resolvePath(instinct_parkour.depth_encoder_file);
+                }
+                else
+                {
+                    throw std::runtime_error(
+                        "instinct_parkour.depth_encoder_file/depth_encoder_path is required");
+                }
+                instinct_parkour.depth_input_name =
+                    yamlReadOr<std::string>(parkour_cfg, "depth_input_name", "input");
+                instinct_parkour.depth_output_name =
+                    yamlReadOr<std::string>(parkour_cfg, "depth_output_name", "output");
+                instinct_parkour.depth_feature_name =
+                    yamlReadOr<std::string>(parkour_cfg, "depth_feature_name", "depth_history");
+                instinct_parkour.proprioception_feature_name = yamlReadOr<std::string>(
+                    parkour_cfg, "proprioception_feature_name", "instinct_proprioception");
+                instinct_parkour.depth_latent_feature_name = yamlReadOr<std::string>(
+                    parkour_cfg, "depth_latent_feature_name", "instinct_depth_latent");
+                instinct_parkour.depth_input_shape =
+                    yamlReadOr<std::vector<int64_t>>(parkour_cfg, "depth_input_shape", {});
+                if (instinct_parkour.depth_feature_name.empty() ||
+                    instinct_parkour.proprioception_feature_name.empty() ||
+                    instinct_parkour.depth_latent_feature_name.empty())
+                {
+                    throw std::runtime_error(
+                        "instinct_parkour feature names must not be empty");
+                }
             }
 
             observation_manifest_file = yamlReadOr<std::string>(cfg, "observation_manifest_file", "observation_manifest.yaml");

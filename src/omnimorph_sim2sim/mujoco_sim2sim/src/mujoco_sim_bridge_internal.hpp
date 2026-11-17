@@ -92,6 +92,7 @@ public:
 private:
     struct ViewerState;
     struct VideoRecorderState;
+    struct InstinctDepthCameraState;
     struct VideoFrameSnapshot
     {
         std::vector<double> qpos;
@@ -135,6 +136,9 @@ private:
     void shutdownVideoRecorder();
     void recordVideoFrameIfDue();
     bool writeVideoFrame(const VideoFrameSnapshot &snapshot);
+    void initializeInstinctDepthCamera();
+    void shutdownInstinctDepthCamera();
+    void updateInstinctDepthCameraFeature();
 
     // Command input, lifecycle handling, and control-loop timing.
     void teleopCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
@@ -265,6 +269,27 @@ private:
     double video_follow_azimuth_ = 90.0;
     double video_follow_elevation_ = -20.0;
     std::array<double, 3> video_follow_lookat_offset_{0.0, 0.0, 0.8};
+    // A synthetic MuJoCo depth camera for Instinct Lab Parkour.  It is
+    // intentionally independent of physical-camera ROS drivers: sim2sim
+    // renders the same yaw-aligned waist view and injects its history directly
+    // into the RL external-feature cache.
+    bool enable_instinct_depth_camera_ = false;
+    std::string instinct_depth_camera_name_ = "instinct_parkour_depth";
+    std::string instinct_depth_parent_body_name_ = "waist_yaw";
+    std::string instinct_depth_feature_name_ = "depth_history";
+    double instinct_depth_camera_hz_ = 50.0;
+    int instinct_depth_width_ = 128;
+    int instinct_depth_height_ = 72;
+    std::array<int, 4> instinct_depth_crop_{36, 0, 32, 32};
+    int instinct_depth_history_frames_ = 8;
+    int instinct_depth_history_skip_ = 5;
+    std::array<double, 3> instinct_depth_offset_pos_{0.11843, 0.0, 0.27508};
+    std::array<double, 4> instinct_depth_offset_rot_wxyz_{0.9794170213, 0.0, 0.2018472157, 0.0};
+    double instinct_depth_vertical_fov_deg_ = 58.29;
+    double instinct_depth_range_min_ = 0.0;
+    double instinct_depth_range_max_ = 2.5;
+    int instinct_depth_blur_kernel_ = 3;
+    double instinct_depth_blur_sigma_ = 1.0;
     bool enable_com_support_visualization_ = false;
     std::string com_support_pinocchio_urdf_path_;
     std::vector<std::string> support_foot_site_names_;
@@ -358,6 +383,7 @@ private:
     // Native viewer state.
     std::unique_ptr<ViewerState> viewer_state_;
     std::unique_ptr<VideoRecorderState> video_recorder_state_;
+    std::unique_ptr<InstinctDepthCameraState> instinct_depth_camera_state_;
     double next_video_frame_time_ = std::numeric_limits<double>::quiet_NaN();
     uint64_t video_frame_count_ = 0;
     std::thread video_recorder_thread_;
@@ -388,6 +414,11 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr teleop_sub_;
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mode_control_sub_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr runtime_command_sub_;
+    // Sim2sim accepts the same profile-declared external features as sim2real.
+    // This is used by perceptive policies such as Instinct Parkour, whose
+    // depth-history publisher can be swapped between MuJoCo and hardware.
+    std::vector<rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr>
+        external_observation_subs_;
     rclcpp::TimerBase::SharedPtr control_timer_;
     std::thread input_executor_thread_;
     std::thread state_telemetry_thread_;

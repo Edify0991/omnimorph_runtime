@@ -61,6 +61,29 @@ std::string sanitizeVideoFileName(std::string name)
     }
     return name;
 }
+
+std::array<double, 3> rotateByQuatWxyz(
+    const std::array<double, 4> &q,
+    const std::array<double, 3> &v)
+{
+    const std::array<double, 3> u{q[1], q[2], q[3]};
+    const std::array<double, 3> uv{
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    };
+    const std::array<double, 3> uuv{
+        u[1] * uv[2] - u[2] * uv[1],
+        u[2] * uv[0] - u[0] * uv[2],
+        u[0] * uv[1] - u[1] * uv[0],
+    };
+    return {
+        v[0] + 2.0 * (q[0] * uv[0] + uuv[0]),
+        v[1] + 2.0 * (q[0] * uv[1] + uuv[1]),
+        v[2] + 2.0 * (q[0] * uv[2] + uuv[2]),
+    };
+}
+
 }
 
 void MujocoSimBridge::initializeViewer()
@@ -199,7 +222,7 @@ void MujocoSimBridge::initializeVideoRecorder()
     video_output_path_ = output_path.lexically_normal().string();
 
     auto state = std::make_unique<VideoRecorderState>();
-    if (!viewer_state_ || !viewer_state_->glfw_initialized)
+    if ((!viewer_state_ || !viewer_state_->glfw_initialized) && !instinct_depth_camera_state_)
     {
         if (!glfwInit())
         {
@@ -326,6 +349,309 @@ void MujocoSimBridge::initializeVideoRecorder()
             "Video recording requested but mujoco_sim2sim was built without GLFW/offscreen viewer support.");
         enable_video_recording_ = false;
     }
+#endif
+}
+
+void MujocoSimBridge::initializeInstinctDepthCamera()
+{
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+    if (!enable_instinct_depth_camera_)
+    {
+        return;
+    }
+    if (!model_ || !data_)
+    {
+        throw std::runtime_error("Instinct depth camera requested before MuJoCo model/data are ready");
+    }
+
+    const int output_width = instinct_depth_width_ - instinct_depth_crop_[2] - instinct_depth_crop_[3];
+    const int output_height = instinct_depth_height_ - instinct_depth_crop_[0] - instinct_depth_crop_[1];
+    if (output_width <= 0 || output_height <= 0)
+    {
+        throw std::runtime_error("Instinct depth crop removes the entire rendered image");
+    }
+
+    auto state = std::make_unique<InstinctDepthCameraState>();
+    state->camera_id = mj_name2id(model_, mjOBJ_CAMERA, instinct_depth_camera_name_.c_str());
+    state->parent_body_id = mj_name2id(model_, mjOBJ_BODY, instinct_depth_parent_body_name_.c_str());
+    if (state->camera_id < 0)
+    {
+        throw std::runtime_error(
+            "Instinct depth camera '" + instinct_depth_camera_name_ + "' is absent from MuJoCo XML");
+    }
+    if (state->parent_body_id < 0)
+    {
+        throw std::runtime_error(
+            "Instinct depth parent body '" + instinct_depth_parent_body_name_ + "' is absent from MuJoCo XML");
+    }
+
+    if (!viewer_state_ || !viewer_state_->glfw_initialized)
+    {
+        if (!glfwInit())
+        {
+            throw std::runtime_error("GLFW init failed for the Instinct sim2sim depth renderer");
+        }
+        state->owns_glfw = true;
+    }
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
+    state->window = glfwCreateWindow(1, 1, "MuJoCo Instinct Depth Camera", nullptr, nullptr);
+    if (!state->window)
+    {
+        throw std::runtime_error("Hidden GLFW context creation failed for the Instinct sim2sim depth renderer");
+    }
+    glfwMakeContextCurrent(state->window);
+
+    // The camera node only gives MuJoCo a named rendering handle.  Position
+    // and orientation are updated from waist_yaw each frame to reproduce the
+    // Isaac grouped raycaster's yaw-only attachment.
+    model_->cam_bodyid[state->camera_id] = 0;
+    model_->cam_mode[state->camera_id] = mjCAMLIGHT_FIXED;
+    model_->cam_fovy[state->camera_id] = instinct_depth_vertical_fov_deg_;
+    model_->vis.global.offwidth = instinct_depth_width_;
+    model_->vis.global.offheight = instinct_depth_height_;
+    mjv_makeScene(model_, &state->scene, 4000);
+    state->scene_initialized = true;
+    mjr_makeContext(model_, &state->context, mjFONTSCALE_150);
+    state->context_initialized = true;
+    mjr_setBuffer(mjFB_OFFSCREEN, &state->context);
+    state->context.readDepthMap = mjDEPTH_ZEROFAR;
+    state->camera.type = mjCAMERA_FIXED;
+    state->camera.fixedcamid = state->camera_id;
+    std::fill(std::begin(state->option.geomgroup), std::end(state->option.geomgroup), 0);
+    state->option.geomgroup[0] = 1;
+
+    const size_t raw_count = static_cast<size_t>(instinct_depth_width_) * static_cast<size_t>(instinct_depth_height_);
+    const size_t processed_count = static_cast<size_t>(output_width) * static_cast<size_t>(output_height);
+    state->raw_depth.assign(raw_count, 0.0f);
+    state->processed_depth.assign(processed_count, 0.0f);
+    state->blur_scratch.assign(processed_count, 0.0f);
+    state->history.clear();
+    state->next_frame_time = std::numeric_limits<double>::quiet_NaN();
+    instinct_depth_camera_state_ = std::move(state);
+
+    const size_t expected_dim = processed_count * static_cast<size_t>(instinct_depth_history_frames_);
+    bool declared_feature = false;
+    for (const auto &spec : controller_runtime_.runtimeCfg().external_observations)
+    {
+        if (spec.name == instinct_depth_feature_name_)
+        {
+            declared_feature = true;
+            if (spec.dim > 0 && static_cast<size_t>(spec.dim) != expected_dim)
+            {
+                throw std::runtime_error(
+                    "Instinct depth feature '" + instinct_depth_feature_name_ + "' declares dim " +
+                    std::to_string(spec.dim) + ", but renderer produces " + std::to_string(expected_dim));
+            }
+        }
+    }
+    if (!declared_feature)
+    {
+        RCLCPP_WARN(
+            this->get_logger(),
+            "Instinct depth renderer is enabled but active profile declares no external observation '%s'. "
+            "The data will be injected, but the Parkour adapter will not receive it until that profile declares it.",
+            instinct_depth_feature_name_.c_str());
+    }
+    RCLCPP_INFO(
+        this->get_logger(),
+        "Instinct synthetic depth camera ready: %s <- %s, source=%dx%d, crop=[%d,%d,%d,%d], history=%dx every %d frames, feature_dim=%zu",
+        instinct_depth_camera_name_.c_str(),
+        instinct_depth_parent_body_name_.c_str(),
+        instinct_depth_width_,
+        instinct_depth_height_,
+        instinct_depth_crop_[0],
+        instinct_depth_crop_[1],
+        instinct_depth_crop_[2],
+        instinct_depth_crop_[3],
+        instinct_depth_history_frames_,
+        instinct_depth_history_skip_,
+        expected_dim);
+#else
+    if (enable_instinct_depth_camera_)
+    {
+        throw std::runtime_error(
+            "Instinct sim2sim depth rendering requires GLFW/MuJoCo viewer support; rebuild with MUJOCO_SIM2SIM_ENABLE_VIEWER=ON");
+    }
+#endif
+}
+
+void MujocoSimBridge::shutdownInstinctDepthCamera()
+{
+    instinct_depth_camera_state_.reset();
+}
+
+void MujocoSimBridge::updateInstinctDepthCameraFeature()
+{
+#ifdef MUJOCO_SIM2SIM_WITH_VIEWER
+    if (!enable_instinct_depth_camera_ || !instinct_depth_camera_state_ || !model_ || !data_)
+    {
+        return;
+    }
+    auto &state = *instinct_depth_camera_state_;
+    const double sim_time = data_->time;
+    if (!std::isfinite(state.next_frame_time))
+    {
+        state.next_frame_time = sim_time;
+    }
+    if (sim_time + 1.0e-9 < state.next_frame_time && !state.history.empty())
+    {
+        return;
+    }
+    const double period = 1.0 / instinct_depth_camera_hz_;
+    while (sim_time + 1.0e-9 >= state.next_frame_time)
+    {
+        state.next_frame_time += period;
+    }
+
+    const double *parent_quat_ptr = data_->xquat + 4 * state.parent_body_id;
+    const std::array<double, 4> parent_quat{
+        parent_quat_ptr[0], parent_quat_ptr[1], parent_quat_ptr[2], parent_quat_ptr[3]};
+    const double yaw = std::atan2(
+        2.0 * (parent_quat[0] * parent_quat[3] + parent_quat[1] * parent_quat[2]),
+        1.0 - 2.0 * (parent_quat[2] * parent_quat[2] + parent_quat[3] * parent_quat[3]));
+    const std::array<double, 4> yaw_quat{
+        std::cos(0.5 * yaw), 0.0, 0.0, std::sin(0.5 * yaw)};
+    // Isaac ray cameras look along +X / +Z up, while MuJoCo cameras look
+    // along -Z / +Y up.  This is the same conversion used by instinct_jc's
+    // reference sim2sim script.
+    const std::array<double, 4> isaac_camera_from_mujoco{0.5, 0.5, -0.5, -0.5};
+    const auto camera_offset_quat = normalizeQuatWxyz(
+        multiplyQuatWxyz(instinct_depth_offset_rot_wxyz_, isaac_camera_from_mujoco));
+    const auto offset_world = rotateByQuatWxyz(yaw_quat, instinct_depth_offset_pos_);
+    const double *parent_pos = data_->xpos + 3 * state.parent_body_id;
+    model_->cam_pos[3 * state.camera_id + 0] = parent_pos[0] + offset_world[0];
+    model_->cam_pos[3 * state.camera_id + 1] = parent_pos[1] + offset_world[1];
+    model_->cam_pos[3 * state.camera_id + 2] = parent_pos[2] + offset_world[2];
+    const auto camera_quat = multiplyQuatWxyz(yaw_quat, camera_offset_quat);
+    for (int i = 0; i < 4; ++i)
+    {
+        model_->cam_quat[4 * state.camera_id + i] = camera_quat[static_cast<size_t>(i)];
+    }
+
+    glfwMakeContextCurrent(state.window);
+    mjr_setBuffer(mjFB_OFFSCREEN, &state.context);
+    const mjrRect viewport{0, 0, instinct_depth_width_, instinct_depth_height_};
+    const auto old_segment = state.scene.flags[mjRND_SEGMENT];
+    const auto old_idcolor = state.scene.flags[mjRND_IDCOLOR];
+    mjv_updateScene(
+        model_, data_, &state.option, nullptr, &state.camera, mjCAT_ALL, &state.scene);
+    state.scene.flags[mjRND_SEGMENT] = 1;
+    state.scene.flags[mjRND_IDCOLOR] = 1;
+    mjr_render(viewport, &state.scene, &state.context);
+    mjr_readPixels(nullptr, state.raw_depth.data(), viewport, &state.context);
+    state.scene.flags[mjRND_SEGMENT] = old_segment;
+    state.scene.flags[mjRND_IDCOLOR] = old_idcolor;
+
+    const float znear = static_cast<float>(model_->vis.map.znear * model_->stat.extent);
+    const float zfar = static_cast<float>(model_->vis.map.zfar * model_->stat.extent);
+    const float c = -0.5f * (-(zfar + znear) / (zfar - znear)) - 0.5f;
+    const float d = -0.5f * (-(2.0f * zfar * znear) / (zfar - znear));
+    const int top = instinct_depth_crop_[0];
+    const int left = instinct_depth_crop_[2];
+    const int output_width = instinct_depth_width_ - instinct_depth_crop_[2] - instinct_depth_crop_[3];
+    const int output_height = instinct_depth_height_ - instinct_depth_crop_[0] - instinct_depth_crop_[1];
+    for (int row = 0; row < output_height; ++row)
+    {
+        const int source_row = top + row;
+        // mjr_readPixels is bottom-up.  Python's Renderer flips it before
+        // crop/normalization, so mirror that order here.
+        const int raw_row = instinct_depth_height_ - 1 - source_row;
+        for (int col = 0; col < output_width; ++col)
+        {
+            const float raw = state.raw_depth[static_cast<size_t>(raw_row) * instinct_depth_width_ + left + col];
+            float metric = d / (raw + c);
+            if (!std::isfinite(metric))
+            {
+                metric = static_cast<float>(instinct_depth_range_max_);
+            }
+            state.processed_depth[static_cast<size_t>(row) * output_width + col] = metric;
+        }
+    }
+
+    if (instinct_depth_blur_kernel_ > 1)
+    {
+        const int radius = instinct_depth_blur_kernel_ / 2;
+        const double sigma = instinct_depth_blur_sigma_ > 0.0 ? instinct_depth_blur_sigma_ : 0.3 * (radius - 1) + 0.8;
+        std::vector<double> kernel(static_cast<size_t>(instinct_depth_blur_kernel_), 0.0);
+        double kernel_sum = 0.0;
+        for (int k = -radius; k <= radius; ++k)
+        {
+            const double value = std::exp(-0.5 * static_cast<double>(k * k) / (sigma * sigma));
+            kernel[static_cast<size_t>(k + radius)] = value;
+            kernel_sum += value;
+        }
+        for (double &value : kernel)
+        {
+            value /= kernel_sum;
+        }
+        for (int row = 0; row < output_height; ++row)
+        {
+            for (int col = 0; col < output_width; ++col)
+            {
+                double sum = 0.0;
+                for (int k = -radius; k <= radius; ++k)
+                {
+                    const int sample_col = std::clamp(col + k, 0, output_width - 1);
+                    sum += kernel[static_cast<size_t>(k + radius)] *
+                           state.processed_depth[static_cast<size_t>(row) * output_width + sample_col];
+                }
+                state.blur_scratch[static_cast<size_t>(row) * output_width + col] = static_cast<float>(sum);
+            }
+        }
+        for (int row = 0; row < output_height; ++row)
+        {
+            for (int col = 0; col < output_width; ++col)
+            {
+                double sum = 0.0;
+                for (int k = -radius; k <= radius; ++k)
+                {
+                    const int sample_row = std::clamp(row + k, 0, output_height - 1);
+                    sum += kernel[static_cast<size_t>(k + radius)] *
+                           state.blur_scratch[static_cast<size_t>(sample_row) * output_width + col];
+                }
+                state.processed_depth[static_cast<size_t>(row) * output_width + col] = static_cast<float>(sum);
+            }
+        }
+    }
+    for (float &value : state.processed_depth)
+    {
+        value = std::clamp(value, static_cast<float>(instinct_depth_range_min_), static_cast<float>(instinct_depth_range_max_));
+        value = (value - static_cast<float>(instinct_depth_range_min_)) /
+                static_cast<float>(instinct_depth_range_max_ - instinct_depth_range_min_);
+    }
+
+    const size_t required_history = static_cast<size_t>(
+        1 + instinct_depth_history_skip_ * (instinct_depth_history_frames_ - 1));
+    const size_t history_capacity = std::max<size_t>(
+        static_cast<size_t>(std::ceil(instinct_depth_camera_hz_)), required_history);
+    if (state.history.empty())
+    {
+        for (size_t i = 0; i < history_capacity; ++i)
+        {
+            state.history.push_back(state.processed_depth);
+        }
+    }
+    else
+    {
+        state.history.push_back(state.processed_depth);
+        while (state.history.size() > history_capacity)
+        {
+            state.history.pop_front();
+        }
+    }
+
+    std::vector<float> flattened;
+    flattened.reserve(state.processed_depth.size() * static_cast<size_t>(instinct_depth_history_frames_));
+    const size_t first = state.history.size() - required_history;
+    for (int frame = 0; frame < instinct_depth_history_frames_; ++frame)
+    {
+        const size_t history_index = first + static_cast<size_t>(frame * instinct_depth_history_skip_);
+        const auto &image = state.history[history_index];
+        flattened.insert(flattened.end(), image.begin(), image.end());
+    }
+    controller_runtime_.controller().setExternalObservationFeature(
+        instinct_depth_feature_name_, flattened, rl_master::monotonicTimeSec());
 #endif
 }
 

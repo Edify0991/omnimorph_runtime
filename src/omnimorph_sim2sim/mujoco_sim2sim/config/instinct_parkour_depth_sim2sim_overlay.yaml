@@ -1,0 +1,22 @@
+# Overlay for an existing JC01 full-body MuJoCo sim2sim parameter file.
+# Use it as a second ROS parameter file, or copy these keys into the selected
+# jc01_*_sim2sim.yaml. It requires the `instinct_parkour_depth` camera that is
+# part of jingchu01_isaaclab_locomotion_newpd_sim2sim.xml.
+mujoco_sim_bridge:
+  ros__parameters:
+    enable_instinct_depth_camera: true
+    instinct_depth_camera_name: instinct_parkour_depth
+    instinct_depth_parent_body_name: waist_yaw
+    instinct_depth_feature_name: depth_history
+    instinct_depth_camera_hz: 50.0
+    instinct_depth_width: 128
+    instinct_depth_height: 72
+    instinct_depth_crop: [36, 0, 32, 32]
+    instinct_depth_history_frames: 8
+    instinct_depth_history_skip: 5
+    instinct_depth_offset_pos: [0.11843, 0.0, 0.27508]
+    instinct_depth_offset_rot_wxyz: [0.9794170213, 0.0, 0.2018472157, 0.0]
+    instinct_depth_vertical_fov_deg: 58.29
+    instinct_depth_range: [0.0, 2.5]
+    instinct_depth_blur_kernel: 3
+    instinct_depth_blur_sigma: 1.0

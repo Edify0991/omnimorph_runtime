@@ -1877,11 +1877,19 @@ void RL_controller::initPolicyGroup(const Sim2realCfg &cfg, const std::string &t
     PolicyRunnerNode primary;
     primary.name = tag + "/main";
     primary.weight = 1.0f;
-    primary.runner = std::make_unique<OnnxPolicyAdapter>(
-        onnx_env_,
-        primary_cfg.policy_path,
-        primary_cfg,
-        primary.name);
+    if (primary_cfg.policy_adapter == "instinct_parkour")
+    {
+        primary.runner = std::make_unique<InstinctParkourPolicyAdapter>(
+            onnx_env_, primary_cfg, primary.name);
+    }
+    else
+    {
+        primary.runner = std::make_unique<OnnxPolicyAdapter>(
+            onnx_env_,
+            primary_cfg.policy_path,
+            primary_cfg,
+            primary.name);
+    }
     primary.runner->init();
     group->runners.push_back(std::move(primary));
 

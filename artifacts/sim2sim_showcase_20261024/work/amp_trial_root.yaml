@@ -1,0 +1,193 @@
+omnimorph_root_dir: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master
+humanoid_rl_root_dir: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master
+robot_identity:
+  id: jc01
+  morphology: humanoid
+  vendor: jingchu
+  kinematics_adapter: jc01
+  motor_io_backend: shm
+  external_hardware_bridge: jc01_shm_bridge
+robot_global_joint_order:
+- right_hip_roll
+- right_hip_yaw
+- right_hip_pitch
+- right_knee_pitch
+- right_ankle_pitch
+- right_ankle_roll
+- left_hip_roll
+- left_hip_yaw
+- left_hip_pitch
+- left_knee_pitch
+- left_ankle_pitch
+- left_ankle_roll
+- waist_roll
+- waist_yaw
+- right_shoulder_pitch
+- right_shoulder_roll
+- right_shoulder_yaw
+- right_elbow_pitch
+- right_elbow_yaw
+- right_wrist_pitch
+- right_wrist_roll
+- left_shoulder_pitch
+- left_shoulder_roll
+- left_shoulder_yaw
+- left_elbow_pitch
+- left_elbow_yaw
+- left_wrist_pitch
+- left_wrist_roll
+robot_global_motor_order:
+- right_hip_roll
+- right_hip_yaw
+- right_hip_pitch
+- right_knee_pitch
+- right_ankle_pitch
+- right_ankle_roll
+- left_hip_roll
+- left_hip_yaw
+- left_hip_pitch
+- left_knee_pitch
+- left_ankle_pitch
+- left_ankle_roll
+- waist_yaw
+- waist_roll
+- __ignore__right_gripper
+- right_wrist_roll
+- right_wrist_pitch
+- right_elbow_yaw
+- right_elbow_pitch
+- right_shoulder_yaw
+- right_shoulder_roll
+- right_shoulder_pitch
+- __ignore__left_gripper
+- left_wrist_roll
+- left_wrist_pitch
+- left_elbow_yaw
+- left_elbow_pitch
+- left_shoulder_yaw
+- left_shoulder_roll
+- left_shoulder_pitch
+joint_groups:
+  leg:
+  - right_hip_roll
+  - right_hip_yaw
+  - right_hip_pitch
+  - right_knee_pitch
+  - right_ankle_pitch
+  - right_ankle_roll
+  - left_hip_roll
+  - left_hip_yaw
+  - left_hip_pitch
+  - left_knee_pitch
+  - left_ankle_pitch
+  - left_ankle_roll
+  waist:
+  - waist_roll
+  - waist_yaw
+  arm:
+  - right_shoulder_pitch
+  - right_shoulder_roll
+  - right_shoulder_yaw
+  - right_elbow_pitch
+  - right_elbow_yaw
+  - right_wrist_pitch
+  - right_wrist_roll
+  - left_shoulder_pitch
+  - left_shoulder_roll
+  - left_shoulder_yaw
+  - left_elbow_pitch
+  - left_elbow_yaw
+  - left_wrist_pitch
+  - left_wrist_roll
+robot_kinematics_adapter: jc01
+deploy_mode_profiles:
+- mode_id: 0
+  config_section: amp_tienkunglab_jc01_walk_full_body
+  tag: tienkung_amp
+- mode_id: 1
+  config_section: amp_mjlab_jc01_walkrun_full_body
+  tag: amp_mjlab_jc01_walkrun_full_body
+- mode_id: 2
+  config_section: engineaigym_walk_lower_body
+  tag: vel_walk
+- mode_id: 3
+  config_section: engineaigym_stand_lower_body
+  tag: stand
+- mode_id: 4
+  config_section: jingchu01_dcmotor_formal
+  tag: jc01_dcmotor_formal
+- mode_id: 5
+  config_section: jingchu01_pacedcmotor_formal
+  tag: jc01_pacedcmotor_formal
+- mode_id: 6
+  config_section: beyondmimic_jc01_walk_lower_body_w_state_estimation
+  tag: beyondmimic_jc01_walk_lower_body_w_state_estimation
+- mode_id: 7
+  config_section: beyondmimic_jc01_dance_full_body_wo_state_estimation
+  tag: beyondmimic_jc01_dance_full_body_wo_state_estimation
+- mode_id: 8
+  config_section: beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation
+  tag: beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation
+config_files:
+  amp_mjlab_jc01_walkrun_full_body: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master/config/profiles/amp_mjlab_jc01_walkrun_full_body.yaml
+  beyondmimic_jc01_walk_lower_body_w_state_estimation: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master/config/profiles/beyondmimic_jc01_walk_lower_body_w_state_estimation.yaml
+  beyondmimic_jc01_dance_full_body_wo_state_estimation: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master/config/profiles/beyondmimic_jc01_dance_full_body_wo_state_estimation.yaml
+  engineaigym_walk_lower_body: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master/config/profiles/engineaigym_walk_lower_body.yaml
+  engineaigym_stand_lower_body: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master/config/profiles/engineaigym_stand_lower_body.yaml
+  jingchu01_dcmotor_formal: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master/config/profiles/jingchu01_dcmotor_formal.yaml
+  jingchu01_pacedcmotor_formal: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master/config/profiles/jingchu01_pacedcmotor_formal.yaml
+  amp_tienkunglab_jc01_walk_full_body: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master/config/profiles/amp_tienkunglab_jc01_walk_full_body.yaml
+  beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation: /home/edify/Code/jc01_deploy/src/omnimorph_rl_controller/rl_master/config/profiles/beyondmimic_jc01_taichi_full_body_history4_wo_state_estimation.yaml
+path_variables:
+  robot_assets_dir: /home/edify/Code/jc01-model
+  jc01_pinocchio_urdf: /home/edify/Code/jc01-model/JC01-URDF.urdf
+  jc01_scene_xml: /home/edify/Code/jc01-model/scene_jingchu01.xml
+  jc01_isaaclab_locomotion_newpd_sim2sim_xml: ../../../omnimorph_sim2sim/mujoco_sim2sim/models/jingchu01_isaaclab_locomotion_newpd_sim2sim.xml
+  g1_pinocchio_urdf: /home/edify/Code/unitree_g1_model/g1_29dof.urdf
+  g1_scene_xml: /home/edify/Code/jc01-model/scene_jingchu01.xml
+runtime_process:
+  controller:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 3
+    use_fifo: true
+    fifo_priority: 90
+  solver:
+    enabled: true
+    lock_memory: true
+    set_affinity: true
+    cpu_id: 2
+    use_fifo: true
+    fifo_priority: 90
+logging:
+  enabled: true
+  backend: mcap
+  output_dir: /home/edify/Code/jc01_deploy/artifacts/sim2sim_showcase_20261024/work/runtime_logs
+  session_name_policy: timestamp_policy
+  custom_session_name: ''
+  writer:
+    queue_capacity: 256
+    flush_period_ms: 250
+    compression: zstd
+    chunk_size_kb: 1024
+  tick:
+    enabled: true
+    decimation: 1
+    include_observation: true
+    include_policy_action: true
+    include_motor_io: true
+    include_joint_targets: true
+    include_external_observations: false
+  events:
+    enabled: true
+  reference_motion:
+    enabled: false
+  source_samples:
+    enabled: true
+    include_base_imu: true
+    include_base_state: true
+    include_foot_force_sensors: true
+    include_external_observations: false
+  export:
+    default_format: none
