@@ -35,6 +35,16 @@ def generate_launch_description():
         default_value=default_bridge_cfg,
         description="Path to mujoco_sim2sim yaml config",
     )
+    rl_cfg_path_arg = DeclareLaunchArgument(
+        "rl_cfg_path",
+        default_value="",
+        description="rl_master root config used by the fused MuJoCo runtime",
+    )
+    mode_id_arg = DeclareLaunchArgument(
+        "mode_id",
+        default_value="11",
+        description="Deploy profile used for joint order, gains and limits",
+    )
     control_hz_arg = DeclareLaunchArgument(
         "control_hz",
         default_value="500.0",
@@ -102,6 +112,8 @@ def generate_launch_description():
             "model_path": LaunchConfiguration("model_path"),
             "backend": LaunchConfiguration("backend"),
             "bridge_config": LaunchConfiguration("bridge_config"),
+            "rl_cfg_path": LaunchConfiguration("rl_cfg_path"),
+            "mode_id": LaunchConfiguration("mode_id"),
             "control_hz": LaunchConfiguration("control_hz"),
             "fixed_base": LaunchConfiguration("fixed_base"),
             "fixed_base_height": LaunchConfiguration("fixed_base_height"),
@@ -129,6 +141,8 @@ def generate_launch_description():
         backend_arg,
         test_config_arg,
         bridge_config_arg,
+        rl_cfg_path_arg,
+        mode_id_arg,
         control_hz_arg,
         fixed_base_arg,
         fixed_base_height_arg,

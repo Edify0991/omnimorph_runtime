@@ -1,6 +1,7 @@
 ﻿#ifndef JOINT_MOTOR_TEST_RUNNER_H
 #define JOINT_MOTOR_TEST_RUNNER_H
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -14,6 +15,7 @@
 #include "rl_master/deploy_state_machine.h"
 #include "rl_master/logging/structured_logger.h"
 #include "rl_master/robot_types.h"
+#include "joint_motor_test/septic_trajectory.h"
 
 namespace joint_motor_test
 {
@@ -22,6 +24,7 @@ enum class TrajectorySource
 {
     kFile,
     kSine,
+    kAcceptance,
 };
 
 enum class MotorControlMode
@@ -48,6 +51,35 @@ struct SineTrajectoryConfig
     std::vector<int> sequential_joint_order;
     double sequential_segment_sec = 2.0;
     std::string export_reference_path;
+};
+
+struct AcceptanceJointConfig
+{
+    std::string name;
+    size_t index = 0;
+    double q_min = 0.0;
+    double q_max = 0.0;
+    double kp = 0.0;
+    double kd = 0.0;
+    double tau_limit = 0.0;
+    SepticLimits limits;
+    double required_actual_velocity = 0.0;
+    double required_actual_range = 0.0;
+    double actuator_mass_kg = 0.0;
+    std::vector<std::string> coupled_cst_joints;
+    std::vector<size_t> coupled_cst_indices;
+};
+
+struct AcceptanceTestConfig
+{
+    double csp_hold_sec = 2.0;
+    double dwell_sec = 2.0;
+    double state_timeout_sec = 0.10;
+    double speed_abort_ratio = 1.15;
+    double position_guard_margin = 0.035;
+    double pd_gain_scale = 1.0;
+    double torque_limit_scale = 1.0;
+    std::vector<AcceptanceJointConfig> joints;
 };
 
 struct JointMotorTestConfig
@@ -80,6 +112,7 @@ struct JointMotorTestConfig
     std::string data_path;
 
     SineTrajectoryConfig sine;
+    AcceptanceTestConfig acceptance;
 };
 
 struct TrajectoryFrame
@@ -109,8 +142,29 @@ private:
     rl_master::DeployStateOutput updateStateMachine(double now_sec);
 
     rl_master::RobotCommandData buildPlaybackCommand();
+    rl_master::RobotCommandData buildAcceptanceCommand(double now_sec);
     rl_master::RobotCommandData buildZeroingCommand(const std::vector<float> &target_q) const;
     rl_master::RobotCommandData buildDisabledCommand();
+    rl_master::RobotCommandData buildCspHoldCommand(const std::vector<float> &hold_q) const;
+
+    enum class AcceptancePhase
+    {
+        kCspHold,
+        kMoveLower,
+        kHoldLower,
+        kMoveUpper,
+        kHoldUpper,
+        kMoveHome,
+        kHoldHome,
+        kComplete,
+        kAborted,
+    };
+    void resetAcceptance(double now_sec);
+    void startAcceptanceMotion(AcceptancePhase phase, double q_start, double q_end, double now_sec);
+    void transitionAcceptance(AcceptancePhase phase, double now_sec);
+    void abortAcceptance(const std::string &reason, double now_sec, const rl_master::RobotStateData &state);
+    bool checkAcceptanceSafety(double now_sec, const rl_master::RobotStateData &state, std::string *reason);
+    static const char *acceptancePhaseName(AcceptancePhase phase);
 
     void publishCommand(const rl_master::RobotCommandData &command, double now_sec);
     void logStep(
@@ -151,7 +205,9 @@ private:
 
     std::mutex state_mutex_;
     rl_master::RobotStateData latest_state_{};
+    std::vector<float> latest_state_acceleration_;
     bool has_state_ = false;
+    double latest_state_receive_time_sec_ = 0.0;
 
     std::mutex mode_mutex_;
     int latest_mode_command_ = -1;
@@ -165,6 +221,23 @@ private:
 
     rl_master::logging::StructuredLogger logger_;
     bool logger_enabled_ = false;
+
+    bool acceptance_initialized_ = false;
+    bool acceptance_complete_ = false;
+    bool acceptance_aborted_ = false;
+    std::string acceptance_abort_reason_;
+    size_t acceptance_joint_cursor_ = 0;
+    AcceptancePhase acceptance_phase_ = AcceptancePhase::kCspHold;
+    double acceptance_phase_start_sec_ = 0.0;
+    double acceptance_motion_duration_sec_ = 0.0;
+    double acceptance_motion_q_start_ = 0.0;
+    double acceptance_motion_q_end_ = 0.0;
+    double acceptance_home_q_ = 0.0;
+    SepticSample acceptance_sample_{};
+    std::vector<float> acceptance_hold_q_;
+    std::vector<float> acceptance_target_velocity_;
+    std::vector<float> acceptance_target_acceleration_;
+    std::vector<float> acceptance_target_jerk_;
 };
 
 } // namespace joint_motor_test

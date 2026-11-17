@@ -23,6 +23,7 @@ Makefile
 log/
 MUJOCO_LOG.TXT
 src/omnimorph_rl_controller/rl_master/data/runtime_logs/
+src/omnimorph_rl_controller/rl_master/config/runtime/
 analysis/
 # Keep maintained runtime-analysis utilities under version control.
 !src/omnimorph_rl_controller/rl_master/tools/analysis/
@@ -58,6 +59,8 @@ third_party/
 
 data/data_plot
 data/runtime_logs
+# JC01 单关节验收运行日志（每次运行按时间戳生成）
+data/joint_motor_test_*/
 
 # Local assistant / tooling artifacts
 command.md

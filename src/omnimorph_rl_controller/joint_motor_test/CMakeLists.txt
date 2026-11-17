@@ -42,6 +42,24 @@ target_link_libraries(joint_motor_test_runner
   yaml-cpp
 )
 
+if(BUILD_TESTING)
+  add_executable(test_septic_trajectory test/test_septic_trajectory.cpp)
+  target_include_directories(test_septic_trajectory PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  add_test(NAME septic_trajectory_math COMMAND test_septic_trajectory)
+
+  add_executable(test_optional_cst_selection_dds_protocol
+    test/test_optional_cst_selection_dds_protocol.cpp
+    ../rl_master/dds_protocol.cpp
+  )
+  target_include_directories(test_optional_cst_selection_dds_protocol PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../rl_master/include
+  )
+  ament_target_dependencies(test_optional_cst_selection_dds_protocol std_msgs rl_master)
+  add_test(NAME optional_cst_selection_dds_protocol COMMAND test_optional_cst_selection_dds_protocol)
+endif()
+
 install(TARGETS
   joint_motor_test_runner
   DESTINATION lib/${PROJECT_NAME}
@@ -57,6 +75,7 @@ install(DIRECTORY config docs launch
 
 install(PROGRAMS
   scripts/export_beyondmimic_reference.py
+  scripts/analyze_jingchu01_acceptance.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

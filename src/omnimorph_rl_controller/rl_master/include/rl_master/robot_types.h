@@ -2,6 +2,7 @@
 #define RL_MASTER_ROBOT_TYPES_H
 
 #include <array>
+#include <cstdint>
 #include <vector>
 
 #include "rl_protocol.h"
@@ -42,6 +43,10 @@ struct RobotCommandData
     std::vector<float> joint_target_q;
     std::vector<float> joint_target_dq;
     std::vector<float> joint_target_tau;
+    // Optional V2 extension for the existing test-R1 stream. A non-zero entry
+    // selects CST for that joint while zero selects CSP. An empty vector keeps
+    // the legacy all-R1 behavior.
+    std::vector<uint8_t> joint_cst_mask;
 
     float open_rl = kOpenRlDisabled;
 };

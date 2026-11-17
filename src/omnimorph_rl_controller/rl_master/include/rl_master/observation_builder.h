@@ -20,6 +20,7 @@ struct ObservationTermConfig
     std::vector<std::string> target_order;
     std::string target_representation;
     std::string target_frame;
+    std::vector<float> values;
 };
 
 struct ObservationFeatureContract
